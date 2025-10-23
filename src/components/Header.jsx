@@ -1,30 +1,52 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { signOut } from "firebase/auth";
-import { auth } from '../firebaseConfig'; // Assuming auth is exported from here
+import { auth, db } from '../firebaseConfig'; // Assuming auth is exported from here
+import { onAuthStateChanged } from 'firebase/auth';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
-// Placeholder Icons (replace with actual icons or library like react-icons)
-const NotificationIcon = () => (
-    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.4-1.4a2 2 0 01-1.4-1.4V11a6 6 0 10-12 0v2.2a2 2 0 01-1.4 1.4L3 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
-);
-const UserIcon = () => (
-    <svg className="w-6 h-6 rounded-full" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.1 17.8a14 14 0 0113.8 0M12 10a3 3 0 110-6 3 3 0 010 6zm0 12a9 9 0 110-18 9 9 0 010 18z"></path></svg>
+// Placeholder Icons
+const BellIcon = () => (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341A6.002 6.002 0 006 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+    </svg>
 );
 const SearchIcon = () => (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
 );
 
-const Header = () => {
+const Header = ({ onNotificationClick }) => { // <-- Accept the prop
     const [user, setUser] = useState(null);
     const [showUserDropdown, setShowUserDropdown] = useState(false);
+    const [unreadCount, setUnreadCount] = useState(0);
 
     useEffect(() => {
-        // Simple listener just to get user email for display, actual auth protection is in App.jsx
         const unsubscribe = auth.onAuthStateChanged((currentUser) => {
             setUser(currentUser);
         });
         return () => unsubscribe();
     }, []);
+
+    // --- ADDED: Listener for unread notifications ---
+    useEffect(() => {
+        if (user) {
+            const notifsRef = collection(db, 'notifications');
+            const q = query(
+              notifsRef,
+              where('userId', '==', user.uid),
+              where('isRead', '==', false)
+            );
+            
+            const unsubscribe = onSnapshot(q, (snapshot) => {
+              setUnreadCount(snapshot.size);
+            });
+            
+            return () => unsubscribe();
+        } else {
+            setUnreadCount(0);
+        }
+      }, [user]);
+    // --- END ADDED ---
 
     // Close dropdown when clicking outside
      useEffect(() => {
@@ -78,14 +100,24 @@ const Header = () => {
 
                     {/* Right: Icons & User Menu */}
                     <div className="flex items-center gap-x-3 sm:gap-x-4">
-                        {/* Notification Button */}
+                        {/* --- MODIFIED: Notification Button --- */}
                         <button
                             type="button"
-                            className="p-1 rounded-full text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 hover:bg-gray-100"
+                            onClick={onNotificationClick} // <-- Call the passed prop
+                            className="relative p-1 rounded-full text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 hover:bg-gray-100"
                         >
                             <span className="sr-only">View notifications</span>
-                            <NotificationIcon />
+                            <BellIcon />
+                            {/* --- ADDED: Unread count indicator --- */}
+                            {unreadCount > 0 && (
+                                <span className="absolute top-0 right-0 block h-3 w-3">
+                                    <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75 animate-ping"></span>
+                                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600"></span>
+                                </span>
+                            )}
+                            {/* --- END ADDED --- */}
                         </button>
+                        {/* --- END MODIFIED --- */}
 
                         {/* Profile dropdown */}
                         <div className="relative">
@@ -99,13 +131,11 @@ const Header = () => {
                                     onClick={() => setShowUserDropdown(!showUserDropdown)}
                                 >
                                     <span className="sr-only">Open user menu</span>
-                                    {/* Replace with user avatar if available */}
                                     <span className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-gray-500">
                                       <span className="text-sm font-medium leading-none text-white">
                                         {(user?.email || '?')[0].toUpperCase()}
                                       </span>
                                     </span>
-                                    {/* <UserIcon /> */}
                                 </button>
                             </div>
 

@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
 import { db } from '../firebaseConfig'; // Import db
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore'; // Import Firestore functions
+import {
+  addDoc,
+  collection,
+  serverTimestamp,
+  doc,
+  getDoc,
+  writeBatch
+} from 'firebase/firestore'; // Import Firestore functions
 import { auth } from '../firebaseConfig'; // Import auth to get current user
 
 const AnnounceModal = ({ isOpen, onClose, teamId, onAnnouncementPosted }) => { // Added onAnnouncementPosted prop
@@ -15,21 +22,58 @@ const AnnounceModal = ({ isOpen, onClose, teamId, onAnnouncementPosted }) => { /
       setError("Announcement cannot be empty.");
       return;
     }
-    if (!auth.currentUser) {
-        setError("You must be logged in to post an announcement.");
-        return;
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      setError("You must be logged in to post an announcement.");
+      return;
     }
 
     setIsPosting(true);
     setError('');
     try {
+      // --- START: MODIFICATION ---
+      // 1. Get the team doc to find members
+      const teamRef = doc(db, 'teams', teamId);
+      const teamSnap = await getDoc(teamRef);
+      if (!teamSnap.exists()) {
+        throw new Error('Team not found');
+      }
+      
+      const teamData = teamSnap.data();
+      const members = teamData.members || [];
+      const teamName = teamData.teamName;
+      const creatorName = currentUser.displayName || currentUser.email;
+
+      // 2. Post the announcement
       await addDoc(collection(db, `teams/${teamId}/announcements`), {
         type: 'announcement', // To differentiate from meetings
         text: announcementText,
-        createdBy: auth.currentUser.uid,
-        creatorDisplayName: auth.currentUser.displayName || auth.currentUser.email,
+        createdBy: currentUser.uid,
+        creatorDisplayName: creatorName,
         createdAt: serverTimestamp(),
       });
+
+      // 3. Batch-write notifications to all *other* members
+      const batch = writeBatch(db);
+      members.forEach(memberId => {
+        if (memberId !== currentUser.uid) { // Don't notify self
+          const notifRef = doc(collection(db, 'notifications')); // Create new doc ref
+          batch.set(notifRef, {
+            userId: memberId,
+            type: 'ANNOUNCEMENT',
+            senderId: currentUser.uid,
+            senderName: creatorName,
+            teamId: teamId,
+            teamName: teamName,
+            title: announcementText,
+            createdAt: serverTimestamp(),
+            isRead: false,
+          });
+        }
+      });
+      await batch.commit();
+      // --- END: MODIFICATION ---
+
       setAnnouncementText(''); // Clear input
       onClose(); // Close modal
       if (onAnnouncementPosted) { // Trigger refresh in parent

@@ -8,6 +8,7 @@ import InviteMemberModal from './InviteMemberModal';
 import AnnounceModal from './AnnounceModal';
 import ScheduleMeetingModal from './ScheduleMeetingModal';
 import TeamProjectTable from './TeamProjectTable';
+import NotificationsModal from './NotificationsModal'; // <-- 1. IMPORT NEW MODAL
 
 // Spinner component remains the same
 const Spinner = () => (
@@ -117,7 +118,7 @@ const MembersSection = ({ membersDetails, isTeamCreator, onInviteClick }) => {
                             </div>
                             {/* {isTeamCreator && member.uid !== auth.currentUser?.uid && ( // Don't allow removing self
                                 <button className="text-xs text-red-500 hover:text-red-700 flex-shrink-0">Remove</button> // TODO: Add onClick
-                           )} */}
+                            )} */}
                         </li>
                     ))}
                 </ul>
@@ -149,6 +150,9 @@ const TeamView = () => {
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [isAnnounceModalOpen, setIsAnnounceModalOpen] = useState(false);
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+    // --- 2. ADD NOTIFICATION MODAL STATE ---
+    const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
+
 
     // Determine if the current user created the team
     const isTeamCreator = teamData?.createdBy === currentUser?.uid;
@@ -166,8 +170,7 @@ const TeamView = () => {
         return unsubscribe;
     }, []);
 
-    // --- MODIFIED Fetching logic ---
-    // Now includes authorization check
+    // --- MODIFIED Fetching logic (unchanged) ---
     useEffect(() => {
         const fetchTeamAndMembers = async () => {
             if (!teamId) { 
@@ -216,7 +219,6 @@ const TeamView = () => {
                 }
 
                 // --- 3. SUCCESS: User is authorized ---
-                // If we get here, the user is logged in AND a member
                 setIsAuthorized(true); // Grant access
                 setTeamData({ id: teamDocSnap.id, ...fetchedTeamData });
 
@@ -249,22 +251,17 @@ const TeamView = () => {
 
     return (
         <div className="min-h-screen bg-gray-100 font-sans flex flex-col">
-            <Header />
+            {/* --- 3. PASS PROP TO HEADER --- */}
+            <Header onNotificationClick={() => setIsNotificationsModalOpen(true)} />
+
             <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
                 
-                {/* --- MODIFIED RENDER LOGIC --- */}
+                {/* --- MODIFIED RENDER LOGIC (unchanged) --- */}
                 
                 {isLoading && <Spinner />}
                 
-                {/* Show error if one occurred (e.g., Team not found) */}
                 {error && <div className="text-center text-red-600 bg-red-100 p-4 rounded-md shadow">{error}</div>}
 
-                {/* Only render the page content if:
-                  1. Loading is finished
-                  2. There is no error
-                  3. We have team data
-                  4. The user has been authorized
-                */}
                 {!isLoading && !error && teamData && isAuthorized && (
                     <>
                         <div className="mb-6 flex justify-between items-center">
@@ -316,7 +313,7 @@ const TeamView = () => {
 
                             {/* Full Width Below: Team Project Table */}
                             <div className="lg:col-span-3 mt-8">
-                                <TeamProjectTable teamId={teamId} onOpenNotePopup={(taskId) => console.log("Open note popup for task:", taskId)} />
+                                <TeamProjectTable teamId={teamId} />
                             </div>
 
                         </div>
@@ -343,6 +340,12 @@ const TeamView = () => {
                         onClose={() => setIsScheduleModalOpen(false)}
                         teamId={teamId}
                         onMeetingScheduled={refreshAnnouncements} // Pass callback
+                    />
+
+                    {/* --- 4. RENDER THE NEW MODAL --- */}
+                    <NotificationsModal
+                        isOpen={isNotificationsModalOpen}
+                        onClose={() => setIsNotificationsModalOpen(false)}
                     />
                 </>
             )}

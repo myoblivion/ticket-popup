@@ -10,7 +10,8 @@ import {
   deleteDoc,
   onSnapshot
 } from 'firebase/firestore';
-import ColumnActionPopup from './ColumnActionPopup';
+// import ColumnActionPopup from './ColumnActionPopup'; // No longer needed
+import NotePopup from './NotePopup'; // <-- IMPORTED NOTPOPUP
 import CreateTaskModal from './CreateTaskModal';
 
 // --- We no longer need the Google Script URL ---
@@ -25,11 +26,11 @@ const placeholderTypes = ['Bug', 'Enhancement', 'Question', 'Backend', 'Frontend
 const PRIORITY_OPTIONS = ['High', 'Medium', 'Low'];
 const STATUS_OPTIONS = ['Not started', 'In progress', 'QA', 'Complete'];
 
-const POPUP_TRIGGER_COLUMNS = ['inquiry'];
+const POPUP_TRIGGER_COLUMNS = ['inquiry']; // This column will open the NotePopup
 
 const INLINE_EDITABLE_COLUMNS = [
   'priority', 'category', 'type', 'status',
-  'ticketNo', 'company', 'inquiryDetails', 'notes',
+  'ticketNo', 'company', 'inquiryDetails', 'notes', // 'inquiry' is not here, it uses the popup
   'csManager', 'qaManager', 'developer',
   'startDate', 'endDate'
 ];
@@ -53,11 +54,12 @@ const UI_STRINGS = [
   // Add any other static UI text here
 ];
 
-const TeamProjectTable = ({ teamId, onOpenNotePopup }) => {
+const TeamProjectTable = ({ teamId }) => { // Removed onOpenNotePopup, as it's handled internally
   const [tasks, setTasks] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isPopupOpen, setIsPopupOpen] = useState(false);
+  // This state now holds { taskId, columnKey }
   const [popupTargetInfo, setPopupTargetInfo] = useState(null);
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
 
@@ -104,36 +106,25 @@ const TeamProjectTable = ({ teamId, onOpenNotePopup }) => {
   ], []);
 
 
-  // --- UPDATED: Translation Effect ---
-  // This runs when tasks load or language changes
+  // --- UPDATED: Translation Effect (now with batching to avoid query length limit) ---
   useEffect(() => {
-    // If English, just reset and do nothing
     if (currentLanguage === 'en') {
       setTranslations(new Map());
       setIsTranslating(false);
       return;
     }
-
-    // If we already have this language cached, use it
     if (translationCache.current.has(currentLanguage)) {
       setTranslations(translationCache.current.get(currentLanguage));
       return;
     }
 
-    // --- Collect all unique strings ---
     const collectStrings = () => {
       const strings = new Set();
       const emailRegex = /[^\s@]+@[^\s@]+\.[^\s@]+/;
       const numberRegex = /^\d+$/;
       const dashRegex = /^-+$/;
-
-      // 1. Add static UI strings
       UI_STRINGS.forEach(s => { if (s) strings.add(s); });
-
-      // 2. Add header labels
       headers.forEach(h => { if (h.label) strings.add(h.label); });
-
-      // 3. Add all string data from tasks
       tasks.forEach(task => {
         headers.forEach(h => {
           const val = task[h.key];
@@ -144,9 +135,9 @@ const TeamProjectTable = ({ teamId, onOpenNotePopup }) => {
               dashRegex.test(val) ||
               h.key === 'ticketNo'
             ) {
-              // Do nothing, skip this string
+              // skip
             } else {
-              strings.add(val); // Add valid string to be translated
+              strings.add(val);
             }
           }
         });
@@ -158,91 +149,112 @@ const TeamProjectTable = ({ teamId, onOpenNotePopup }) => {
       setIsTranslating(true);
       setError(null);
       const stringsToTranslate = collectStrings();
-
       if (stringsToTranslate.length === 0) {
         setIsTranslating(false);
         return;
       }
 
-      // ===================================================================
-      // --- START OF REPLACEMENT (No Google Apps Script) ---
-      // ===================================================================
       try {
-        // We join all strings with a unique delimiter.
-        // MyMemory API can translate one long string with newlines.
+        // We'll batch requests so the encoded query param won't exceed API limits.
+        // MyMemory has a practical limit around 500 chars for `q=`.
+        const batches = [];
         const delimiter = ' ||| ';
-        const joinedStrings = stringsToTranslate.join(delimiter);
-        const langPair = `en|${currentLanguage}`;
+        const delimEncLen = encodeURIComponent(delimiter).length;
+        const MAX_ENCODED_CHARS = 480; // safe headroom under 500
 
-        // Build the API URL
-        const apiUrl = new URL('https://api.mymemory.translated.net/get');
-        apiUrl.searchParams.append('q', joinedStrings);
-        apiUrl.searchParams.append('langpair', langPair);
+        let currentBatch = [];
+        let currentLen = 0;
 
-        // Make the GET request. No POST, no preflight, no CORS issues.
-        const res = await fetch(apiUrl.toString(), {
-          method: 'GET',
-          mode: 'cors',
-        });
+        for (const s of stringsToTranslate) {
+          const encLen = encodeURIComponent(s).length;
+          // if single string too long, we still need to send it alone (it may fail server-side)
+          if (currentBatch.length === 0 && encLen > MAX_ENCODED_CHARS) {
+            // put it in its own batch anyway
+            batches.push([s]);
+            currentBatch = [];
+            currentLen = 0;
+            continue;
+          }
 
-        if (!res.ok) {
-          throw new Error(`Translation API returned ${res.status}: ${res.statusText}`);
+          // if adding this string would exceed length, flush current and start new
+          const predictedLen = currentBatch.length === 0 ? encLen : (currentLen + delimEncLen + encLen);
+          if (predictedLen > MAX_ENCODED_CHARS) {
+            batches.push(currentBatch);
+            currentBatch = [s];
+            currentLen = encLen;
+          } else {
+            if (currentBatch.length === 0) {
+              currentBatch.push(s);
+              currentLen = encLen;
+            } else {
+              currentBatch.push(s);
+              currentLen = currentLen + delimEncLen + encLen;
+            }
+          }
         }
+        if (currentBatch.length > 0) batches.push(currentBatch);
 
-        const data = await res.json();
+        // sequentially fetch each batch and collect translated strings in order
+        const translatedFullList = [];
 
-        // Check the API's *internal* response status
-        if (data.responseStatus !== 200) {
-          throw new Error(`Translation API error: ${data.responseDetails}`);
-        }
+        for (const batch of batches) {
+          const joined = batch.join(delimiter);
+          const langPair = `en|${currentLanguage}`;
+          const apiUrl = new URL('https://api.mymemory.translated.net/get');
+          apiUrl.searchParams.append('q', joined);
+          apiUrl.searchParams.append('langpair', langPair);
 
-        // Get the single translated string
-        const translatedJoinedStrings = data.responseData.translatedText;
-
-        // Split the string back into an array using the same delimiter
-        // We use a regex to be safe about any extra spacing
-        const translatedStringsArray = translatedJoinedStrings.split(/\s*\|\|\|\s*/);
-
-        // Sanity check
-        if (translatedStringsArray.length !== stringsToTranslate.length) {
-          console.warn('Translation mismatch count. Some strings might not be translated.', {
-            original: stringsToTranslate.length,
-            translated: translatedStringsArray.length
+          const res = await fetch(apiUrl.toString(), {
+            method: 'GET',
+            mode: 'cors',
           });
+
+          if (!res.ok) {
+            throw new Error(`Translation API returned ${res.status}: ${res.statusText}`);
+          }
+          const data = await res.json();
+          if (data.responseStatus !== 200) {
+            const details = data.responseDetails || data.responseStatus;
+            throw new Error(`Translation API error: ${details}`);
+          }
+
+          const translatedJoinedStrings = data.responseData.translatedText;
+          // split by delimiter (allow spaces around delimiter)
+          const translatedStringsArray = translatedJoinedStrings.split(/\s*\|\|\|\s*/);
+          // If counts mismatch, gracefully fallback by filling missing with original
+          for (let i = 0; i < batch.length; i++) {
+            const translated = translatedStringsArray[i] || batch[i];
+            translatedFullList.push(translated.trim());
+          }
         }
 
-        // Build the translation map
+        // Map originals -> translations in one pass
         const newMap = new Map();
-        stringsToTranslate.forEach((original, index) => {
-          const translated = translatedStringsArray[index] || original; // Fallback to original
+        let idx = 0;
+        for (const original of stringsToTranslate) {
+          const translated = translatedFullList[idx] || original;
           newMap.set(original, translated.trim());
-        });
+          idx++;
+        }
 
         translationCache.current.set(currentLanguage, newMap);
         setTranslations(newMap);
-
       } catch (err) {
         console.error("Translation error:", err);
-        // NEW: Updated error message
         setError(`Translation failed: ${err.message}. Check the console.`);
       } finally {
         setIsTranslating(false);
       }
-      // ===================================================================
-      // --- END OF REPLACEMENT ---
-      // ===================================================================
     };
 
     runTranslation();
+  }, [tasks, currentLanguage, headers]);
 
-  }, [tasks, currentLanguage, headers]); // Run when tasks or language change
-
-  // --- NEW: Translation Helper Function ---
+  // --- Translation Helper Function (unchanged) ---
   const t = useCallback((text) => {
     if (currentLanguage === 'en' || !text) {
       return text;
     }
-    // Return translated text or fallback to original text
     return translations.get(text) || text;
   }, [currentLanguage, translations]);
 
@@ -250,7 +262,6 @@ const TeamProjectTable = ({ teamId, onOpenNotePopup }) => {
   // --- Firestore realtime listener (unchanged) ---
   useEffect(() => {
     setIsLoading(true);
-    // setError(null); // Don't nullify translation error
     if (!teamId) {
       setError("Invalid Team ID provided.");
       setIsLoading(false);
@@ -323,7 +334,6 @@ const TeamProjectTable = ({ teamId, onOpenNotePopup }) => {
       setError(`Missing teamId/taskId for auto-save.`);
       return;
     }
-    // We save the original English value, not the translated one
     const saveKey = getCellKey(taskId, columnKey);
     try {
       setSavingState(saveKey, 'saving');
@@ -346,7 +356,6 @@ const TeamProjectTable = ({ teamId, onOpenNotePopup }) => {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
-    // We save the original English value
     const saveKey = getCellKey(taskId, columnKey);
     try {
       setSavingState(saveKey, 'saving');
@@ -371,7 +380,7 @@ const TeamProjectTable = ({ teamId, onOpenNotePopup }) => {
       return;
     }
     const key = getCellKey(taskId, 'actions');
-    const confirmed = window.confirm(t('Delete this task? This action cannot be undone.')); // Small translation
+    const confirmed = window.confirm(t('Delete this task? This action cannot be undone.'));
     if (!confirmed) return;
     try {
       setSavingState(key, 'saving');
@@ -389,7 +398,7 @@ const TeamProjectTable = ({ teamId, onOpenNotePopup }) => {
   // start editing (unchanged)
   const startEditingCell = (taskId, columnKey, currentValue) => {
     setEditingCell({ taskId, columnKey });
-    setEditingValue(currentValue ?? ''); // Edit the original English value
+    setEditingValue(currentValue ?? '');
     setEditingOriginalValue(currentValue ?? '');
   };
 
@@ -455,16 +464,24 @@ const TeamProjectTable = ({ teamId, onOpenNotePopup }) => {
     startEditingCell(taskId, columnKey, String(currentValue));
   };
 
-  const handleGenericPopupClick = (e, taskId, columnKey, columnLabel) => {
+  // --- UPDATED: Click handler ---
+  const handleGenericPopupClick = (e, taskId, columnKey) => {
     e.stopPropagation();
     if (editingCell?.taskId === taskId && editingCell?.columnKey === columnKey) return;
+    
+    // Check if this column is meant to trigger the NotePopup
     if (POPUP_TRIGGER_COLUMNS.includes(columnKey)) {
-      setPopupTargetInfo({ taskId, column: t(columnLabel) }); // Translate popup title
+      // Set the state with the correct info for NotePopup
+      setPopupTargetInfo({ taskId, columnKey }); // <-- PASSES THE KEY
       setIsPopupOpen(true);
     }
   };
 
-  const closeGenericPopup = () => { setIsPopupOpen(false); setPopupTargetInfo(null); };
+  // --- UPDATED: Close popup handler ---
+  const closeGenericPopup = () => {
+    setIsPopupOpen(false);
+    setPopupTargetInfo(null);
+  };
 
   const handleSelectChange = async (taskId, columnKey, newValue) => {
     await saveAndClose(taskId, columnKey, newValue || '');
@@ -499,7 +516,7 @@ const TeamProjectTable = ({ teamId, onOpenNotePopup }) => {
   const toggleAllColumns = () => setIsAllExpanded(prev => !prev);
 
 
-  // cell renderer: now accepts isAllExpanded (unchanged)
+  // cell renderer: now accepts isAllExpanded
   const renderCellContent = (task, header, isAllExpanded) => {
     const isEditingThisCell = editingCell?.taskId === task.id && editingCell?.columnKey === header.key;
     const rawValue = task[header.key];
@@ -598,17 +615,17 @@ const TeamProjectTable = ({ teamId, onOpenNotePopup }) => {
       );
     }
 
+    // --- UPDATED: 'inquiry' column ---
     // normal truncated display; inquiry still triggers popup
     if (header.key === 'inquiry') {
       return (
         <div className="truncate px-4 py-2.5">
           <button
-            onClick={(e) => { handleGenericPopupClick(e, task.id, header.key, header.label); }}
+            onClick={(e) => { handleGenericPopupClick(e, task.id, header.key); }} // <-- No label needed
             className="text-left w-full text-sm text-blue-600 hover:underline truncate"
             type="button"
-            title={t(value) || ''}
           >
-            {t(value) || t('(open)')}
+            {t('(open)')} {/* <-- Always show (open) */}
           </button>
         </div>
       );
@@ -622,15 +639,14 @@ const TeamProjectTable = ({ teamId, onOpenNotePopup }) => {
     );
   };
 
-  // --- Main component return (unchanged) ---
+  // --- Main component return ---
   return (
     <>
       <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
+        {/* Header (unchanged) */}
         <div className="px-6 pt-4 pb-3 flex justify-between items-center border-b border-gray-200">
           <h3 className="text-xl font-semibold text-gray-800">{t('Team Project Tasks')}</h3>
-
           <div className="flex items-center gap-3">
-            {/* --- NEW: Language Selector --- */}
             <div className="relative">
               <select
                 value={currentLanguage}
@@ -646,7 +662,6 @@ const TeamProjectTable = ({ teamId, onOpenNotePopup }) => {
                 <span className="text-xs text-blue-600 absolute -bottom-4 right-0">Translating...</span>
               )}
             </div>
-
             <button
               onClick={toggleAllColumns}
               title={isAllExpanded ? t('Collapse All') : t('Expand All')}
@@ -654,7 +669,6 @@ const TeamProjectTable = ({ teamId, onOpenNotePopup }) => {
             >
               {isAllExpanded ? t('Collapse All') : t('Expand All')}
             </button>
-
             <button
               onClick={() => setIsCreateTaskModalOpen(true)}
               className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-1.5 px-4 rounded-md shadow-sm transition-colors"
@@ -664,11 +678,12 @@ const TeamProjectTable = ({ teamId, onOpenNotePopup }) => {
           </div>
         </div>
 
-        {/* Global Error Display */}
+        {/* Global Error Display (unchanged) */}
         {error && (
           <div className="text-center py-4 text-red-600 bg-red-50">{error}</div>
         )}
 
+        {/* Table (unchanged) */}
         <div className="overflow-x-auto relative mt-4 px-6 pb-6">
           <table className="table-auto w-full min-w-[1000px] border-collapse">
             <thead className="bg-gray-50 sticky top-0 z-10">
@@ -687,7 +702,6 @@ const TeamProjectTable = ({ teamId, onOpenNotePopup }) => {
                     }}
                   >
                     <div className="flex items-center gap-2">
-                      {/* --- CSS FIX: Remove truncate class when not in English --- */}
                       <div className={currentLanguage === 'en' ? 'truncate' : ''}>
                         {t(h.label)}
                       </div>
@@ -707,13 +721,11 @@ const TeamProjectTable = ({ teamId, onOpenNotePopup }) => {
               )}
 
               {!isLoading && tasks.map(task => {
-                // Just the main row
                 return (
                   <tr key={task.id} className="group transition-colors duration-100 relative" >
                     {headers.map(header => {
                       const cellKey = getCellKey(task.id, header.key);
                       const isEditingThisCell = editingCell?.taskId === task.id && editingCell?.columnKey === header.key;
-
                       const isExpandingTextarea = isEditingThisCell && TEXTAREA_COLUMNS.includes(header.key);
 
                       return (
@@ -721,23 +733,20 @@ const TeamProjectTable = ({ teamId, onOpenNotePopup }) => {
                           key={cellKey}
                           className={[
                             'relative align-top border-b border-gray-100',
-                            POPUP_TRIGGER_COLUMNS.includes(header.key) && !isEditingThisCell ? 'cursor-pointer' : '',
+                            POPUP_TRIGGER_COLUMNS.includes(header.key) && !isEditingThisCell ? 'cursor-pointer' : '', // <-- This makes it clickable
                             INLINE_EDITABLE_COLUMNS.includes(header.key) && !isEditingThisCell ? 'cursor-text' : '',
                             header.widthClass || '',
                             isEditingThisCell ? 'p-0' : ''
                           ].filter(Boolean).join(' ')}
                           style={{
                             maxWidth: header.maxWidth || undefined,
-                            verticalAlign: isAllExpanded ? 'top' : 'middle', // Use isAllExpanded
+                            verticalAlign: isAllExpanded ? 'top' : 'middle',
                             height: isExpandingTextarea ? 'auto' : undefined,
                           }}
-                          onClick={(e) => handleGenericPopupClick(e, task.id, header.key, header.label)}
+                          onClick={(e) => handleGenericPopupClick(e, task.id, header.key)} // <-- UPDATED
                           onDoubleClick={(e) => handleCellDoubleClick(e, task.id, header.key)}
                         >
-                          {/* Pass isAllExpanded to the renderer */}
                           {renderCellContent(task, header, isAllExpanded)}
-
-                          {/* Saving indicators */}
                           {savingStatus[cellKey] === 'saving' && (
                             <span className="absolute top-1 right-2 text-xs text-gray-500">{t('Saving…')}</span>
                           )}
@@ -755,11 +764,26 @@ const TeamProjectTable = ({ teamId, onOpenNotePopup }) => {
         </div>
       </div>
 
-      <ColumnActionPopup
-        isOpen={isPopupOpen}
-        onClose={closeGenericPopup}
-        targetInfo={popupTargetInfo}
-      />
+      {/* --- REPLACEMENT: NotePopup Modal --- */}
+      {isPopupOpen && popupTargetInfo && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4"
+          onClick={closeGenericPopup} // Close on overlay click
+        >
+          <div 
+            className="bg-transparent" // NotePopup provides its own background/styling
+            onClick={e => e.stopPropagation()} // Prevent modal close on popup click
+          >
+            <NotePopup
+              teamId={teamId}
+              taskId={popupTargetInfo.taskId}
+              columnKey={popupTargetInfo.columnKey}
+              onClose={closeGenericPopup}
+            />
+          </div>
+        </div>
+      )}
+      {/* --- END REPLACEMENT --- */}
 
       <CreateTaskModal
         isOpen={isCreateTaskModalOpen}

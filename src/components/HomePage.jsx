@@ -5,6 +5,7 @@ import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
 import { auth, db } from '../firebaseConfig'; // Keep auth import if needed elsewhere, db for teams
 import CreateTeamModal from './CreateTeamModal';
 import Header from './Header'; // <-- Import the new Header component
+import NotificationsModal from './NotificationsModal'; // <-- 1. IMPORT NOTIFICATION MODAL
 
 // Spinner component
 const Spinner = () => (
@@ -22,6 +23,9 @@ const HomePage = () => {
   const [isLoadingTeams, setIsLoadingTeams] = useState(true);
   const [errorTeams, setErrorTeams] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  
+  // --- 2. ADD STATE FOR NOTIFICATION MODAL ---
+  const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
 
   // Auth state listener - mainly to get UID for fetching
   useEffect(() => {
@@ -41,7 +45,6 @@ const HomePage = () => {
 
   // Fetch teams function remains the same
   const fetchTeams = async (userId) => {
-    // ... same fetchTeams logic ...
      if (!userId) {
         setTeams([]);
         setIsLoadingTeams(false);
@@ -71,13 +74,11 @@ const HomePage = () => {
   };
 
   return (
-    // Removed h-screen from here, Header controls height now. Added min-h-screen for background.
     <div className="min-h-screen bg-gray-100 font-sans flex flex-col">
-        {/* === Use the Header Component === */}
-        <Header />
+        {/* === Use the Header Component, pass notification click handler === */}
+        <Header onNotificationClick={() => setIsNotificationsModalOpen(true)} /> {/* <-- 3. PASS PROP */}
 
-        {/* Main Content Area with Padding */}
-        {/* max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 matches header for consistent width */}
+        {/* Main Content Area */}
         <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
             {/* Teams Section */}
             <section>
@@ -87,7 +88,7 @@ const HomePage = () => {
                         onClick={openCreateTeamModal}
                         className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded-md shadow focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-150 ease-in-out"
                     >
-                      + Create Team
+                        + Create Team
                     </button>
                 </div>
 
@@ -115,11 +116,17 @@ const HomePage = () => {
             </section>
         </main>
 
-        {/* Render the Modal */}
+        {/* Render the Create Team Modal */}
         <CreateTeamModal
             isOpen={isCreateModalOpen}
             onClose={closeCreateTeamModal}
             onTeamCreated={handleTeamCreated}
+        />
+
+        {/* --- 4. RENDER NOTIFICATION MODAL --- */}
+        <NotificationsModal
+            isOpen={isNotificationsModalOpen}
+            onClose={() => setIsNotificationsModalOpen(false)}
         />
     </div>
   );

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth } from '../firebaseConfig';
+import { auth, db } from '../firebaseConfig'; // <-- Import db
+import { doc, setDoc, serverTimestamp } from "firebase/firestore"; // <-- Import Firestore functions
 
 const RegisterPage = () => {
   const [email, setEmail] = useState('');
@@ -19,8 +20,23 @@ const RegisterPage = () => {
     setError('');
     setLoading(true);
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
-      navigate('/home'); // Redirect to home page on successful registration
+      // 1. Create the Firebase Auth user
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // --- START: ADDED FIRESTORE LOGIC ---
+      // 2. Create a document in the 'users' collection
+      const userDocRef = doc(db, "users", user.uid);
+      await setDoc(userDocRef, {
+        uid: user.uid,
+        email: user.email,
+        displayName: null, // Initially null, user can set this in settings
+        createdAt: serverTimestamp(),
+        teams: [] // Initialize empty teams array
+      });
+      // --- END: ADDED FIRESTORE LOGIC ---
+
+      navigate('/home'); // Redirect to home page
     } catch (err) {
       console.error("Registration error:", err);
       // Provide more specific error messages if needed
