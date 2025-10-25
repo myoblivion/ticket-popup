@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebaseConfig';
 import {
   collection,
@@ -8,14 +8,27 @@ import {
   doc,
   getDoc,
   addDoc,
-  serverTimestamp
+  serverTimestamp,
+  updateDoc,
+  arrayUnion,
+  setDoc
 } from 'firebase/firestore';
 
-const InviteMemberModal = ({ isOpen, onClose, teamId }) => {
+const InviteMemberModal = ({ isOpen, onClose, teamId, onInvited }) => {
   const [email, setEmail] = useState('');
+  const [role, setRole] = useState('member'); // only 'member' or 'admin'
   const [isInviting, setIsInviting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) {
+      setEmail('');
+      setRole('member');
+      setError('');
+      setSuccess('');
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -24,7 +37,7 @@ const InviteMemberModal = ({ isOpen, onClose, teamId }) => {
       setError('Please enter an email address.');
       return;
     }
-    
+
     setIsInviting(true);
     setError('');
     setSuccess('');
@@ -35,7 +48,7 @@ const InviteMemberModal = ({ isOpen, onClose, teamId }) => {
         throw new Error("You must be logged in.");
       }
 
-      // 1. Find the user by email
+      // 1. Find user by email
       const usersRef = collection(db, 'users');
       const q = query(usersRef, where('email', '==', email.trim().toLowerCase()));
       const querySnapshot = await getDocs(q);
@@ -48,8 +61,10 @@ const InviteMemberModal = ({ isOpen, onClose, teamId }) => {
 
       const userDoc = querySnapshot.docs[0];
       const invitedUserId = userDoc.id;
+      const invitedData = userDoc.data();
+      const invitedLabel = invitedData.displayName || invitedData.name || invitedData.email || invitedUserId;
 
-      // 2. Get team data (for team name and member check)
+      // 2. Get team doc
       const teamRef = doc(db, 'teams', teamId);
       const teamSnap = await getDoc(teamRef);
 
@@ -60,7 +75,6 @@ const InviteMemberModal = ({ isOpen, onClose, teamId }) => {
       }
 
       const teamData = teamSnap.data();
-      const teamName = teamData.teamName;
       const members = teamData.members || [];
 
       // 3. Check if user is already a member
@@ -69,23 +83,46 @@ const InviteMemberModal = ({ isOpen, onClose, teamId }) => {
         setIsInviting(false);
         return;
       }
-      const senderName = currentUser.displayName || currentUser.email; // <-- Use email as fallback
-      // 4. Create the notification
+
+      // 4. Send notification (invite)
+      const senderName = currentUser.displayName || currentUser.email || currentUser.uid;
       await addDoc(collection(db, 'notifications'), {
-        userId: invitedUserId, // The user being invited
+        userId: invitedUserId,
         type: 'INVITATION',
         senderId: currentUser.uid,
         senderName: senderName,
         teamId: teamId,
-        teamName: teamName,
+        teamName: teamData.teamName || 'Team',
         createdAt: serverTimestamp(),
         isRead: false,
       });
 
-      setSuccess(`Invitation sent to ${email}!`);
-      setEmail(''); // Clear input
-      setTimeout(onClose, 2000); // Close modal after 2s
+      // 5. Add invited user to team members list and set their role & permissions
+      const permsForRole = role === 'admin' ? { announcements: true, schedule: true } : { announcements: false, schedule: false };
 
+      try {
+        await updateDoc(teamRef, {
+          members: arrayUnion(invitedUserId),
+          [`roles.${invitedUserId}`]: role,
+          [`permissions.${invitedUserId}`]: permsForRole
+        });
+      } catch (err) {
+        // fallback to setDoc merge if updateDoc fails (shouldn't happen)
+        console.warn('updateDoc failed, trying setDoc merge fallback', err);
+        await setDoc(teamRef, {
+          members: arrayUnion(invitedUserId),
+          roles: { [invitedUserId]: role },
+          permissions: { [invitedUserId]: permsForRole }
+        }, { merge: true });
+      }
+
+      setSuccess(`Invitation sent to ${email}!`);
+      setEmail('');
+      if (typeof onInvited === 'function') onInvited(invitedUserId, invitedLabel);
+
+      setTimeout(() => {
+        if (typeof onClose === 'function') onClose();
+      }, 900);
     } catch (err) {
       console.error('Error sending invitation:', err);
       setError('Failed to send invitation. Please try again.');
@@ -96,9 +133,10 @@ const InviteMemberModal = ({ isOpen, onClose, teamId }) => {
 
   const handleClose = () => {
     setEmail('');
+    setRole('member');
     setError('');
     setSuccess('');
-    onClose();
+    if (typeof onClose === 'function') onClose();
   };
 
   return (
@@ -108,13 +146,13 @@ const InviteMemberModal = ({ isOpen, onClose, teamId }) => {
           <h3 className="text-xl font-semibold text-gray-800">Invite Member</h3>
           <button onClick={handleClose} className="text-gray-400 hover:text-gray-600">&times;</button>
         </div>
+
         {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
         {success && <p className="text-green-500 text-sm mb-3">{success}</p>}
+
         <div className="space-y-4">
           <div>
-            <label htmlFor="inviteEmail" className="block text-sm font-medium text-gray-700 mb-1">
-              User's Email
-            </label>
+            <label htmlFor="inviteEmail" className="block text-sm font-medium text-gray-700 mb-1">User's Email</label>
             <input
               type="email"
               id="inviteEmail"
@@ -124,7 +162,17 @@ const InviteMemberModal = ({ isOpen, onClose, teamId }) => {
               className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+            <select value={role} onChange={(e) => setRole(e.target.value)} className="w-full p-2 border rounded">
+              <option value="member">Member</option>
+              <option value="admin">Admin</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">Admin will automatically have access to Announcements and Schedule.</p>
+          </div>
         </div>
+
         <div className="flex justify-end gap-2 mt-6 border-t pt-4">
           <button onClick={handleClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">
             Cancel

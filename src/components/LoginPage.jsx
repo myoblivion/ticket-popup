@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from '../firebaseConfig';
 
+// --- REMOVED ALL MASTER_ADMIN LOGIC FROM THIS FILE ---
+
 const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -14,12 +16,21 @@ const LoginPage = () => {
     e.preventDefault();
     setError('');
     setLoading(true);
+
     try {
+      // --- MODIFIED ---
+      // Standard Firebase login for ALL users, including Master Admin
       await signInWithEmailAndPassword(auth, email, password);
-      navigate('/home'); // Redirect to home page on successful login
+      navigate('/home');
+      // --- END MODIFICATION ---
+      
     } catch (err) {
       console.error("Login error:", err);
-      setError('Failed to log in. Check your email and password.');
+      if (err.code === 'auth/invalid-credential') {
+        setError('Failed to log in. Check your email and password.');
+      } else {
+        setError('Failed to log in. Check your email and password.');
+      }
     } finally {
       setLoading(false);
     }
@@ -59,15 +70,13 @@ const LoginPage = () => {
               required
             />
           </div>
-          <div className="flex items-center justify-between">
-            <button
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full disabled:opacity-50"
-              type="submit"
-              disabled={loading}
-            >
-              {loading ? 'Logging in...' : 'Log In'}
-            </button>
-          </div>
+          <button
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full disabled:opacity-50"
+            type="submit"
+            disabled={loading}
+          >
+            {loading ? 'Logging in...' : 'Log In'}
+          </button>
           <p className="text-center text-gray-500 text-sm mt-6">
             Don't have an account?{' '}
             <Link to="/register" className="font-semibold text-blue-600 hover:text-blue-800">

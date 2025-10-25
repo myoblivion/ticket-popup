@@ -3,7 +3,11 @@ import { Link } from 'react-router-dom';
 import { signOut } from "firebase/auth";
 import { auth, db } from '../firebaseConfig'; // Assuming auth is exported from here
 import { onAuthStateChanged } from 'firebase/auth';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+
+// --- NEW IMPORTS ---
+import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
+// --- END NEW IMPORTS ---
+
 
 // Placeholder Icons
 const BellIcon = () => (
@@ -20,14 +24,39 @@ const Header = ({ onNotificationClick }) => { // <-- Accept the prop
     const [showUserDropdown, setShowUserDropdown] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
 
+    // --- NEW STATE ---
+    const [isMasterAdmin, setIsMasterAdmin] = useState(false);
+    // --- END NEW STATE ---
+
     useEffect(() => {
-        const unsubscribe = auth.onAuthStateChanged((currentUser) => {
+        // --- MODIFIED: Made async ---
+        const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
             setUser(currentUser);
+
+            // --- NEW: Check user's role from Firestore ---
+            if (currentUser) {
+                try {
+                    const userDocRef = doc(db, 'users', currentUser.uid);
+                    const docSnap = await getDoc(userDocRef);
+                    if (docSnap.exists() && docSnap.data().role === 'Master Admin') {
+                        setIsMasterAdmin(true);
+                    } else {
+                        setIsMasterAdmin(false);
+                    }
+                } catch (err) {
+                    console.error("Error fetching user role in header:", err);
+                    setIsMasterAdmin(false);
+                }
+            } else {
+                // No user, reset admin flag
+                setIsMasterAdmin(false);
+            }
+            // --- END NEW ---
         });
         return () => unsubscribe();
     }, []);
 
-    // --- ADDED: Listener for unread notifications ---
+    // --- Listener for unread notifications ---
     useEffect(() => {
         if (user) {
             const notifsRef = collection(db, 'notifications');
@@ -76,10 +105,12 @@ const Header = ({ onNotificationClick }) => { // <-- Accept the prop
             <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"> {/* Container with max-width and padding */}
                 <div className="flex justify-between items-center h-16"> {/* Flex container for alignment */}
 
-                    {/* Left: Dashboard/Brand */}
+                    {/* Left: Dashboard/Brand - MODIFIED */}
                     <div className="flex-shrink-0">
-                        <Link to="/home" className="text-2xl font-bold text-gray-800 hover:text-blue-600 transition-colors">
-                            {/* You can add a logo here */}
+                        <Link 
+                            to={isMasterAdmin ? "/admin-dashboard" : "/home"} // <-- MODIFIED LINK
+                            className="text-2xl font-bold text-gray-800 hover:text-blue-600 transition-colors"
+                        >
                             Dashboard
                         </Link>
                     </div>
@@ -124,14 +155,22 @@ const Header = ({ onNotificationClick }) => { // <-- Accept the prop
                             <div>
                                 <button
                                     type="button"
-                                    className="bg-white rounded-full flex text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                                    // --- MODIFIED: Highlight for Admin ---
+                                    className={`rounded-full flex text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                                        isMasterAdmin 
+                                        ? 'ring-yellow-500' 
+                                        : 'focus:ring-blue-500'
+                                    }`}
                                     id="user-menu-button"
                                     aria-expanded={showUserDropdown}
                                     aria-haspopup="true"
                                     onClick={() => setShowUserDropdown(!showUserDropdown)}
                                 >
                                     <span className="sr-only">Open user menu</span>
-                                    <span className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-gray-500">
+                                    {/* --- MODIFIED: Yellow bg for Admin --- */}
+                                    <span className={`inline-flex items-center justify-center h-8 w-8 rounded-full ${
+                                        isMasterAdmin ? 'bg-yellow-500' : 'bg-gray-500'
+                                    }`}>
                                       <span className="text-sm font-medium leading-none text-white">
                                         {(user?.email || '?')[0].toUpperCase()}
                                       </span>
@@ -151,7 +190,26 @@ const Header = ({ onNotificationClick }) => { // <-- Accept the prop
                                         <p className="text-sm font-medium text-gray-900 truncate" title={user?.email || ''}>
                                             {user?.email || '...'}
                                         </p>
+                                        {/* --- NEW: Admin Badge --- */}
+                                        {isMasterAdmin && (
+                                            <span className="text-xs font-semibold bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full mt-1 inline-block">
+                                                Master Admin
+                                            </span>
+                                        )}
                                     </div>
+                                    
+                                    {/* --- NEW: Admin Dashboard Link --- */}
+                                    {isMasterAdmin && (
+                                        <Link
+                                            to="/admin-dashboard"
+                                            onClick={() => setShowUserDropdown(false)}
+                                            className="block px-4 py-2 text-sm font-semibold text-yellow-700 hover:bg-gray-100"
+                                            role="menuitem" tabIndex="-1"
+                                        >
+                                            Admin Dashboard
+                                        </Link>
+                                    )}
+                                    
                                     <Link
                                         to="/settings"
                                         onClick={() => setShowUserDropdown(false)}
