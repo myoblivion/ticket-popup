@@ -7,26 +7,27 @@ import RegisterPage from './components/RegisterPage';
 import HomePage from './components/HomePage';
 import './index.css';
 import TeamView from './components/TeamView';
-import SettingsPage from './components/SettingsPage'; 
+import SettingsPage from './components/SettingsPage';
 import MasterAdminRegisterPage from './components/MasterAdminRegisterPage';
-
-// --- NEW IMPORT ---
 import MasterAdminDashboard from './components/MasterAdminDashboard';
 
-// ProtectedRoute stays the same. It correctly checks for any logged-in user.
-// The logic to redirect *which* page they see is now in HomePage.jsx
+// --- NEW IMPORT ---
+import MainLayout from './components/MainLayout'; // Import the layout
+
+// ProtectedRoute stays the same
 const ProtectedRoute = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = React.useState(null); 
+  const [isAuthenticated, setIsAuthenticated] = React.useState(null);
 
   React.useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setIsAuthenticated(!!user); 
+      setIsAuthenticated(!!user);
     });
-    return () => unsubscribe(); 
+    return () => unsubscribe();
   }, []);
 
   if (isAuthenticated === null) {
-    return <div>Loading...</div>; // Or a spinner component
+    // Optional: Render a full-page spinner or skeleton here
+    return <div className="flex justify-center items-center min-h-screen">Loading...</div>;
   }
 
   return isAuthenticated ? children : <Navigate to="/login" replace />;
@@ -41,49 +42,30 @@ function App() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/register-master-admin" element={<MasterAdminRegisterPage />} />
 
-        {/* Protected Routes 
-          /home is now the "gate"
-        */}
+        {/* --- Protected Routes --- */}
+        {/* Wrap the MainLayout with ProtectedRoute */}
         <Route
-          path="/home"
           element={
             <ProtectedRoute>
-              <HomePage />
+              <MainLayout /> {/* This layout now contains Header, Chat button, Modals */}
             </ProtectedRoute>
           }
-        />
-        
-        {/* --- NEW ROUTE FOR ADMIN DASHBOARD --- */}
-        <Route
-          path="/admin-dashboard"
-          element={
-            <ProtectedRoute>
-              <MasterAdminDashboard />
-            </ProtectedRoute>
-          }
-        />
+        >
+          {/* Routes rendered INSIDE MainLayout via <Outlet /> */}
+          <Route path="/home" element={<HomePage />} />
+          <Route path="/admin-dashboard" element={<MasterAdminDashboard />} />
+          <Route path="/team/:teamId" element={<TeamView />} />
+          <Route path="/settings" element={<SettingsPage />} />
 
-        <Route
-          path="/team/:teamId" 
-          element={
-            <ProtectedRoute>
-              <TeamView />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/settings" 
-          element={ <ProtectedRoute> <SettingsPage /> </ProtectedRoute> }
-        />
-         <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <Navigate to="/home" replace />
-            </ProtectedRoute>
-           }
-         />
-         <Route path="*" element={<Navigate to="/" replace />} />
+          {/* Default route for logged-in users */}
+          <Route path="/" element={<Navigate to="/home" replace />} />
+
+        </Route> {/* End of Protected Routes group */}
+
+        {/* Catch-all route (can redirect to login or home depending on auth) */}
+        {/* This might need adjustment based on ProtectedRoute's loading state handling */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+
       </Routes>
     </Router>
   );

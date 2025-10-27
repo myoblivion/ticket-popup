@@ -118,7 +118,7 @@ const TeamProjectTable = ({ teamId }) => {
   // { headerKey, targetTaskId, applyToEditingCell }
   const [inviteMeta, setInviteMeta] = useState(null);
 
-  // add-option modal state (for category/type)
+  // add-option modal state (for category/type/priority/status)
   const [isAddOptionOpen, setIsAddOptionOpen] = useState(false);
   const [addOptionMeta, setAddOptionMeta] = useState(null);
   const [addOptionValue, setAddOptionValue] = useState('');
@@ -148,25 +148,29 @@ const TeamProjectTable = ({ teamId }) => {
     { key: 'actions', label: '', widthClass: 'w-[64px] text-center', maxWidth: '64px' }
   ], []);
 
-  // --- NEW: Filter tasks based on status ---
+  // --- Filter tasks based on status ---
   const { activeTasks, completedTasks } = useMemo(() => {
     const active = [];
     const completed = [];
-    // Use the exact string from statusOptions that means complete.
-    // We assume the *last* item in the status list is the "complete" one.
-    const completeStatusString = statusOptions.length > 0
-      ? statusOptions[statusOptions.length - 1]
-      : 'Complete'; // Fallback
+    // --- UPDATED LOGIC ---
+    // Explicitly check for the string "Complete"
+    const completeStatusString = 'Complete';
+    // --- END UPDATE ---
 
     for (const task of tasks) {
+      // --- UPDATED COMPARISON ---
       if (task.status === completeStatusString) {
+      // --- END UPDATE ---
         completed.push(task);
       } else {
         active.push(task);
       }
     }
     return { activeTasks: active, completedTasks: completed };
-  }, [tasks, statusOptions]); // Depends on tasks and the dynamic statusOptions
+    // --- UPDATED DEPENDENCY ---
+    // No longer depends on statusOptions for filtering logic itself
+  }, [tasks]);
+  // --- END UPDATE ---
 
   const tasksToDisplay = useMemo(() => {
     return activeTab === 'active' ? activeTasks : completedTasks;
@@ -191,7 +195,7 @@ const TeamProjectTable = ({ teamId }) => {
         }
         const data = snap.data();
 
-        // categories and types are simple
+        // simple string arrays
         if (data.categories && Array.isArray(data.categories)) setCategoriesList(data.categories);
         if (data.types && Array.isArray(data.types)) setTypesList(data.types);
         if (data.priorities && Array.isArray(data.priorities)) setPriorityOptions(data.priorities);
@@ -236,7 +240,7 @@ const TeamProjectTable = ({ teamId }) => {
         console.error('Error listening to team meta:', err);
       });
     } catch (e) {
-      // fallback to getDoc once
+      // fallback to getDoc once if snapshot listener fails immediately
       (async () => {
         try {
           const snap = await getDoc(teamDocRef);
@@ -288,7 +292,7 @@ const TeamProjectTable = ({ teamId }) => {
     };
   }, [teamId]);
 
-  // --- Translation Effect (same as before) ---
+  // --- Translation Effect ---
   useEffect(() => {
     if (currentLanguage === 'en') {
       setTranslations(new Map());
@@ -317,7 +321,7 @@ const TeamProjectTable = ({ teamId }) => {
               dashRegex.test(val) ||
               h.key === 'ticketNo'
             ) {
-              // skip
+              // skip potential PII or IDs
             } else {
               strings.add(val);
             }
@@ -337,7 +341,7 @@ const TeamProjectTable = ({ teamId }) => {
       }
 
       try {
-        // We'll batch requests so the encoded query param won't exceed API limits.
+        // Batch requests to avoid API limits
         const batches = [];
         const delimiter = ' ||| ';
         const delimEncLen = encodeURIComponent(delimiter).length;
@@ -348,10 +352,9 @@ const TeamProjectTable = ({ teamId }) => {
 
         for (const s of stringsToTranslate) {
           const encLen = encodeURIComponent(s).length;
+          // Handle single strings that exceed limit
           if (currentBatch.length === 0 && encLen > MAX_ENCODED_CHARS) {
             batches.push([s]);
-            currentBatch = [];
-            currentLen = 0;
             continue;
           }
 
@@ -361,13 +364,8 @@ const TeamProjectTable = ({ teamId }) => {
             currentBatch = [s];
             currentLen = encLen;
           } else {
-            if (currentBatch.length === 0) {
-              currentBatch.push(s);
-              currentLen = encLen;
-            } else {
-              currentBatch.push(s);
-              currentLen = currentLen + delimEncLen + encLen;
-            }
+            currentBatch.push(s);
+            currentLen = predictedLen;
           }
         }
         if (currentBatch.length > 0) batches.push(currentBatch);
@@ -398,18 +396,15 @@ const TeamProjectTable = ({ teamId }) => {
           const translatedJoinedStrings = data.responseData.translatedText;
           const translatedStringsArray = translatedJoinedStrings.split(/\s*\|\|\|\s*/);
           for (let i = 0; i < batch.length; i++) {
-            const translated = translatedStringsArray[i] || batch[i];
+            const translated = translatedStringsArray[i] || batch[i]; // Fallback to original
             translatedFullList.push(translated.trim());
           }
         }
 
         const newMap = new Map();
-        let idx = 0;
-        for (const original of stringsToTranslate) {
-          const translated = translatedFullList[idx] || original;
-          newMap.set(original, translated.trim());
-          idx++;
-        }
+        stringsToTranslate.forEach((original, idx) => {
+          newMap.set(original, translatedFullList[idx] || original);
+        });
 
         translationCache.current.set(currentLanguage, newMap);
         setTranslations(newMap);
@@ -432,7 +427,7 @@ const TeamProjectTable = ({ teamId }) => {
     return translations.get(text) || text;
   }, [currentLanguage, translations]);
 
-  // --- Firestore realtime listener for tasks (unchanged) ---
+  // --- Firestore realtime listener for tasks ---
   useEffect(() => {
     setIsLoading(true);
     if (!teamId) {
@@ -449,8 +444,10 @@ const TeamProjectTable = ({ teamId }) => {
         return {
           id: docSnap.id,
           ...data,
+          // Convert Timestamps to YYYY-MM-DD strings for date inputs
           startDate: data.startDate instanceof Timestamp ? data.startDate.toDate().toISOString().slice(0, 10) : (data.startDate || ''),
           endDate: data.endDate instanceof Timestamp ? data.endDate.toDate().toISOString().slice(0, 10) : (data.endDate || ''),
+          // Ensure potentially missing fields are empty strings
           notes: data.notes || '',
           inquiryDetails: data.inquiryDetails || '',
           inquiry: data.inquiry || ''
@@ -467,10 +464,9 @@ const TeamProjectTable = ({ teamId }) => {
     return () => unsubscribe();
   }, [teamId]);
 
-  // helpers
+  // --- Helper Functions ---
   const getCellKey = (taskId, headerKey) => `${taskId}-${headerKey}`;
 
-  // saving state helper
   const setSavingState = (key, state) => {
     setSavingStatus(prev => ({ ...prev, [key]: state }));
     if (savingTimersRef.current[key]) {
@@ -489,7 +485,7 @@ const TeamProjectTable = ({ teamId }) => {
     }
   };
 
-  // cleanup timer/debounce refs
+  // cleanup timer/debounce refs on unmount
   useEffect(() => {
     return () => {
       Object.values(savingTimersRef.current).forEach(t => clearTimeout(t));
@@ -501,7 +497,7 @@ const TeamProjectTable = ({ teamId }) => {
     };
   }, []);
 
-  // save helpers
+  // --- Save Helpers ---
   const saveDraft = useCallback(async (taskId, columnKey, value) => {
     if (!teamId || !taskId) {
       setError(`Missing teamId/taskId for auto-save.`);
@@ -525,7 +521,7 @@ const TeamProjectTable = ({ teamId }) => {
       setError(`Missing teamId/taskId for save.`);
       return;
     }
-    if (debounceRef.current) {
+    if (debounceRef.current) { // Clear any pending auto-save
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
@@ -540,43 +536,41 @@ const TeamProjectTable = ({ teamId }) => {
       setError(`Failed to save ${columnKey}.`);
       setTimeout(() => setSavingState(saveKey, null), 1200);
     } finally {
-      setEditingCell(null);
+      setEditingCell(null); // Close editing cell regardless of success/fail
       setEditingValue('');
       setEditingOriginalValue('');
     }
   }, [teamId]);
 
-  // deleteRow
+  // --- Delete Row ---
   const deleteRow = useCallback(async (taskId) => {
     if (!teamId || !taskId) {
       setError('Missing teamId/taskId for deletion.');
       return;
     }
-    const key = getCellKey(taskId, 'actions');
+    const key = getCellKey(taskId, 'actions'); // For saving indicator
     const confirmed = window.confirm(t('Delete this task? This action cannot be undone.'));
     if (!confirmed) return;
     try {
       setSavingState(key, 'saving');
       const taskDocRef = doc(db, `teams/${teamId}/tasks`, taskId);
       await deleteDoc(taskDocRef);
-      // No need for setTasks, onSnapshot will handle it.
-      setSavingState(key, 'saved');
-    } catch (err)
- {
+      // No need for setTasks locally, onSnapshot will handle UI update.
+      setSavingState(key, 'saved'); // Briefly show saved then clear
+    } catch (err) {
       console.error('Error deleting task:', err);
       setError('Failed to delete task.');
-      setTimeout(() => setSavingState(key, null), 1200);
+      setTimeout(() => setSavingState(key, null), 1200); // Clear error state after a bit
     }
   }, [teamId, t]);
 
-  // start editing
+  // --- Editing State Management ---
   const startEditingCell = (taskId, columnKey, currentValue) => {
     setEditingCell({ taskId, columnKey });
     setEditingValue(currentValue ?? '');
     setEditingOriginalValue(currentValue ?? '');
   };
 
-  // cancel editing
   const cancelEditing = () => {
     setEditingCell(null);
     setEditingValue('');
@@ -587,97 +581,120 @@ const TeamProjectTable = ({ teamId }) => {
     }
   };
 
-  // debounce auto-save for text-like columns
+  // Debounced auto-save for text-like columns
   useEffect(() => {
     if (!editingCell) return;
     const { taskId, columnKey } = editingCell;
     const isTextarea = TEXTAREA_COLUMNS.includes(columnKey);
-    if (!isTextarea) return;
+    if (!isTextarea) return; // Only debounce textareas
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
+
     debounceRef.current = setTimeout(() => {
-      saveDraft(taskId, columnKey, editingValue || '');
+      // Don't save if value hasn't changed (though this check might be redundant if Firestore handles it)
+      if (editingValue !== editingOriginalValue) {
+          saveDraft(taskId, columnKey, editingValue || '');
+          // Update original value after successful draft save? Or rely on Firestore listener? Let's rely on listener.
+      }
       debounceRef.current = null;
     }, 800);
 
+    // Cleanup function to clear timeout if component unmounts or editing stops
     return () => {
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
         debounceRef.current = null;
       }
     };
-  }, [editingValue, editingCell, saveDraft]);
+  }, [editingValue, editingCell, saveDraft, editingOriginalValue]);
 
-  // Auto-focus logic
+
+  // Auto-focus logic for inputs/selects when editing starts
   useEffect(() => {
     if (editingCell) {
       const isSelect = !TEXTAREA_COLUMNS.includes(editingCell.columnKey) && !['startDate', 'endDate'].includes(editingCell.columnKey);
       const ref = isSelect ? selectRef : inputRef;
 
       if (ref.current) {
-        try {
-          ref.current.focus();
-          const el = ref.current;
-          if (el.setSelectionRange && typeof el.value === 'string') {
-            const pos = el.value.length;
-            el.setSelectionRange(pos, pos);
-          } else if (el.select) {
-            el.select();
-          }
-        } catch (e) { /* ignore */ }
+        // Delay focus slightly to ensure element is fully rendered and ready
+        setTimeout(() => {
+           try {
+            ref.current.focus();
+            // Move cursor to end for inputs/textareas
+            const el = ref.current;
+            if (el.setSelectionRange && typeof el.value === 'string') {
+              const pos = el.value.length;
+              el.setSelectionRange(pos, pos);
+            } else if (el.select && !isSelect) { // select() is often for inputs, not dropdowns
+              el.select();
+            }
+          } catch (e) { console.warn("Auto-focus failed:", e); }
+        }, 50);
       }
     }
   }, [editingCell]);
 
-  // handlers
+  // --- Event Handlers ---
   const handleCellDoubleClick = (e, taskId, columnKey) => {
     e.stopPropagation();
     if (!INLINE_EDITABLE_COLUMNS.includes(columnKey)) return;
-    const task = tasks.find(t => t.id === taskId); // find from all tasks
+    const task = tasks.find(t => t.id === taskId); // find from ALL tasks
     const currentValue = task ? (task[columnKey] ?? '') : '';
     startEditingCell(taskId, columnKey, String(currentValue));
   };
 
-  // Click handler for generic popup columns (inquiry)
+  // Click handler for columns that trigger the NotePopup
   const handleGenericPopupClick = (e, taskId, columnKey) => {
     e.stopPropagation();
+    // Don't open popup if we are already editing this cell
     if (editingCell?.taskId === taskId && editingCell?.columnKey === columnKey) return;
+    // Open popup if this column is designated
     if (POPUP_TRIGGER_COLUMNS.includes(columnKey)) {
       setPopupTargetInfo({ taskId, columnKey });
       setIsPopupOpen(true);
     }
   };
 
-  // Close popup
+  // Close NotePopup
   const closeGenericPopup = () => {
     setIsPopupOpen(false);
     setPopupTargetInfo(null);
   };
 
-  // When user chooses a select option
+  // When user chooses a select option (handles regular options, 'Add new...', 'Invite user...')
   const handleSelectChange = async (taskId, columnKey, newValue) => {
-    // For member columns we use invite sentinel
+    // Handle 'Invite user...' sentinel
     if (['csManager', 'qaManager', 'developer'].includes(columnKey) && newValue === '__INVITE_USER__') {
       setInviteMeta({ headerKey: columnKey, targetTaskId: taskId, applyToEditingCell: editingCell?.taskId === taskId && editingCell?.columnKey === columnKey });
       setIsInviteOpen(true);
+      // Don't saveAndClose immediately
       return;
     }
 
-    // For category/type we may want the add-option modal sentinel (legacy)
-    if ((columnKey === 'category' || columnKey === 'type') && newValue === '__ADD_NEW__') {
-      setAddOptionValue('');
+    // Handle 'Add new...' sentinel for string-based dropdowns
+    if (['category', 'type', 'priority', 'status'].includes(columnKey) && newValue === '__ADD_NEW__') {
+      setAddOptionValue(''); // Clear previous value
       setAddOptionMeta({ headerKey: columnKey, targetTaskId: taskId, applyToEditingCell: editingCell?.taskId === taskId && editingCell?.columnKey === columnKey });
       setIsAddOptionOpen(true);
+      // Don't saveAndClose immediately
       return;
     }
 
+    // For regular option selections, save immediately and close the editor
     await saveAndClose(taskId, columnKey, newValue || '');
   };
 
+  // Save when input/textarea blurs
   const handleBlurSave = (taskId, columnKey, value) => {
-    saveAndClose(taskId, columnKey, value || '');
+    // Only save on blur if the value actually changed from the original
+    if (value !== editingOriginalValue) {
+        saveAndClose(taskId, columnKey, value || '');
+    } else {
+        cancelEditing(); // If no change, just cancel editing state
+    }
   };
 
+  // Handle keyboard events (Enter/Escape) in inputs/textareas
   const handleInputKeyDown = (e) => {
     if (!editingCell) return;
     const { taskId, columnKey } = editingCell;
@@ -688,117 +705,185 @@ const TeamProjectTable = ({ teamId }) => {
       cancelEditing();
     } else if (e.key === 'Enter') {
       if (isTextarea) {
-        if (e.shiftKey) return; // insert newline
-        e.preventDefault();
+        if (e.shiftKey) return; // Allow Shift+Enter for newlines in textareas
+        e.preventDefault(); // Prevent default newline insertion
         saveAndClose(taskId, columnKey, editingValue || '');
-      } else {
-        e.preventDefault();
+      } else { // Normal input
+        e.preventDefault(); // Prevent form submission if applicable
         saveAndClose(taskId, columnKey, editingValue || '');
       }
     }
   };
 
-  // expansion helpers
+  // Toggle table expansion
   const toggleAllColumns = () => setIsAllExpanded(prev => !prev);
 
-  // persist new option (category/type) to team doc
+  // --- Add New Option Logic ---
+
+  // Persists a new string option to the *correct* array field in the team document
   const saveNewOptionToTeam = useCallback(async (headerKey, newLabel) => {
     if (!teamId || !headerKey || !newLabel || !newLabel.trim()) {
-      throw new Error('Invalid add-option params');
+      throw new Error('Invalid parameters for saving new option.');
     }
     const teamDocRef = doc(db, 'teams', teamId);
     const normalized = newLabel.trim();
+
+    // Map the column key (from table header) to the Firestore field name
+    let fieldName = '';
+    if (headerKey === 'category') fieldName = 'categories';
+    else if (headerKey === 'type') fieldName = 'types';
+    else if (headerKey === 'priority') fieldName = 'priorities';
+    else if (headerKey === 'status') fieldName = 'statusOptions';
+    else {
+      // This should not happen if called correctly
+      console.error(`saveNewOptionToTeam called with unhandled headerKey: ${headerKey}`);
+      throw new Error(`Cannot save option for unknown field: ${headerKey}`);
+    }
+
+    // Use arrayUnion to add the item if the field exists
     try {
-      let fieldName = null;
-      if (headerKey === 'category') fieldName = 'categories';
-      else if (headerKey === 'type') fieldName = 'types';
-      else fieldName = headerKey;
       await updateDoc(teamDocRef, { [fieldName]: arrayUnion(normalized) });
     } catch (err) {
+      // If the field doesn't exist yet (or doc doesn't exist), use setDoc with merge
       if (err.code === 'not-found' || err.message?.includes('No document to update')) {
         try {
-          const fieldName = headerKey === 'category' ? 'categories' : (headerKey === 'type' ? 'types' : 'members');
-          await setDoc(teamDocRef, { [fieldName]: [newLabel.trim()] }, { merge: true });
+          await setDoc(teamDocRef, { [fieldName]: [normalized] }, { merge: true });
         } catch (setErr) {
-          throw setErr;
+          console.error(`Error setting new field ${fieldName}:`, setErr);
+          throw setErr; // Re-throw the error from setDoc
         }
       } else {
-        throw err;
+        console.error(`Error updating field ${fieldName} with arrayUnion:`, err);
+        throw err; // Re-throw other update errors
       }
     }
   }, [teamId]);
 
-  // Add-option save (category/type)
+  // Handles saving the new option entered in the modal
   const handleAddOptionSave = async () => {
     if (!addOptionMeta) return;
-    const headerKey = addOptionMeta.headerKey;
+    const { headerKey, targetTaskId, applyToEditingCell } = addOptionMeta;
     const value = (addOptionValue || '').trim();
     if (!value) {
-      setError('Enter a value.');
+      setError('Please enter a value for the new option.');
       return;
     }
 
     try {
-      setIsAddOptionOpen(false);
+      setIsAddOptionOpen(false); // Close modal optimistically
       setError(null);
 
-      await saveNewOptionToTeam(headerKey, value);
+      // --- BUG FIX for Status Order ---
+      if (headerKey === 'status') {
+        // Status requires special handling to insert *before* the last item
+        const teamDocRef = doc(db, 'teams', teamId);
+        try {
+          const snap = await getDoc(teamDocRef);
+          let currentStatuses = (snap.exists() && snap.data()?.statusOptions?.length > 0)
+            ? [...snap.data().statusOptions] // Important: Work with a copy
+            : [...DEFAULT_STATUS_OPTIONS];   // Or a copy of the default
 
-      // No need to setCategoriesList, onSnapshot will handle it
+          if (!currentStatuses.includes(value)) { // Only add if it's truly new
+            const completeStatus = currentStatuses.pop(); // Remove the last (assumed complete) status
+            currentStatuses.push(value);              // Add the new status
+            if (completeStatus !== undefined) {       // Add the complete status back at the end
+              currentStatuses.push(completeStatus);
+            }
+            // Overwrite the entire array in Firestore
+            await setDoc(teamDocRef, { statusOptions: currentStatuses }, { merge: true });
+          }
+          // If value already exists, we do nothing to the array, but still apply it below.
 
-      if (addOptionMeta.applyToEditingCell && editingCell) {
-        setEditingValue(value);
-        await saveAndClose(editingCell.taskId, editingCell.columnKey, value);
-      } else if (addOptionMeta.targetTaskId && addOptionMeta.headerKey) {
-        await saveAndClose(addOptionMeta.targetTaskId, addOptionMeta.headerKey, value);
+        } catch (err) {
+          console.error("Failed to update status options array:", err);
+          throw new Error(`Failed to save new status option: ${err.message}`); // Propagate error
+        }
+      } else {
+        // For category, type, priority - simply append using the helper
+        await saveNewOptionToTeam(headerKey, value);
       }
+      // --- END BUG FIX ---
+
+      // Firestore listener (onSnapshot) should update the local state (statusOptions, etc.)
+
+      // Apply the newly added value to the cell that triggered the modal
+      if (applyToEditingCell && editingCell) {
+        setEditingValue(value); // Update local editing state
+        await saveAndClose(editingCell.taskId, editingCell.columnKey, value); // Save to task
+      } else if (targetTaskId) { // If not currently editing, but triggered from a specific task row
+        await saveAndClose(targetTaskId, headerKey, value);
+      }
+      // If neither, the option is just added globally, nothing to apply to a specific task cell.
+
     } catch (err) {
       console.error('Failed to add option:', err);
-      setError('Failed to add option. See console.');
+      setError(`Failed to add ${headerKey} option. See console.`);
+      // Re-open modal potentially? Or just show error. Currently shows error banner.
+      setIsAddOptionOpen(true); // Re-open on error maybe?
     } finally {
-      setAddOptionMeta(null);
-      setAddOptionValue('');
+      // Clear modal state whether successful or not, unless re-opened on error
+      if (!error) { // Only clear if successful save
+        setAddOptionMeta(null);
+        setAddOptionValue('');
+      }
     }
   };
+
 
   const handleAddOptionCancel = () => {
     setIsAddOptionOpen(false);
     setAddOptionMeta(null);
     setAddOptionValue('');
+    setError(null); // Clear any errors shown in the modal
   };
 
-  // When InviteMemberModal calls back with invited user info
+  // --- Invite Member Logic ---
+  // Called when InviteMemberModal successfully finds/invites a user
   const handleInviteCompleted = async (invitedUid, invitedLabel) => {
     setIsInviteOpen(false);
 
-    // No need to setMembersList locally, onSnapshot will handle it
-
-    // persist UID in team doc members array
+    // Persist the *new member's UID* to the team's 'members' array (if not already present)
+    // Firestore listener will update the local membersList state
     try {
       const teamDocRef = doc(db, 'teams', teamId);
-      await updateDoc(teamDocRef, { members: arrayUnion(invitedUid) });
-    } catch (err) {
-      console.error('Failed to add invited uid to team members', err);
-      // try setDoc fallback:
-      try {
-        const teamDocRef = doc(db, 'teams', teamId);
-        await setDoc(teamDocRef, { members: [invitedUid] }, { merge: true });
-      } catch (setErr) {
-        console.error('Fallback failed', setErr);
+      // It's crucial to check if the team document stores UIDs or objects
+      const snap = await getDoc(teamDocRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        const members = data.members || [];
+        const isObjectArray = members.length > 0 && typeof members[0] === 'object';
+
+        if (isObjectArray) {
+            // Check if member object already exists
+            if (!members.some(m => m.uid === invitedUid)) {
+               await updateDoc(teamDocRef, { members: arrayUnion({ uid: invitedUid, label: invitedLabel }) });
+            }
+        } else {
+             // Assume array of UIDs
+             if (!members.includes(invitedUid)) {
+                await updateDoc(teamDocRef, { members: arrayUnion(invitedUid) });
+             }
+        }
+      } else {
+         // Team doc doesn't exist, create it with the member
+         await setDoc(teamDocRef, { members: [invitedUid] }); // Start with UID array for simplicity
       }
+
+    } catch (err) {
+      console.error('Failed to add invited UID to team members array', err);
+      // Handle potential errors like permissions or doc not found during update after getDoc check
+      setError('Could not update team members list.');
     }
 
-    // If user was editing a cell, apply invited user immediately
+    // Apply the invited user's UID to the task cell that triggered the invite
     if (inviteMeta?.applyToEditingCell && editingCell) {
-      setEditingValue(invitedUid);
-      await saveAndClose(editingCell.taskId, editingCell.columnKey, invitedUid);
-    } else if (inviteMeta?.targetTaskId && inviteMeta?.headerKey) {
+      setEditingValue(invitedUid); // Update local editing state
+      await saveAndClose(editingCell.taskId, editingCell.columnKey, invitedUid); // Save to task
+    } else if (inviteMeta?.targetTaskId && inviteMeta?.headerKey) { // Triggered from a specific task row but not editing
       await saveAndClose(inviteMeta.targetTaskId, inviteMeta.headerKey, invitedUid);
-    } else {
-      // nothing else
     }
 
-    setInviteMeta(null);
+    setInviteMeta(null); // Clear invite metadata
   };
 
   const handleInviteCanceled = () => {
@@ -806,106 +891,141 @@ const TeamProjectTable = ({ teamId }) => {
     setInviteMeta(null);
   };
 
-  // --- Options Editor: helpers to persist lists to team doc ---
-
+  // --- Options Editor Modal Helpers (Passed down) ---
   const persistTeamArrayField = async (fieldName, arr) => {
     if (!teamId) throw new Error('Missing teamId');
     const teamRef = doc(db, 'teams', teamId);
-    await updateDoc(teamRef, { [fieldName]: arr });
+    try {
+        await setDoc(teamRef, { [fieldName]: arr }, { merge: true }); // Use setDoc + merge for simplicity
+    } catch (err) {
+        console.error(`Failed to persist ${fieldName}:`, err);
+        throw err; // Re-throw to be caught in the modal
+    }
   };
 
-  // Member label edit: if team stores UIDs, convert to objects; else update object label
   const saveMemberLabel = async (uid, newLabel) => {
     if (!teamId) throw new Error('Missing teamId');
     const teamRef = doc(db, 'teams', teamId);
-    const snap = await getDoc(teamRef);
-    if (!snap.exists()) throw new Error('Team doc missing');
+    try {
+        const snap = await getDoc(teamRef);
+        if (!snap.exists()) throw new Error('Team document not found.');
 
-    const data = snap.data();
-    const members = data.members || [];
+        const data = snap.data();
+        const members = data.members || [];
+        let newMembers;
 
-    let newMembers;
-    if (members.length > 0 && typeof members[0] === 'object' && members[0].uid) {
-      // update label for matching uid
-      newMembers = members.map(m => (m.uid === uid ? { ...m, label: newLabel } : m));
-    } else {
-      // convert uid array to objects
-      newMembers = members.map(mUid => (mUid === uid ? { uid, label: newLabel } : { uid: mUid, label: mUid }));
+        // Ensure we're working with objects
+        if (members.length > 0 && typeof members[0] === 'object' && members[0].uid) {
+            newMembers = members.map(m => (m.uid === uid ? { ...m, label: newLabel } : m));
+        } else {
+            // Convert existing UIDs to objects if necessary
+            newMembers = members.map(mUid => (mUid === uid ? { uid, label: newLabel } : { uid: mUid, label: mUid }));
+            // Add the member if they somehow weren't in the list (shouldn't happen with onSnapshot)
+            if (!newMembers.some(m => m.uid === uid)) {
+                newMembers.push({ uid, label: newLabel });
+            }
+        }
+        await updateDoc(teamRef, { members: newMembers });
+        // onSnapshot will update local state
+    } catch (err) {
+        console.error("Failed to save member label:", err);
+        throw err;
     }
-
-    await updateDoc(teamRef, { members: newMembers });
-    // onSnapshot will reflect locally
   };
 
-  // remove member completely: arrayRemove + delete roles/permissions fields
   const removeMember = async (uid) => {
     if (!teamId) throw new Error('Missing teamId');
-    if (!window.confirm('Remove this member from the team? This will remove roles/permissions for them.')) return;
+    if (!window.confirm('Remove this member from the team? This also removes their roles/permissions.')) return;
     const teamRef = doc(db, 'teams', teamId);
+    try {
+        const snap = await getDoc(teamRef);
+         if (!snap.exists()) return; // Nothing to remove from
 
-    // update: remove from array, delete roles.uid and permissions.uid fields
-    const upd = {
-      members: arrayRemove(uid),
-      [`roles.${uid}`]: deleteField(),
-      [`permissions.${uid}`]: deleteField()
-    };
+        const data = snap.data();
+        const members = data.members || [];
+        let updateData = {};
 
-    await updateDoc(teamRef, upd);
-    // onSnapshot will update local state
-  };
+        // Handle both array types
+        if (members.length > 0 && typeof members[0] === 'object') {
+            updateData.members = members.filter(m => m.uid !== uid);
+        } else {
+             updateData.members = arrayRemove(uid); // Use arrayRemove for UID arrays
+        }
 
-  // add member object entry to team.members (will store object {uid,label})
-  const addMemberObject = async (uid, label) => {
-    if (!teamId) throw new Error('Missing teamId');
-    const teamRef = doc(db, 'teams', teamId);
+        // Atomically remove roles/permissions if they exist
+        updateData[`roles.${uid}`] = deleteField();
+        updateData[`permissions.${uid}`] = deleteField();
 
-    // Prefer preserving existing array shape. We'll append object. If existing members were UIDs,
-    // this will mix types; acceptable if you want object storage. Better approach would be to normalize entire array.
-    // Here we do a merge: if members appear to be UIDs, convert all to objects.
-    const snap = await getDoc(teamRef);
-    const data = snap.exists() ? snap.data() : {};
-    const members = data.members || [];
-
-    let newMembers;
-    if (members.length > 0 && typeof members[0] === 'object' && members[0].uid) {
-      // already objects
-      newMembers = [...members, { uid, label }];
-    } else if (members.length > 0) {
-      // convert existing uids to objects
-      newMembers = [...members.map(mUid => ({ uid: mUid, label: mUid })), { uid, label }];
-    } else {
-      newMembers = [{ uid, label }];
+        await updateDoc(teamRef, updateData);
+        // onSnapshot will update local state
+    } catch (err) {
+        console.error("Failed to remove member:", err);
+        throw err;
     }
-
-    await updateDoc(teamRef, { members: newMembers });
-    // onSnapshot will update local state
   };
 
-  // cell renderer
-  const renderCellContent = (task, header, isAllExpanded) => {
+  const addMemberObject = async (uid, label) => {
+     if (!teamId || !uid || !label) throw new Error('Missing info for adding member.');
+     const teamRef = doc(db, 'teams', teamId);
+     try {
+        const snap = await getDoc(teamRef);
+        const data = snap.exists() ? snap.data() : {};
+        let members = data.members || [];
+        let newMembers;
+
+        // Standardize to object array
+        if (members.length > 0 && typeof members[0] === 'object') {
+             // Already objects, just add if not present
+             if (!members.some(m => m.uid === uid)) {
+                newMembers = [...members, { uid, label }];
+             } else {
+                newMembers = members; // Already exists
+             }
+        } else {
+             // Convert existing UIDs to objects and add the new one
+             newMembers = members.map(mUid => ({ uid: mUid, label: mUid }));
+             if (!newMembers.some(m => m.uid === uid)) {
+                 newMembers.push({ uid, label });
+             }
+        }
+
+        if (newMembers !== members) { // Only update if changed
+          await setDoc(teamRef, { members: newMembers }, { merge: true });
+        }
+        // onSnapshot will update local state
+     } catch (err) {
+        console.error("Failed to add member object:", err);
+        throw err;
+     }
+  };
+
+
+  // --- Cell Renderer ---
+  const renderCellContent = (task, header) => {
     const isEditingThisCell = editingCell?.taskId === task.id && editingCell?.columnKey === header.key;
     const rawValue = task[header.key];
-    const value = rawValue !== undefined && rawValue !== null ? String(rawValue) : '';
+    const displayValue = rawValue !== undefined && rawValue !== null ? String(rawValue) : '';
 
-    // actions
+    // --- Actions Column ---
     if (header.key === 'actions') {
       return (
         <div className="flex items-center justify-center gap-2 px-2 py-2">
           <button
             onClick={(e) => { e.stopPropagation(); deleteRow(task.id); }}
             title={t("Delete task")}
-            className="p-1 rounded hover:bg-red-50 focus:outline-none"
+            className="p-1 rounded text-gray-500 hover:text-red-600 hover:bg-red-50 focus:outline-none focus:ring-1 focus:ring-red-500"
             aria-label={`${t("Delete task")} ${task.id}`}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-1 10-11 0-1-10 12 0zm-4-4h-4l-1 2h6l-1-2zm-6 15v-6m4 6v-6" />
+            {/* Simple Trash Icon */}
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
           </button>
         </div>
       );
     }
 
-    // editing UI
+    // --- Editing UI ---
     if (isEditingThisCell) {
       // Select (dropdown) columns
       if (['priority', 'category', 'type', 'status', 'csManager', 'qaManager', 'developer'].includes(header.key)) {
@@ -916,7 +1036,7 @@ const TeamProjectTable = ({ teamId }) => {
           case 'category': options = categoriesList; break;
           case 'type': options = typesList; break;
           case 'status': options = statusOptions; break;
-          default:
+          default: // csManager, qaManager, developer
             options = membersList; // membersList is array of objects {uid,label}
             isMemberSelect = true;
         }
@@ -924,33 +1044,41 @@ const TeamProjectTable = ({ teamId }) => {
         return (
           <select
             ref={selectRef}
-            value={editingValue} // value is UID for member selects (or plain string)
+            value={editingValue} // For members, this is UID; for others, it's the string value
             onChange={(e) => {
-              const newVal = e.target.value;
-              setEditingValue(newVal);
-              handleSelectChange(task.id, header.key, newVal);
+              const newValue = e.target.value;
+              setEditingValue(newValue); // Update local state immediately
+              handleSelectChange(task.id, header.key, newValue); // Trigger save/modal logic
             }}
-            onBlur={() => setTimeout(() => { if (editingCell?.taskId === task.id) cancelEditing(); }, 100)}
+            onBlur={() => {
+                // Delay blur slightly to allow onChange to fire first
+                setTimeout(() => {
+                    // Check if we are *still* editing this cell (e.g., didn't switch to modal)
+                    if (editingCell?.taskId === task.id && editingCell?.columnKey === header.key) {
+                        cancelEditing(); // If still editing, cancel (as select has no explicit save button)
+                    }
+                }, 150);
+            }}
             className="absolute inset-0 w-full h-full px-2 py-1 border-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm z-10"
-            onKeyDown={handleInputKeyDown}
+            onKeyDown={handleInputKeyDown} // Handle Escape key
           >
             <option value="">{t(`(empty)`)}</option>
-
+            {/* Render options */}
             {isMemberSelect
               ? membersList.map(m => <option key={m.uid} value={m.uid}>{t(m.label)}</option>)
               : options.map(opt => <option key={opt} value={opt}>{t(opt)}</option>)
             }
-
+            {/* Sentinel options */}
             {isMemberSelect
               ? <option value="__INVITE_USER__">{t('Invite user…')}</option>
               : <option value="__ADD_NEW__">{t('Add new…')}</option>
             }
-
-            {isMemberSelect && editingOriginalValue && !membersList.find(m => m.uid === editingOriginalValue) && (
-              <option value={editingOriginalValue}>{editingOriginalValue}</option>
+            {/* Show original value if it's no longer in the list (e.g., removed member/option) */}
+            {isMemberSelect && editingOriginalValue && !membersList.some(m => m.uid === editingOriginalValue) && (
+              <option value={editingOriginalValue} disabled>{editingOriginalValue} (removed)</option>
             )}
             {!isMemberSelect && editingOriginalValue && !options.includes(editingOriginalValue) && (
-              <option value={editingOriginalValue}>{editingOriginalValue}</option>
+              <option value={editingOriginalValue} disabled>{editingOriginalValue} (removed)</option>
             )}
           </select>
         );
@@ -962,7 +1090,7 @@ const TeamProjectTable = ({ teamId }) => {
           <input
             ref={inputRef}
             type="date"
-            value={editingValue} // Original value
+            value={editingValue} // Should be in 'YYYY-MM-DD' format
             onChange={(e) => setEditingValue(e.target.value)}
             onBlur={(e) => handleBlurSave(task.id, header.key, e.target.value)}
             onKeyDown={handleInputKeyDown}
@@ -971,30 +1099,43 @@ const TeamProjectTable = ({ teamId }) => {
         );
       }
 
-      // Text-like columns
+      // Text-like columns (use textarea)
       if (TEXTAREA_COLUMNS.includes(header.key)) {
         return (
           <textarea
             ref={inputRef}
-            value={editingValue} // Original value
+            value={editingValue}
             onChange={(e) => setEditingValue(e.target.value)}
             onBlur={(e) => handleBlurSave(task.id, header.key, e.target.value)}
             onKeyDown={handleInputKeyDown}
-            rows={Math.max(3, (String(editingValue || '').split('\n').length))}
+            rows={Math.max(3, (String(editingValue || '').split('\n').length))} // Auto-expand rows
             className="absolute inset-0 w-full h-full min-h-[80px] p-2 border-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm resize-y z-10 shadow-lg"
           />
         );
       }
+      // Fallback for any other INLINE_EDITABLE_COLUMNS (shouldn't happen with current config)
+      return (
+         <input
+            ref={inputRef}
+            type="text"
+            value={editingValue}
+            onChange={(e) => setEditingValue(e.target.value)}
+            onBlur={(e) => handleBlurSave(task.id, header.key, e.target.value)}
+            onKeyDown={handleInputKeyDown}
+            className="absolute inset-0 w-full h-full px-3 py-2 border-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm z-10"
+          />
+      );
     }
 
-    // Always keep the inquiry column as a button that opens the popup,
-    // even when the table is in expanded (isAllExpanded) mode.
+    // --- Static Display UI (Not Editing) ---
+
+    // Inquiry column always shows '(open)' button
     if (header.key === 'inquiry') {
       return (
         <div className="px-4 py-2.5">
           <button
             onClick={(e) => { handleGenericPopupClick(e, task.id, header.key); }}
-            className="text-left w-full text-sm text-blue-600 hover:underline"
+            className="text-left w-full text-sm text-blue-600 hover:underline focus:outline-none focus:ring-1 focus:ring-blue-500 rounded"
             type="button"
           >
             {t('(open)')}
@@ -1003,100 +1144,93 @@ const TeamProjectTable = ({ teamId }) => {
       );
     }
 
-    // not editing: if ALL columns are expanded, show full text (wrapped)
-    if (isAllExpanded) {
-      // for member columns show label if we can
-      if (['csManager', 'qaManager', 'developer'].includes(header.key)) {
-        const found = membersList.find(m => m.uid === value);
-        const label = found ? found.label : value;
+    // Member columns: Display label instead of UID
+     if (['csManager', 'qaManager', 'developer'].includes(header.key)) {
+        const foundMember = membersList.find(m => m.uid === displayValue);
+        const label = foundMember ? foundMember.label : displayValue; // Show UID if not found
+        const textToShow = t(label) || '-';
         return (
-          <div className="px-4 py-2.5 whitespace-pre-wrap break-words text-sm text-gray-700" title={t(label)}>
-            {t(label) || '-'}
-          </div>
+             <div
+                className={`px-4 py-2.5 text-sm text-gray-700 ${isAllExpanded ? 'whitespace-pre-wrap break-words' : 'truncate'}`}
+                title={textToShow}
+             >
+                {textToShow}
+             </div>
         );
-      }
-      return (
-        <div className="px-4 py-2.5 whitespace-pre-wrap break-words text-sm text-gray-700" title={t(value)}>
-          {t(value) || '-'}
-        </div>
-      );
-    }
+     }
 
-    // default normal truncated display
-    // if member column, show label instead of uid
-    if (['csManager', 'qaManager', 'developer'].includes(header.key)) {
-      const found = membersList.find(m => m.uid === value);
-      const label = found ? found.label : value;
-      return (
-        <div className="truncate px-4 py-2.5 text-sm text-gray-700" title={t(label)}>
-          {t(label) || '-'}
-        </div>
-      );
-    }
-
+    // Default static display for other columns
+    const textToShow = t(displayValue) || '-';
     return (
-      <div className="truncate px-4 py-2.5 text-sm text-gray-700" title={t(value)}>
-        {t(value) || '-'}
+      <div
+        className={`px-4 py-2.5 text-sm text-gray-700 ${isAllExpanded ? 'whitespace-pre-wrap break-words' : 'truncate'}`}
+        title={textToShow}
+      >
+        {textToShow}
       </div>
     );
   };
 
-  // --- Main return ---
+
+  // --- Main Component Return ---
   return (
     <>
       <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
-        <div className="px-6 pt-4 pb-3 flex justify-between items-center border-b border-gray-200">
+        {/* Header Section */}
+        <div className="px-6 pt-4 pb-3 flex flex-wrap justify-between items-center gap-y-2 border-b border-gray-200">
           <h3 className="text-xl font-semibold text-gray-800">{t('Team Project Tasks')}</h3>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Language Selector */}
             <div className="relative">
               <select
                 value={currentLanguage}
                 onChange={(e) => setCurrentLanguage(e.target.value)}
-                className="text-sm py-1.5 px-3 rounded border bg-white appearance-none pr-8"
+                className="text-sm py-1.5 px-3 rounded border bg-white appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 disabled={isTranslating}
               >
                 <option value="en">English</option>
                 <option value="ko">한국어</option>
+                {/* Add other languages here */}
               </select>
               <svg className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
               {isTranslating && (
-                <span className="text-xs text-blue-600 absolute -bottom-4 right-0">Translating...</span>
+                <span className="text-xs text-blue-600 absolute -bottom-4 right-0 animate-pulse">Translating...</span>
               )}
             </div>
+            {/* Expand/Collapse Button */}
             <button
               onClick={toggleAllColumns}
               title={isAllExpanded ? t('Collapse All') : t('Expand All')}
-              className="text-sm py-1.5 px-3 rounded border bg-white hover:bg-gray-50"
+              className="text-sm py-1.5 px-3 rounded border bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {isAllExpanded ? t('Collapse All') : t('Expand All')}
             </button>
-
-            {/* New: Open Options Editor */}
+             {/* Edit Dropdowns Button */}
             <button
               onClick={() => setIsOptionsModalOpen(true)}
-              title="Edit dropdowns"
-              className="text-sm py-1.5 px-3 rounded border bg-white hover:bg-gray-50"
+              title="Edit dropdown options"
+              className="text-sm py-1.5 px-3 rounded border bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              Edit dropdowns
+              Edit Options
             </button>
-
+            {/* New Task Button */}
             <button
               onClick={() => setIsCreateTaskModalOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-1.5 px-4 rounded-md shadow-sm transition-colors"
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-1.5 px-4 rounded-md shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
             >
               + {t('New Task')}
             </button>
           </div>
         </div>
-        
-        {/* --- NEW: Tabs --- */}
+
+        {/* Tabs Section */}
         <div className="px-6 border-b border-gray-200">
-          <nav className="flex space-x-4" aria-label="Tabs">
+          <nav className="flex space-x-4 -mb-px" aria-label="Tabs">
             <button
               onClick={() => setActiveTab('active')}
               className={`
                 whitespace-nowrap py-3 px-1 border-b-2
-                font-medium text-sm transition-colors duration-150
+                font-medium text-sm transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-blue-400 rounded-t-sm
                 ${activeTab === 'active'
                   ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
@@ -1116,7 +1250,7 @@ const TeamProjectTable = ({ teamId }) => {
               onClick={() => setActiveTab('completed')}
               className={`
                 whitespace-nowrap py-3 px-1 border-b-2
-                font-medium text-sm transition-colors duration-150
+                font-medium text-sm transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-blue-400 rounded-t-sm
                 ${activeTab === 'completed'
                   ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
@@ -1134,16 +1268,16 @@ const TeamProjectTable = ({ teamId }) => {
             </button>
           </nav>
         </div>
-        {/* --- End NEW: Tabs --- */}
 
-
+        {/* Error Banner */}
         {error && (
-          <div className="text-center py-4 text-red-600 bg-red-50">{error}</div>
+          <div className="text-center py-3 px-4 text-sm text-red-700 bg-red-100 border-b border-red-200">{error}</div>
         )}
 
-        <div className={`relative mt-4 px-6 pb-6 ${isAllExpanded ? '' : 'overflow-x-auto'}`}>
+        {/* Table Container */}
+        <div className={`relative px-6 pb-6 ${isAllExpanded ? '' : 'overflow-x-auto'}`}>
           <table
-            className={`table-auto w-full ${isAllExpanded ? '' : 'min-w-[1000px]'} border-collapse`}
+            className={`table-auto w-full border-collapse mt-4 ${isAllExpanded ? '' : 'min-w-[1200px]'}`} // Increased min-width slightly
             style={{ tableLayout: isAllExpanded ? 'auto' : 'fixed' }}
           >
             <thead className="bg-gray-50 sticky top-0 z-10">
@@ -1155,28 +1289,24 @@ const TeamProjectTable = ({ teamId }) => {
                     className={`px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-300 ${(!isAllExpanded && h.widthClass) ? h.widthClass : ''}`}
                     style={{
                       maxWidth: (!isAllExpanded ? h.maxWidth : undefined) || undefined,
-                      whiteSpace: isAllExpanded ? 'normal' : (currentLanguage === 'en' ? 'nowrap' : 'normal'),
+                      whiteSpace: isAllExpanded ? 'normal' : 'nowrap', // Simplified whitespace logic
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
-                      wordBreak: 'break-word',
-                      overflowWrap: 'anywhere'
                     }}
                   >
-                    <div className="flex items-center gap-2">
-                      <div className={isAllExpanded ? '' : (currentLanguage === 'en' ? 'truncate' : '')}>
-                        {t(h.label)}
-                      </div>
-                    </div>
+                   {t(h.label)}
                   </th>
                 ))}
               </tr>
             </thead>
 
             <tbody className="bg-white divide-y divide-gray-100">
+              {/* Loading State */}
               {isLoading && (
                 <tr><td colSpan={headers.length} className="text-center py-10 text-gray-500">{t('Loading Tasks...')}</td></tr>
               )}
 
+              {/* Empty State */}
               {!isLoading && !error && tasksToDisplay.length === 0 && (
                 <tr>
                   <td colSpan={headers.length} className="text-center py-10 text-gray-500">
@@ -1188,61 +1318,67 @@ const TeamProjectTable = ({ teamId }) => {
                 </tr>
               )}
 
-              {!isLoading && tasksToDisplay.map(task => {
-                return (
-                  <tr key={task.id} className="group transition-colors duration-100 relative" >
-                    {headers.map(header => {
-                      const cellKey = getCellKey(task.id, header.key);
-                      const isEditingThisCell = editingCell?.taskId === task.id && editingCell?.columnKey === header.key;
-                      const isExpandingTextarea = isEditingThisCell && TEXTAREA_COLUMNS.includes(header.key);
+              {/* Task Rows */}
+              {!isLoading && tasksToDisplay.map(task => (
+                <tr key={task.id} className="group hover:bg-gray-50 transition-colors duration-100 relative">
+                  {headers.map(header => {
+                    const cellKey = getCellKey(task.id, header.key);
+                    const isEditingThisCell = editingCell?.taskId === task.id && editingCell?.columnKey === header.key;
+                    const isEditable = INLINE_EDITABLE_COLUMNS.includes(header.key);
+                    const isPopupTrigger = POPUP_TRIGGER_COLUMNS.includes(header.key);
 
-                      return (
-                        <td
-                          key={cellKey}
-                          className={[
-                            'relative align-top border-b border-gray-100',
-                            POPUP_TRIGGER_COLUMNS.includes(header.key) && !isEditingThisCell ? 'cursor-pointer' : '',
-                            INLINE_EDITABLE_COLUMNS.includes(header.key) && !isEditingThisCell ? 'cursor-text' : '',
-                            (!isAllExpanded && header.widthClass) ? header.widthClass : '',
-                            isEditingThisCell ? 'p-0' : ''
-                          ].filter(Boolean).join(' ')}
-                          style={{
-                            maxWidth: (!isAllExpanded ? header.maxWidth : undefined) || undefined,
-                            verticalAlign: isAllExpanded ? 'top' : 'middle',
-                            height: isExpandingTextarea ? 'auto' : undefined,
-                            overflowWrap: isAllExpanded ? 'anywhere' : undefined,
-                            wordBreak: isAllExpanded ? 'break-word' : undefined
-                          }}
-                          onClick={(e) => handleGenericPopupClick(e, task.id, header.key)}
-                          onDoubleClick={(e) => handleCellDoubleClick(e, task.id, header.key)}
-                        >
-                          {/* Always use renderCellContent — it now ensures 'inquiry' remains a popup button even when expanded */}
-                          {renderCellContent(task, header, isAllExpanded)}
-
-                          {savingStatus[cellKey] === 'saving' && (
-                            <span className="absolute top-1 right-2 text-xs text-gray-500">{t('Saving…')}</span>
-                          )}
-                          {savingStatus[cellKey] === 'saved' && (
-                            <span className="absolute top-1 right-2 text-xs text-green-600">{t('Saved')}</span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
+                    return (
+                      <td
+                        key={cellKey}
+                        className={[
+                          'relative align-top border-b border-gray-100',
+                          // Cursors based on actionability
+                          !isEditingThisCell && isPopupTrigger ? 'cursor-pointer' : '',
+                          !isEditingThisCell && isEditable && !isPopupTrigger ? 'cursor-text' : '',
+                          // Width classes only in fixed layout mode
+                          (!isAllExpanded && header.widthClass) ? header.widthClass : '',
+                          // No padding when editing, handled by input/select styles
+                          isEditingThisCell ? 'p-0' : '',
+                          // Align top in expanded mode for better readability with wrapped text
+                          isAllExpanded ? 'align-top' : 'align-middle'
+                        ].filter(Boolean).join(' ')}
+                        style={{
+                          maxWidth: (!isAllExpanded ? header.maxWidth : undefined) || undefined,
+                          // Height auto needed for expanding textarea
+                          height: (isEditingThisCell && TEXTAREA_COLUMNS.includes(header.key)) ? 'auto' : undefined,
+                        }}
+                        // Trigger editing/popup
+                        onClick={(e) => !isEditingThisCell && handleGenericPopupClick(e, task.id, header.key)}
+                        onDoubleClick={(e) => !isEditingThisCell && handleCellDoubleClick(e, task.id, header.key)}
+                      >
+                        {renderCellContent(task, header)}
+                        {/* Saving Indicators */}
+                        {savingStatus[cellKey] === 'saving' && (
+                          <span className="absolute top-1 right-2 text-xs text-gray-500 animate-pulse">{t('Saving…')}</span>
+                        )}
+                        {savingStatus[cellKey] === 'saved' && (
+                          <span className="absolute top-1 right-2 text-xs text-green-600">{t('Saved')}</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* NotePopup Modal */}
+      {/* --- Modals --- */}
+
+      {/* NotePopup Modal (for Inquiry) */}
       {isPopupOpen && popupTargetInfo && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4"
-          onClick={closeGenericPopup}
+          onClick={closeGenericPopup} // Close on backdrop click
         >
-          <div className="bg-transparent" onClick={e => e.stopPropagation()}>
+          {/* Stop propagation so clicking inside modal doesn't close it */}
+          <div className="bg-transparent max-w-2xl w-full" onClick={e => e.stopPropagation()}>
             <NotePopup
               teamId={teamId}
               taskId={popupTargetInfo.taskId}
@@ -1253,20 +1389,24 @@ const TeamProjectTable = ({ teamId }) => {
         </div>
       )}
 
+      {/* Create Task Modal */}
       <CreateTaskModal
         isOpen={isCreateTaskModalOpen}
         onClose={() => setIsCreateTaskModalOpen(false)}
         teamId={teamId}
-        onTaskCreated={() => { }}
+        // onTaskCreated might be useful later, e.g., to highlight the new row
+        onTaskCreated={() => { console.log('Task created'); }}
       />
 
-      {/* Add-option Modal (category/type) */}
+      {/* Add New Option Modal */}
       {isAddOptionOpen && addOptionMeta && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black opacity-40 z-40" onClick={handleAddOptionCancel}></div>
-          <div className="bg-white rounded-lg shadow-xl z-50 max-w-md w-full p-4" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-lg shadow-xl z-50 max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
             <h4 className="text-lg font-semibold mb-2">{t('Add new…')}</h4>
-            <p className="text-sm text-gray-600 mb-3">{t(`Add a new ${addOptionMeta.headerKey}`)}</p>
+            <p className="text-sm text-gray-600 mb-4">{t(`Add a new ${addOptionMeta.headerKey}`)}:</p>
+            {/* Show error specific to this modal if any */}
+             {error && addOptionMeta && <p className="text-red-500 text-sm mb-3">{error}</p>}
             <input
               autoFocus
               value={addOptionValue}
@@ -1275,12 +1415,12 @@ const TeamProjectTable = ({ teamId }) => {
                 if (e.key === 'Enter') handleAddOptionSave();
                 if (e.key === 'Escape') handleAddOptionCancel();
               }}
-              className="w-full border px-3 py-2 rounded mb-3"
-              placeholder={t('(empty)')}
+              className="w-full border px-3 py-2 rounded mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder={t(`New ${addOptionMeta.headerKey} value`)}
             />
             <div className="flex justify-end gap-2">
-              <button onClick={handleAddOptionCancel} className="px-3 py-1.5 rounded border">{t('Cancel')}</button>
-              <button onClick={handleAddOptionSave} className="px-3 py-1.5 rounded bg-blue-600 text-white">{t('Save')}</button>
+              <button onClick={handleAddOptionCancel} className="px-3 py-1.5 rounded border text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400">{t('Cancel')}</button>
+              <button onClick={handleAddOptionSave} className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1">{t('Save')}</button>
             </div>
           </div>
         </div>
@@ -1292,20 +1432,23 @@ const TeamProjectTable = ({ teamId }) => {
           isOpen={isOptionsModalOpen}
           onClose={() => setIsOptionsModalOpen(false)}
           teamId={teamId}
+          // Pass current state lists
           categoriesList={categoriesList}
           typesList={typesList}
           membersList={membersList}
           priorityOptions={priorityOptions}
           statusOptions={statusOptions}
-          onCategoriesChange={(arr) => {/* onSnapshot handles this */}}
-          onTypesChange={(arr) => {/* onSnapshot handles this */}}
-          onMembersChange={(arr) => {/* onSnapshot handles this */}}
-          onPrioritiesChange={(arr) => {/* onSnapshot handles this */}}
-          onStatusOptionsChange={(arr) => {/* onSnapshot handles this */}}
+          // Pass down persistence functions
           persistTeamArrayField={persistTeamArrayField}
           saveMemberLabel={saveMemberLabel}
           removeMember={removeMember}
           addMemberObject={addMemberObject}
+          // Callbacks are less needed now due to onSnapshot, but can be kept for optimistic UI
+          onCategoriesChange={() => {}}
+          onTypesChange={() => {}}
+          onMembersChange={() => {}}
+          onPrioritiesChange={() => {}}
+          onStatusOptionsChange={() => {}}
         />
       )}
 
@@ -1315,7 +1458,7 @@ const TeamProjectTable = ({ teamId }) => {
           isOpen={isInviteOpen}
           onClose={handleInviteCanceled}
           teamId={teamId}
-          onInvited={(uid, label) => handleInviteCompleted(uid, label)}
+          onInvited={handleInviteCompleted} // Pass the callback
         />
       )}
     </>
@@ -1324,11 +1467,14 @@ const TeamProjectTable = ({ teamId }) => {
 
 export default TeamProjectTable;
 
+
+/* ==================================================================
+  MODAL COMPONENTS
+===================================================================*/
+
 /* ------------------------------------------------------------------
   OptionsEditorModal
-  - Tabs: Categories / Types / Priorities / Statuses / Members
-  - Add, Edit, Remove items
-  - Persists to team doc: categories, types, priorities, statusOptions, members
+  - Manages editing Categories, Types, Priorities, Statuses, Members
 -------------------------------------------------------------------*/
 function OptionsEditorModal({
   isOpen,
@@ -1336,200 +1482,310 @@ function OptionsEditorModal({
   teamId,
   categoriesList,
   typesList,
-  membersList,
+  membersList, // Array of {uid, label}
   priorityOptions,
   statusOptions,
-  onCategoriesChange, // These props are now just for optimistic updates if needed
+  persistTeamArrayField, // (fieldName, array) => Promise<void>
+  saveMemberLabel,       // (uid, newLabel) => Promise<void>
+  removeMember,          // (uid) => Promise<void>
+  addMemberObject,       // (uid, label) => Promise<void>
+  // Optimistic update callbacks (optional now)
+  onCategoriesChange,
   onTypesChange,
   onMembersChange,
   onPrioritiesChange,
   onStatusOptionsChange,
-  persistTeamArrayField,
-  saveMemberLabel,
-  removeMember,
-  addMemberObject
 }) {
-  const [tab, setTab] = useState('categories'); // categories | types | priorities | statuses | members
-  const [items, setItems] = useState([]);
-  const [newValue, setNewValue] = useState('');
-  const [editingIndex, setEditingIndex] = useState(null);
-  const [editingValueLocal, setEditingValueLocal] = useState('');
+  const [tab, setTab] = useState('categories'); // 'categories' | 'types' | 'priorities' | 'statuses' | 'members'
+  const [items, setItems] = useState([]);        // Current list being edited (strings or member objects)
+  const [newValue, setNewValue] = useState('');   // Input for adding new items
+  const [editingIndex, setEditingIndex] = useState(null); // Index of item being edited
+  const [editingValueLocal, setEditingValueLocal] = useState(''); // Local state for the item being edited
+  const [modalError, setModalError] = useState(''); // Error specific to this modal
+  const [isSaving, setIsSaving] = useState(false); // Loading state for async operations
 
+  // Reset modal state when opened
   useEffect(() => {
     if (!isOpen) return;
-    setTab('categories');
+    setTab('categories'); // Default tab
     setEditingIndex(null);
     setEditingValueLocal('');
     setNewValue('');
+    setModalError('');
+    setIsSaving(false);
   }, [isOpen]);
 
+  // Update local items list when the active tab or props change
   useEffect(() => {
-    // switch items based on tab
+    if (!isOpen) return;
+    let currentItems = [];
     switch (tab) {
-      case 'categories': setItems(categoriesList); break;
-      case 'types': setItems(typesList); break;
-      case 'priorities': setItems(priorityOptions); break;
-      case 'statuses': setItems(statusOptions); break;
-      case 'members': setItems(membersList.map(m => ({ uid: m.uid, label: m.label }))); break;
-      default: setItems([]); break;
+      case 'categories': currentItems = categoriesList; break;
+      case 'types': currentItems = typesList; break;
+      case 'priorities': currentItems = priorityOptions; break;
+      case 'statuses': currentItems = statusOptions; break;
+      case 'members': currentItems = membersList.map(m => ({ uid: m.uid, label: m.label })); break; // Use a copy for members
+      default: currentItems = [];
     }
+    setItems(currentItems);
+    // Reset editing state when switching tabs
     setEditingIndex(null);
     setEditingValueLocal('');
     setNewValue('');
-  }, [tab, categoriesList, typesList, priorityOptions, statusOptions, membersList]);
+    setModalError('');
+  }, [tab, categoriesList, typesList, priorityOptions, statusOptions, membersList, isOpen]);
 
   if (!isOpen) return null;
 
-  const applyArrayChange = async (newArr) => {
+  // --- Persistence Wrappers (with loading/error handling) ---
+
+  const handlePersistArray = async (fieldName, newArr) => {
+    setModalError('');
+    setIsSaving(true);
     try {
-      let fieldName = '';
-      switch (tab) {
-        case 'categories': fieldName = 'categories'; break;
-        case 'types': fieldName = 'types'; break;
-        case 'priorities': fieldName = 'priorities'; break;
-        case 'statuses': fieldName = 'statusOptions'; break;
-        default: return;
-      }
       await persistTeamArrayField(fieldName, newArr);
-      // onSnapshot will update the parent state
+      // Let onSnapshot update the list visually
     } catch (err) {
-      console.error('Failed to persist array field:', err);
-      alert('Failed to save changes. See console.');
+      console.error(`Failed to persist ${fieldName}:`, err);
+      setModalError(`Failed to save changes for ${fieldName}. See console.`);
+      // Optionally revert local state if needed, but onSnapshot should correct it
+    } finally {
+      setIsSaving(false);
     }
   };
+
+  const handleSaveMemberLabel = async (uid, newLabel) => {
+     setModalError('');
+     setIsSaving(true);
+     try {
+        await saveMemberLabel(uid, newLabel);
+        setEditingIndex(null); // Exit editing mode on success
+        setEditingValueLocal('');
+     } catch (err) {
+        setModalError('Failed to save member label. See console.');
+     } finally {
+        setIsSaving(false);
+     }
+  };
+
+   const handleRemoveMember = async (uid) => {
+     setModalError('');
+     setIsSaving(true);
+     try {
+        await removeMember(uid);
+         // Let onSnapshot handle UI update
+     } catch (err) {
+        setModalError('Failed to remove member. See console.');
+     } finally {
+        setIsSaving(false);
+     }
+  };
+
+   const handleAddMemberObject = async (uid, label) => {
+     setModalError('');
+     setIsSaving(true);
+     try {
+        await addMemberObject(uid, label);
+        setNewValue(''); // Clear input on success
+     } catch (err) {
+        setModalError('Failed to add member. See console.');
+     } finally {
+        setIsSaving(false);
+     }
+  };
+
+  // --- Action Handlers ---
 
   const handleAdd = async () => {
     const v = (newValue || '').trim();
     if (!v) return;
+    setModalError('');
+
     if (tab === 'members') {
-      // for members tab, newValue expected to be a uid (or email) — we'll attempt to resolve if it's an email
-      // For simplicity require "uid:label" format or uid only. If only uid provided, label=uid
-      // But we will try to detect "label <email>" or "email" patterns are messy; keep simple.
       let uid = v;
       let label = v;
-      // if user typed "uid|label" split by pipe
-      if (v.includes('|')) {
+      if (v.includes('|')) { // Support "uid|label" format
         const parts = v.split('|');
         uid = parts[0].trim();
-        label = parts.slice(1).join('|').trim();
+        label = parts.slice(1).join('|').trim() || uid; // Fallback label to uid if empty
       }
-      try {
-        await addMemberObject(uid, label); // onSnapshot updates list
-        setNewValue('');
-      } catch (err) {
-        console.error(err);
-        alert('Failed to add member. See console.');
+      if (!uid) {
+         setModalError('Please provide a UID (or uid|label).');
+         return;
       }
+      // Check if UID already exists
+       if (items.some(item => item.uid === uid)) {
+        setModalError("A member with this UID already exists.");
+        return;
+      }
+      await handleAddMemberObject(uid, label);
       return;
     }
-    
+
+    // For string-based lists
     if (items.includes(v)) {
-      alert("This item already exists.");
+      setModalError("This item already exists.");
       return;
     }
-    const next = [...items, v];
-    // Optimistic update locally
-    setItems(next);
-    setNewValue('');
-    // persist
-    await applyArrayChange(next);
+
+    let next = [...items, v];
+    let fieldName = '';
+     // Special case: Ensure new status is added *before* the last item
+    if (tab === 'statuses') {
+        const completeStatus = next.pop(); // Remove last
+        next.push(v); // Add new
+        if (completeStatus !== undefined) next.push(completeStatus); // Add last back
+        fieldName = 'statusOptions';
+    } else {
+        // Normal append for others
+        fieldName = tab; // 'categories', 'types', 'priorities'
+         if(tab === 'priorities') fieldName = 'priorities'; // Ensure correct field name
+         else if (tab === 'categories') fieldName = 'categories';
+         else if (tab === 'types') fieldName = 'types';
+         else {
+            setModalError(`Cannot determine field name for tab: ${tab}`);
+            return;
+         }
+    }
+
+
+    setItems(next); // Optimistic UI update
+    setNewValue(''); // Clear input
+    await handlePersistArray(fieldName, next); // Persist
   };
 
   const startEdit = (idx) => {
+    setModalError('');
     setEditingIndex(idx);
-    if (tab === 'members') {
-      setEditingValueLocal(items[idx].label || '');
-    } else {
-      setEditingValueLocal(items[idx] || '');
-    }
+    const itemToEdit = items[idx];
+    setEditingValueLocal(tab === 'members' ? itemToEdit.label : itemToEdit);
   };
 
   const saveEdit = async () => {
     const v = (editingValueLocal || '').trim();
-    if (!v) return;
+    if (!v || editingIndex === null) return;
+    setModalError('');
 
     if (tab === 'members') {
-      // items is array of {uid,label}
       const uid = items[editingIndex].uid;
-      try {
-        await saveMemberLabel(uid, v);
-        // onSnapshot updates list
+      // Check if new label is empty
+      if (!v) {
+        setModalError("Member label cannot be empty.");
+        return;
+      }
+      await handleSaveMemberLabel(uid, v);
+      return;
+    }
+
+    // For string-based lists
+    // Check if the edited value duplicates another existing item
+    const duplicateIndex = items.findIndex(item => item === v);
+    if (duplicateIndex !== -1 && duplicateIndex !== editingIndex) {
+      setModalError("This item already exists.");
+      return;
+    }
+
+    const next = items.map((it, i) => (i === editingIndex ? v : it));
+
+    let fieldName = '';
+     if (tab === 'statuses') fieldName = 'statusOptions';
+     else if(tab === 'priorities') fieldName = 'priorities';
+     else if (tab === 'categories') fieldName = 'categories';
+     else if (tab === 'types') fieldName = 'types';
+     else {
+        setModalError(`Cannot determine field name for tab: ${tab}`);
+        return;
+     }
+
+    setItems(next); // Optimistic update
+    setEditingIndex(null); // Exit editing mode locally
+    setEditingValueLocal('');
+    await handlePersistArray(fieldName, next);
+  };
+
+   const cancelEdit = () => {
         setEditingIndex(null);
         setEditingValueLocal('');
-      } catch (err) {
-        console.error(err);
-        alert('Failed to save member label. See console.');
-      }
-      return;
-    }
-    
-    if (items.includes(v) && items.indexOf(v) !== editingIndex) {
-      alert("This item already exists.");
-      return;
-    }
-
-    const next = items.map((it, i) => i === editingIndex ? v : it);
-    // Optimistic update
-    setItems(next);
-    setEditingIndex(null);
-    setEditingValueLocal('');
-    // persist
-    await applyArrayChange(next);
-  };
+        setModalError('');
+    };
 
   const handleRemove = async (idx) => {
-    if (!window.confirm('Remove this item?')) return;
+    if (isSaving) return; // Prevent double actions
+    setModalError('');
+
     if (tab === 'members') {
       const uid = items[idx].uid;
-      try {
-        await removeMember(uid); // onSnapshot updates list
-      } catch (err) {
-        console.error(err);
-        alert('Failed to remove member. See console.');
-      }
+      await handleRemoveMember(uid);
       return;
     }
+
+    // For string-based lists
+     // Prevent deleting the last status if it's the 'Complete' status? Maybe allow via confirmation.
+    if (tab === 'statuses' && idx === items.length - 1) {
+        if (!window.confirm('Are you sure you want to remove the final status? This is usually the "Complete" status.')) {
+            return;
+        }
+    } else if (!window.confirm('Remove this item?')) {
+        return;
+    }
+
+
     const next = items.filter((_, i) => i !== idx);
-    // Optimistic update
-    setItems(next);
-    // persist
-    await applyArrayChange(next);
+
+    let fieldName = '';
+     if (tab === 'statuses') fieldName = 'statusOptions';
+     else if(tab === 'priorities') fieldName = 'priorities';
+     else if (tab === 'categories') fieldName = 'categories';
+     else if (tab === 'types') fieldName = 'types';
+     else {
+        setModalError(`Cannot determine field name for tab: ${tab}`);
+        return;
+     }
+
+    setItems(next); // Optimistic update
+    await handlePersistArray(fieldName, next);
   };
 
-  const handleCancel = () => {
-    setEditingIndex(null);
-    setEditingValueLocal('');
-    setNewValue('');
-    if (typeof onClose === 'function') onClose();
+  const handleCloseModal = () => {
+    if (isSaving) return; // Don't close while saving
+    onClose();
   };
 
+  // --- List Item Renderer ---
   const renderListItem = (it, idx) => {
+    const isEditingThisItem = editingIndex === idx;
+
+    // --- Member List Item ---
     if (tab === 'members') {
       return (
-        <li key={it.uid} className="flex items-center justify-between gap-2 bg-gray-50 p-2 rounded">
-          <div className="min-w-0">
-            {editingIndex === idx ? (
-               <input 
-                 className="border rounded px-2 py-1 text-sm w-full" 
-                 value={editingValueLocal} 
-                 onChange={(e) => setEditingValueLocal(e.target.value)} 
-                 autoFocus
-               />
+        <li key={it.uid} className="flex items-center justify-between gap-2 bg-gray-50 p-2 rounded text-sm">
+          <div className="min-w-0 flex-1">
+            {isEditingThisItem ? (
+              <input
+                className="border rounded px-2 py-1 text-sm w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+                value={editingValueLocal}
+                onChange={(e) => setEditingValueLocal(e.target.value)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter') saveEdit();
+                    if (e.key === 'Escape') cancelEdit();
+                }}
+                autoFocus
+              />
             ) : (
-              <div className="text-sm font-medium text-gray-800 truncate">{it.label}</div>
+              <div className="font-medium text-gray-800 truncate" title={it.label}>{it.label}</div>
             )}
-            <div className="text-xs text-gray-500">UID: {it.uid}</div>
+            <div className="text-xs text-gray-500 truncate" title={it.uid}>UID: {it.uid}</div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {editingIndex === idx ? (
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {isEditingThisItem ? (
               <>
-                <button className="px-2 py-1 bg-blue-600 text-white rounded text-xs" onClick={saveEdit}>Save</button>
-                <button className="px-2 py-1 bg-gray-200 rounded text-xs" onClick={() => { setEditingIndex(null); setEditingValueLocal(''); }}>Cancel</button>
+                <button className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50" onClick={saveEdit} disabled={isSaving}>Save</button>
+                <button className="px-2 py-1 bg-gray-200 rounded text-xs hover:bg-gray-300 disabled:opacity-50" onClick={cancelEdit} disabled={isSaving}>Cancel</button>
               </>
             ) : (
               <>
-                <button className="px-2 py-1 bg-yellow-100 rounded text-xs" onClick={() => startEdit(idx)}>Edit</button>
-                <button className="px-2 py-1 bg-red-100 rounded text-xs text-red-600" onClick={() => handleRemove(idx)}>Remove</button>
+                <button className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-xs hover:bg-yellow-200 disabled:opacity-50" onClick={() => startEdit(idx)} disabled={isSaving}>Edit</button>
+                <button className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200 disabled:opacity-50" onClick={() => handleRemove(idx)} disabled={isSaving}>Remove</button>
               </>
             )}
           </div>
@@ -1537,31 +1793,35 @@ function OptionsEditorModal({
       );
     }
 
-    // regular string list
+    // --- Regular String List Item ---
     return (
-      <li key={String(it)} className="flex items-center justify-between gap-2 bg-gray-50 p-2 rounded">
+      <li key={String(it) + idx} className="flex items-center justify-between gap-2 bg-gray-50 p-2 rounded text-sm">
         <div className="min-w-0 flex-1">
-          {editingIndex === idx ? (
-            <input 
-              className="border rounded px-2 py-1 text-sm w-full" 
-              value={editingValueLocal} 
-              onChange={(e) => setEditingValueLocal(e.target.value)} 
+          {isEditingThisItem ? (
+            <input
+              className="border rounded px-2 py-1 text-sm w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+              value={editingValueLocal}
+              onChange={(e) => setEditingValueLocal(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') saveEdit();
+                if (e.key === 'Escape') cancelEdit();
+              }}
               autoFocus
             />
           ) : (
-            <div className="text-sm text-gray-800 truncate">{it}</div>
+            <div className="text-gray-800 truncate" title={it}>{it}</div>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {editingIndex === idx ? (
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {isEditingThisItem ? (
             <>
-              <button className="px-2 py-1 bg-blue-600 text-white rounded text-xs" onClick={saveEdit}>Save</button>
-              <button className="px-2 py-1 bg-gray-200 rounded text-xs" onClick={() => { setEditingIndex(null); setEditingValueLocal(''); }}>Cancel</button>
+              <button className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50" onClick={saveEdit} disabled={isSaving}>Save</button>
+              <button className="px-2 py-1 bg-gray-200 rounded text-xs hover:bg-gray-300 disabled:opacity-50" onClick={cancelEdit} disabled={isSaving}>Cancel</button>
             </>
           ) : (
             <>
-              <button className="px-2 py-1 bg-yellow-100 rounded text-xs" onClick={() => startEdit(idx)}>Edit</button>
-              <button className="px-2 py-1 bg-red-100 rounded text-xs text-red-600" onClick={() => handleRemove(idx)}>Remove</button>
+              <button className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-xs hover:bg-yellow-200 disabled:opacity-50" onClick={() => startEdit(idx)} disabled={isSaving}>Edit</button>
+              <button className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200 disabled:opacity-50" onClick={() => handleRemove(idx)} disabled={isSaving}>Remove</button>
             </>
           )}
         </div>
@@ -1569,50 +1829,65 @@ function OptionsEditorModal({
     );
   };
 
+  // --- Modal Structure ---
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black opacity-40" onClick={handleCancel}></div>
-      <div className="bg-white rounded-lg shadow-xl z-50 max-w-3xl w-full p-6 relative" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">Edit Dropdowns</h3>
-          <button onClick={handleCancel} className="text-gray-400 hover:text-gray-600">&times;</button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
+      <div className="bg-white rounded-lg shadow-xl z-50 max-w-3xl w-full p-6 relative flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex justify-between items-center mb-4 pb-2 border-b">
+          <h3 className="text-lg font-semibold text-gray-800">Edit Dropdown Options</h3>
+          <button onClick={handleCloseModal} className="text-gray-400 hover:text-gray-600 focus:outline-none" disabled={isSaving}>&times;</button>
         </div>
 
-        <div className="flex gap-4">
-          <div className="w-44 bg-gray-50 p-3 rounded">
-            <nav className="flex flex-col gap-2">
-              <button className={`text-left text-sm px-2 py-1 rounded ${tab === 'categories' ? 'bg-white shadow' : ''}`} onClick={() => setTab('categories')}>Categories</button>
-              <button className={`text-left text-sm px-2 py-1 rounded ${tab === 'types' ? 'bg-white shadow' : ''}`} onClick={() => setTab('types')}>Types</button>
-              <button className={`text-left text-sm px-2 py-1 rounded ${tab === 'priorities' ? 'bg-white shadow' : ''}`} onClick={() => setTab('priorities')}>Priorities</button>
-              <button className={`text-left text-sm px-2 py-1 rounded ${tab === 'statuses' ? 'bg-white shadow' : ''}`} onClick={() => setTab('statuses')}>Statuses</button>
-              <button className={`text-left text-sm px-2 py-1 rounded ${tab === 'members' ? 'bg-white shadow' : ''}`} onClick={() => setTab('members')}>Members</button>
+        {/* Layout: Sidebar + Content */}
+        <div className="flex gap-4 flex-1 overflow-hidden">
+          {/* Sidebar Navigation */}
+          <div className="w-44 bg-gray-50 p-3 rounded flex-shrink-0 overflow-y-auto">
+            <nav className="flex flex-col gap-1">
+              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'categories' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('categories')}>Categories</button>
+              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'types' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('types')}>Types</button>
+              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'priorities' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('priorities')}>Priorities</button>
+              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'statuses' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('statuses')}>Statuses</button>
+              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'members' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('members')}>Members</button>
             </nav>
           </div>
 
-          <div className="flex-1">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <h4 className="text-sm font-medium capitalize">{tab}</h4>
-              <form 
+          {/* Content Area */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Add New Item Form */}
+            <div className="mb-3 flex items-center justify-between gap-2 pb-2 border-b">
+              <h4 className="text-base font-medium capitalize text-gray-700">{tab}</h4>
+              <form
                 className="flex items-center gap-2"
                 onSubmit={(e) => { e.preventDefault(); handleAdd(); }}
               >
                 <input
                   value={newValue}
                   onChange={(e) => setNewValue(e.target.value)}
-                  placeholder={tab === 'members' ? 'uid|label (or uid)' : 'New value'}
-                  className="border px-2 py-1 rounded text-sm"
+                  placeholder={tab === 'members' ? 'uid|label (or uid)' : 'Add new value'}
+                  className="border px-2 py-1 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 flex-grow"
+                  disabled={isSaving}
                 />
-                <button type="submit" className="px-3 py-1 bg-blue-600 text-white rounded text-sm">Add</button>
+                <button type="submit" className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50" disabled={isSaving}>
+                    {isSaving ? 'Adding...' : 'Add'}
+                </button>
               </form>
             </div>
 
-            <ul className="space-y-2 max-h-[48vh] overflow-y-auto pr-2">
-              {items.length === 0 && <li className="text-sm text-gray-500">No items</li>}
+            {/* Error Display */}
+            {modalError && <p className="text-red-600 text-sm mb-2 px-1">{modalError}</p>}
+
+            {/* List of Items */}
+            <ul className="space-y-1.5 overflow-y-auto flex-1 pr-1">
+              {items.length === 0 && <li className="text-sm text-gray-500 px-1 py-4 text-center">No items defined for {tab}.</li>}
               {items.map((it, idx) => renderListItem(it, idx))}
+               {/* Spacer at the bottom */}
+              <li style={{ height: '10px' }}></li>
             </ul>
 
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={handleCancel} className="px-3 py-1 rounded border">Close</button>
+            {/* Footer / Close Button */}
+            <div className="mt-4 pt-3 border-t flex justify-end gap-2">
+              <button onClick={handleCloseModal} className="px-4 py-1.5 rounded border text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50" disabled={isSaving}>Close</button>
             </div>
           </div>
         </div>
@@ -1621,9 +1896,10 @@ function OptionsEditorModal({
   );
 }
 
+
 /* ------------------------------------------------------------------
-  InviteMemberModal component (adapted from your example).
-  It will call onInvited(uid, label) when the invite target user is found
+  InviteMemberModal
+  - Finds user by email, sends notification, adds UID to team
 -------------------------------------------------------------------*/
 function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
   const [email, setEmail] = useState('');
@@ -1631,19 +1907,21 @@ function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  // Reset state when modal opens/closes
   useEffect(() => {
     if (!isOpen) {
       setEmail('');
       setError('');
       setSuccess('');
+      setIsInviting(false);
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
   const handleInvite = async () => {
-    if (!email.trim()) {
-      setError('Please enter an email address.');
+    if (!email.trim() || !email.includes('@')) { // Basic email validation
+      setError('Please enter a valid email address.');
       return;
     }
 
@@ -1654,16 +1932,16 @@ function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
     try {
       const currentUser = auth.currentUser;
       if (!currentUser) {
-        throw new Error("You must be logged in.");
+        throw new Error("Authentication error: User not logged in.");
       }
 
-      // 1. Find the user by email
+      // 1. Find the user by email in the 'users' collection
       const usersRef = collection(db, 'users');
       const q = query(usersRef, where('email', '==', email.trim().toLowerCase()));
       const querySnapshot = await getDocs(q);
 
       if (querySnapshot.empty) {
-        setError('User with this email not found.');
+        setError('User with this email not found in the system.');
         setIsInviting(false);
         return;
       }
@@ -1671,34 +1949,47 @@ function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
       const userDoc = querySnapshot.docs[0];
       const invitedUserId = userDoc.id;
       const invitedData = userDoc.data();
+      // Determine best label: displayName > name > email > uid
       const invitedLabel = invitedData.displayName || invitedData.name || invitedData.email || invitedUserId;
 
-      // 2. Get team data (for team name and member check)
+       // Prevent self-invites
+       if (invitedUserId === currentUser.uid) {
+           setError("You cannot invite yourself to the team.");
+           setIsInviting(false);
+           return;
+       }
+
+      // 2. Get team data (needed for name and member check)
       const teamRef = doc(db, 'teams', teamId);
       const teamSnap = await getDoc(teamRef);
 
       if (!teamSnap.exists()) {
-        setError('Team not found. This should not happen.');
+        // This case should ideally not happen if the table component loaded correctly
+        setError('Team data not found. Cannot process invitation.');
         setIsInviting(false);
         return;
       }
 
       const teamData = teamSnap.data();
-      const teamName = teamData.teamName || 'Team';
+      const teamName = teamData.teamName || `Team ${teamId.substring(0, 6)}`; // Use ID prefix if no name
       const members = teamData.members || [];
 
-      // 3. Check if user is already a member (by UID)
-      if (members.includes(invitedUserId) || (members.find && members.find(m => m.uid === invitedUserId))) {
+      // 3. Check if user is already a member (handle both UID array and object array)
+      const isAlreadyMember = members.some(member =>
+          (typeof member === 'object' && member.uid === invitedUserId) || // Check object array
+          (typeof member === 'string' && member === invitedUserId)        // Check UID string array
+      );
+
+      if (isAlreadyMember) {
         setError('This user is already a member of the team.');
         setIsInviting(false);
         return;
       }
 
-      const senderName = currentUser.displayName || currentUser.email || currentUser.uid;
-
-      // 4. Create the notification
+      // 4. Create the invitation notification for the invited user
+      const senderName = currentUser.displayName || currentUser.email || 'A team member';
       await addDoc(collection(db, 'notifications'), {
-        userId: invitedUserId,
+        userId: invitedUserId,        // Recipient
         type: 'INVITATION',
         senderId: currentUser.uid,
         senderName: senderName,
@@ -1706,69 +1997,84 @@ function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
         teamName: teamName,
         createdAt: serverTimestamp(),
         isRead: false,
+        message: `${senderName} invited you to join the team "${teamName}".` // Added message
       });
 
-      setSuccess(`Invitation sent to ${email}!`);
+      setSuccess(`Invitation sent successfully to ${invitedLabel} (${email})!`);
 
-      // Notify parent (table) that invitation succeeded and provide uid + label
+      // 5. Call the onInvited callback to update the team document and potentially the table cell
       if (typeof onInvited === 'function') {
-        onInvited(invitedUserId, invitedLabel);
+        onInvited(invitedUserId, invitedLabel); // Pass UID and Label back
       }
 
-      setEmail('');
+      // Optionally close modal after success
       setTimeout(() => {
         if (typeof onClose === 'function') onClose();
-      }, 800);
+      }, 1500); // Keep success message visible briefly
+
     } catch (err) {
       console.error('Error sending invitation:', err);
-      setError('Failed to send invitation. Please try again.');
-    } finally {
-      setIsInviting(false);
+      setError('Failed to send invitation. Please check the console and try again.');
+       setIsInviting(false); // Ensure loading state stops on error
     }
+    // No finally block needed for setIsInviting if errors are handled above
   };
 
   const handleClose = () => {
-    setEmail('');
-    setError('');
-    setSuccess('');
-    if (typeof onClose === 'function') onClose();
+    // Only allow close if not currently inviting
+    if (!isInviting && typeof onClose === 'function') {
+        onClose();
+    }
   };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
-        <div className="flex justify-between items-center mb-4">
+      {/* Modal Content */}
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6 relative">
+          {/* Close Button */}
+         <button onClick={handleClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 focus:outline-none" disabled={isInviting}>&times;</button>
+        {/* Header */}
+        <div className="mb-4">
           <h3 className="text-xl font-semibold text-gray-800">Invite Member</h3>
-          <button onClick={handleClose} className="text-gray-400 hover:text-gray-600">&times;</button>
+          <p className="text-sm text-gray-500 mt-1">Enter the email address of the user you want to invite.</p>
         </div>
-        {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
-        {success && <p className="text-green-500 text-sm mb-3">{success}</p>}
-        <div className="space-y-4">
-          <div>
-            <label htmlFor="inviteEmail" className="block text-sm font-medium text-gray-700 mb-1">
-              User's Email
-            </label>
-            <input
-              type="email"
-              id="inviteEmail"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="e.g., teammate@example.com"
-              className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-        </div>
+
+        {/* Status Messages */}
+        {error && <p className="text-red-600 text-sm mb-3 p-2 bg-red-50 rounded border border-red-200">{error}</p>}
+        {success && <p className="text-green-600 text-sm mb-3 p-2 bg-green-50 rounded border border-green-200">{success}</p>}
+
+        {/* Input Field */}
+        {!success && ( // Hide input after success
+            <div className="space-y-4">
+            <div>
+                <label htmlFor="inviteEmail" className="sr-only">User's Email</label>
+                <input
+                type="email"
+                id="inviteEmail"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="e.g., teammate@example.com"
+                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                disabled={isInviting}
+                />
+            </div>
+            </div>
+        )}
+
+        {/* Action Buttons */}
         <div className="flex justify-end gap-2 mt-6 border-t pt-4">
-          <button onClick={handleClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">
-            Cancel
+          <button onClick={handleClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md text-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50" disabled={isInviting}>
+            {success ? 'Close' : 'Cancel'}
           </button>
-          <button
-            onClick={handleInvite}
-            disabled={isInviting}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-          >
-            {isInviting ? 'Sending...' : 'Send Invite'}
-          </button>
+          {!success && ( // Hide invite button after success
+            <button
+                onClick={handleInvite}
+                disabled={isInviting || !email.trim()}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                {isInviting ? 'Sending...' : 'Send Invite'}
+            </button>
+          )}
         </div>
       </div>
     </div>
