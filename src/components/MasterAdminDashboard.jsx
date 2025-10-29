@@ -20,9 +20,10 @@ import TeamProjectTable from './TeamProjectTable';
 import InviteMemberModal from './InviteMemberModal';
 import AnnounceModal from './AnnounceModal';
 import ScheduleMeetingModal from './ScheduleMeetingModal';
-import NotificationsModal from './NotificationsModal';
+// import NotificationsModal from './NotificationsModal'; // Handled by MainLayout
 import EditUpdateModal from './EditUpdateModal';
 import AnnounceMultiTeamModal from './AnnounceMultiTeamModal';
+// REMOVED MasterAdminChatModal import
 
 // --- Icons (kept) ---
 const UsersIcon = () => (
@@ -45,6 +46,7 @@ const UserGroupIcon = () => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.08-.986-.234-1.224M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.08-.986.234-1.224M12 11c-1.657 0-3-1.343-3-3s1.343-3 3-3 3 1.343 3 3-1.343 3-3 3zM3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
   </svg>
 );
+// REMOVED ChatIcon as it's not used here
 
 // --- Utility: formatDate ---
 const formatDate = (value, { dateOnly = false, fallback = '' } = {}) => {
@@ -64,7 +66,7 @@ const TEAMS_PAGE_SIZE = 18;
 const USERS_PAGE_SIZE = 30;
 const DEBOUNCE_MS = 350;
 
-// ---------- AnnouncementsSection (unchanged layout but kept internal scroll) ----------
+// ---------- AnnouncementsSection (unchanged) ----------
 const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
   const [updates, setUpdates] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -132,7 +134,7 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
   );
 };
 
-// ---------- MembersSection (unchanged but with better compacting) ----------
+// ---------- MembersSection (unchanged) ----------
 const MembersSection = ({ membersDetails, teamData, canManageMembers, onChangeRole, onInviteClick }) => {
   return (
     <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm border h-full">
@@ -176,11 +178,11 @@ const MembersSection = ({ membersDetails, teamData, canManageMembers, onChangeRo
   );
 };
 
-// ---------- UserManagementSection (with search and paginated "load more") ----------
+// ---------- UserManagementSection (unchanged) ----------
 const UserManagementSection = ({ allUsers, allTeams, loadingUsers, errorUsers, onLoadMoreUsers, hasMoreUsers, onToggleCompact }) => {
   const findTeamsForUser = useCallback((userId) => {
     return allTeams.filter(team => team.members?.includes(userId))
-                 .map(team => ({ id: team.id, teamName: team.teamName || `Team ${team.id}` }));
+              .map(team => ({ id: team.id, teamName: team.teamName || `Team ${team.id}` }));
   }, [allTeams]);
 
   return (
@@ -238,7 +240,7 @@ const UserManagementSection = ({ allUsers, allTeams, loadingUsers, errorUsers, o
   );
 };
 
-// ---------- Main Dashboard Component (redesigned UX + pagination + search) ----------
+// ---------- Main Dashboard Component ----------
 export default function MasterAdminDashboard() {
   // Lists + pagination state
   const [teams, setTeams] = useState([]);
@@ -269,10 +271,11 @@ export default function MasterAdminDashboard() {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isAnnounceModalOpen, setIsAnnounceModalOpen] = useState(false);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
-  const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
+  // const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false); // Handled by MainLayout
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [isMultiAnnounceModalOpen, setIsMultiAnnounceModalOpen] = useState(false);
+  // *** REMOVED CHAT MODAL STATE ***
 
   // debounce refs
   const teamsDebounceRef = useRef(null);
@@ -354,7 +357,7 @@ export default function MasterAdminDashboard() {
 
       const memberUIDs = fetchedTeamData.members || [];
       if (memberUIDs.length > 0) {
-        // fetch members in parallel (ok for reasonable member counts). For very large teams consider server-side join or batched fetch.
+        // fetch members in parallel
         const memberPromises = memberUIDs.map(uid => getDoc(doc(db, "users", uid)));
         const memberDocsSnap = await Promise.all(memberPromises);
         setMembersDetails(memberDocsSnap.map((userDoc, index) => {
@@ -412,7 +415,6 @@ export default function MasterAdminDashboard() {
     setTeamsSearch(v);
     if (teamsDebounceRef.current) clearTimeout(teamsDebounceRef.current);
     teamsDebounceRef.current = setTimeout(() => {
-      // For now we reset and fetch page again. This is a simple approach - for production consider Firestore full-text or Algolia for large datasets.
       fetchTeamsPage({ reset: true });
     }, DEBOUNCE_MS);
   };
@@ -469,6 +471,7 @@ export default function MasterAdminDashboard() {
                 placeholder="Search users..."
                 className="text-sm px-3 py-2 rounded border border-gray-300 bg-white"
               />
+              {/* --- REMOVED "View All Chats" BUTTON --- */}
               <button onClick={() => setIsMultiAnnounceModalOpen(true)} disabled={teams.length === 0} className="inline-flex items-center bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold py-2 px-3 rounded-md shadow-sm transition-colors disabled:opacity-50">
                 <MegaphoneIcon /> Send Global Announcement
               </button>
@@ -609,6 +612,8 @@ export default function MasterAdminDashboard() {
       )}
       {/* <NotificationsModal isOpen={isNotificationsModalOpen} onClose={() => setIsNotificationsModalOpen(false)} /> */}
       <AnnounceMultiTeamModal isOpen={isMultiAnnounceModalOpen} onClose={() => setIsMultiAnnounceModalOpen(false)} allTeams={teams} onAnnouncementSent={() => { if (selectedTeam) refreshAnnouncements(); }} />
+      
+      {/* --- REMOVED MasterAdminChatModal RENDER --- */}
     </>
   );
 }

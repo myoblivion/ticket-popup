@@ -1,3 +1,4 @@
+// src/components/MasterAdminChatModal.js
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { db, auth } from '../firebaseConfig';
 import {
@@ -9,13 +10,11 @@ import {
   onSnapshot,
   addDoc,
   serverTimestamp,
-  Timestamp,
-  doc, // Import doc
-  getDoc // Import getDoc
+  Timestamp
 } from 'firebase/firestore';
 import Spinner from './Spinner';
 
-// Utility: formatChatTimestamp (remains the same)
+// Utility: formatChatTimestamp
 const formatChatTimestamp = (value) => {
     if (!value) return '';
   try {
@@ -50,122 +49,62 @@ const BackArrowIcon = () => (
 );
 
 
-const TeamChatModal = ({ isOpen, onClose }) => {
+const MasterAdminChatModal = ({ isOpen, onClose }) => {
   const [currentView, setCurrentView] = useState('teamList'); // 'teamList' or 'chatView'
-  const [userTeams, setUserTeams] = useState([]); // Now stores { id, teamName, unreadCount }
-  const [selectedTeam, setSelectedTeam] = useState(null); // { id, teamName, unreadCount }
+  const [allTeams, setAllTeams] = useState([]); // Stores { id, teamName }
+  const [selectedTeam, setSelectedTeam] = useState(null); // { id, teamName }
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loadingTeams, setLoadingTeams] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [error, setError] = useState('');
   const [isSending, setIsSending] = useState(false);
-  
-  // --- NEW: State to hold user role ---
-  const [isMasterAdmin, setIsMasterAdmin] = useState(false);
 
   const messagesEndRef = useRef(null);
 
-  // 1. Fetch user's teams AND unread counts
+  // 1. Fetch ALL teams when the modal opens
   useEffect(() => {
     if (!isOpen) {
       // Fully reset when modal closes
       setCurrentView('teamList');
       setSelectedTeam(null);
       setMessages([]);
-      setUserTeams([]);
+      setAllTeams([]);
       setError('');
-      setIsMasterAdmin(false); // Reset admin state
       return;
     }
 
-    if (currentView === 'teamList') {
-      const fetchUserTeams = async () => {
+    // Only fetch teams if we are in teamList view and teams aren't loaded
+    if (currentView === 'teamList' && allTeams.length === 0) {
+      const fetchAllTeams = async () => {
         const currentUser = auth.currentUser;
-        if (!currentUser) return;
+        if (!currentUser) return; // Admin must be logged in
 
         setLoadingTeams(true);
         setError('');
-        
-        let role = 'Member';
         try {
-          // --- NEW: Check user's role first ---
-          const userDocRef = doc(db, 'users', currentUser.uid);
-          const userDocSnap = await getDoc(userDocRef);
-          if (userDocSnap.exists() && userDocSnap.data().role === 'Master Admin') {
-            role = 'Master Admin';
-            setIsMasterAdmin(true);
-          } else {
-            setIsMasterAdmin(false);
-          }
-
-          // --- Get Teams based on role ---
           const teamsRef = collection(db, 'teams');
-          let teamsQuery;
+          // --- MODIFICATION: Query ALL teams, ordered by name ---
+          const q = query(teamsRef, orderBy('teamName', 'asc')); 
+          const querySnapshot = await getDocs(q);
 
-          if (role === 'Master Admin') {
-            // Master Admin sees ALL teams
-            teamsQuery = query(teamsRef, orderBy('teamName', 'asc'));
-          } else {
-            // Normal user sees only their teams
-            teamsQuery = query(teamsRef, where('members', 'array-contains', currentUser.uid), orderBy('teamName', 'asc'));
-          }
-          
-          const querySnapshot = await getDocs(teamsQuery);
-          
-          if (querySnapshot.empty && role !== 'Master Admin') {
-             setError("You are not a member of any teams.");
-             setUserTeams([]);
-             setLoadingTeams(false);
-             return;
-          }
-
-          // --- Get unread counts (only for non-admins) ---
-          const teamsWithCounts = await Promise.all(querySnapshot.docs.map(async (doc) => {
-            const teamData = doc.data();
-            const teamId = doc.id;
-            const teamName = teamData.teamName || `Team ${teamId}`;
-            let unreadCount = 0;
-
-            // Only calculate unread for non-admins
-            if (role !== 'Master Admin') {
-              const lastReadString = localStorage.getItem(`lastRead_${teamId}`);
-              const lastReadTimestamp = lastReadString ? new Date(lastReadString) : null;
-              
-              const messagesRef = collection(db, `teams/${teamId}/chatMessages`);
-              let unreadQuery;
-
-              if (lastReadTimestamp) {
-                unreadQuery = query(
-                  messagesRef, 
-                  where('createdAt', '>', Timestamp.fromDate(lastReadTimestamp)),
-                  where('senderId', '!=', currentUser.uid)
-                );
-              } else {
-                unreadQuery = query(
-                  messagesRef, 
-                  where('senderId', '!=', currentUser.uid)
-                );
-              }
-              const unreadSnapshot = await getDocs(unreadQuery);
-              unreadCount = unreadSnapshot.size;
-            }
-            
-            return { id: teamId, teamName, unreadCount };
+          const teamsList = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            teamName: doc.data().teamName || `Team ${doc.id}`
           }));
           
-          setUserTeams(teamsWithCounts); // Already sorted by query
+          setAllTeams(teamsList);
 
         } catch (err) {
-          console.error("Error fetching user's teams:", err);
-          setError("Could not load your teams.");
+          console.error("Error fetching all teams:", err);
+          setError("Could not load all teams.");
         } finally {
           setLoadingTeams(false);
         }
       };
-      fetchUserTeams();
+      fetchAllTeams();
     }
-  }, [isOpen, currentView]); // Refetch teams when modal opens or view returns to list
+  }, [isOpen, currentView, allTeams.length]); // Dependencies ensure fetch runs correctly
 
   // 2. Set up message listener when a team is selected
   useEffect(() => {
@@ -200,7 +139,7 @@ const TeamChatModal = ({ isOpen, onClose }) => {
     }
   }, [messages, currentView]);
 
-  // 4. Handle sending message
+  // 4. Handle sending message (as Admin)
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedTeam?.id || isSending || currentView !== 'chatView') return;
@@ -215,14 +154,10 @@ const TeamChatModal = ({ isOpen, onClose }) => {
       await addDoc(messagesRef, {
         text: newMessage.trim(),
         senderId: currentUser.uid,
-        senderName: currentUser.displayName || currentUser.email || 'User',
+        senderName: currentUser.displayName || currentUser.email || 'Master Admin', // Send as Admin
         createdAt: serverTimestamp()
       });
       setNewMessage('');
-      
-      // Also set *my* last read time, even as admin
-      localStorage.setItem(`lastRead_${selectedTeam.id}`, new Date().toISOString());
-
     } catch (err) {
       console.error("Error sending message:", err);
       setError("Failed to send message.");
@@ -236,18 +171,7 @@ const TeamChatModal = ({ isOpen, onClose }) => {
     setSelectedTeam(team);
     setCurrentView('chatView'); // Switch to chat view
     setError(''); // Clear any previous errors
-    
-    // --- MARK AS READ (for all users, including admin) ---
-    localStorage.setItem(`lastRead_${team.id}`, new Date().toISOString());
-    
-    // Immediately clear the badge in the UI
-    if (!isMasterAdmin) { // Only update local state if not admin (admin list doesn't show counts)
-      setUserTeams(prevTeams => 
-        prevTeams.map(t => 
-          t.id === team.id ? { ...t, unreadCount: 0 } : t
-        )
-      );
-    }
+    // No "mark as read" logic needed for admin
   };
 
   // 6. Handle going back to the team list
@@ -256,7 +180,8 @@ const TeamChatModal = ({ isOpen, onClose }) => {
     setCurrentView('teamList'); // Switch back to team list view
     setMessages([]); // Clear messages
     setError('');
-    // This will trigger the team list useEffect to refetch
+    // This will trigger the team list useEffect to refetch all teams
+    setAllTeams([]); 
   };
 
   if (!isOpen) return null;
@@ -277,10 +202,7 @@ const TeamChatModal = ({ isOpen, onClose }) => {
             </button>
           )}
           <h3 className="text-sm font-semibold text-gray-800 truncate flex-grow">
-            {currentView === 'teamList' 
-              ? (isMasterAdmin ? 'All Team Chats' : 'Select Team Chat') 
-              : (selectedTeam?.teamName || 'Chat')
-            }
+            {currentView === 'teamList' ? 'All Team Chats' : (selectedTeam?.teamName || 'Chat')}
           </h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none ml-2">&times;</button>
         </div>
@@ -293,10 +215,10 @@ const TeamChatModal = ({ isOpen, onClose }) => {
           {currentView === 'teamList' && (
             <div className="p-2 space-y-1">
               {loadingTeams && <div className="flex justify-center py-4"><Spinner /></div>}
-              {!loadingTeams && userTeams.length === 0 && !error && (
-                <p className="text-sm text-gray-500 text-center py-4">No teams found.</p>
+              {!loadingTeams && allTeams.length === 0 && !error && (
+                <p className="text-sm text-gray-500 text-center py-4">No teams found in the system.</p>
               )}
-              {!loadingTeams && userTeams.map(team => (
+              {!loadingTeams && allTeams.map(team => (
                 <button
                   key={team.id}
                   onClick={() => handleTeamSelect(team)}
@@ -304,12 +226,7 @@ const TeamChatModal = ({ isOpen, onClose }) => {
                 >
                   <div className="flex justify-between items-center">
                     <span className="font-medium text-gray-900">{team.teamName}</span>
-                    {/* Only show unread count if user is NOT admin */}
-                    {!isMasterAdmin && team.unreadCount > 0 && (
-                      <span className="bg-red-500 text-white text-xs font-bold rounded-full px-2 py-0.5">
-                        {team.unreadCount > 9 ? '9+' : team.unreadCount}
-                      </span>
-                    )}
+                    {/* No unread badge */}
                   </div>
                 </button>
               ))}
@@ -325,24 +242,14 @@ const TeamChatModal = ({ isOpen, onClose }) => {
               )}
               {messages.map(msg => {
                 const isCurrentUser = msg.senderId === auth.currentUser?.uid;
-                // Check if sender is admin for special styling
-                const senderIsAdmin = isMasterAdmin && isCurrentUser;
                 return (
                   <div key={msg.id} className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[75%] px-3 py-2 rounded-lg shadow-sm ${
-                      senderIsAdmin ? 'bg-indigo-600 text-white' : // Admin's own messages
-                      isCurrentUser ? 'bg-blue-500 text-white' : // Normal user's own messages
-                      'bg-white text-gray-800' // Other people's messages
-                    }`}>
+                    <div className={`max-w-[75%] px-3 py-2 rounded-lg shadow-sm ${isCurrentUser ? 'bg-indigo-600 text-white' : 'bg-white text-gray-800'}`}> {/* Admin color changed */}
                       {!isCurrentUser && (
                         <p className="text-xs font-semibold text-gray-600 mb-0.5">{msg.senderName || 'User'}</p>
                       )}
                       <p className="text-sm break-words">{msg.text}</p>
-                      <p className={`text-xs mt-1 text-right ${
-                        senderIsAdmin ? 'text-indigo-100 opacity-80' : 
-                        isCurrentUser ? 'text-blue-100 opacity-80' : 
-                        'text-gray-400'
-                      }`}>
+                      <p className={`text-xs mt-1 text-right ${isCurrentUser ? 'text-indigo-100 opacity-80' : 'text-gray-400'}`}>
                         {formatChatTimestamp(msg.createdAt)}
                       </p>
                     </div>
@@ -362,7 +269,7 @@ const TeamChatModal = ({ isOpen, onClose }) => {
                 type="text"
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
-                placeholder={`Message ${selectedTeam?.teamName || ''}...`}
+                placeholder={`Message ${selectedTeam?.teamName || ''} as Admin...`}
                 className="flex-grow p-2 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200"
                 disabled={!selectedTeam || isSending || loadingMessages || loadingTeams}
                 autoFocus // Focus input when chat view loads
@@ -383,4 +290,4 @@ const TeamChatModal = ({ isOpen, onClose }) => {
   );
 };
 
-export default TeamChatModal;
+export default MasterAdminChatModal;

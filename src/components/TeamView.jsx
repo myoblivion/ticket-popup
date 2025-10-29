@@ -130,11 +130,11 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
                  )}
                 </div>
                 {isAdmin && (
-                   <div className="flex-shrink-0 flex items-start gap-1 ml-3">
-                     <button onClick={() => onEdit(update)} className="text-xs bg-yellow-100 hover:bg-yellow-200 text-yellow-800 px-2 py-1 rounded">Edit</button>
-                     <button onClick={() => handleDelete(update.id)} className="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-2 py-1 rounded">Remove</button>
-                   </div>
-                 )}
+                  <div className="flex-shrink-0 flex items-start gap-1 ml-3">
+                    <button onClick={() => onEdit(update)} className="text-xs bg-yellow-100 hover:bg-yellow-200 text-yellow-800 px-2 py-1 rounded">Edit</button>
+                    <button onClick={() => handleDelete(update.id)} className="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-2 py-1 rounded">Remove</button>
+                  </div>
+                )}
               </div>
             </li>
           ))}
@@ -198,18 +198,9 @@ const MembersSection = ({ membersDetails, teamData, currentUserUid, canManageMem
                         <option value="member">Member</option>
                       </select>
                     )}
-                    {/* Role permissions indicators (example) */}
-                    {/* {roleRaw === 'admin' && (
-                       <>
-                         <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded" title="Can Announce">Ann</span>
-                         <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded" title="Can Schedule">Sch</span>
-                       </>
-                     )} */}
                   </div>
                 ) : (
                     <div className="flex items-center gap-2">
-                        {/* Just show indicators if needed */}
-                         {/* {roleRaw === 'admin' && <><span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Ann</span><span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">Sch</span></>} */}
                     </div>
                 )}
               </li>
@@ -333,28 +324,28 @@ const TeamView = () => {
 
   // Function to change member role
     const changeRole = async (memberUid, newRole) => {
-        if (!teamData || !currentUser || !isAdmin || teamData.createdBy === memberUid) {
-            console.warn("Role change condition not met.");
-            return; // Don't allow changing creator's role or if not admin
-        }
-        if (!['admin', 'member'].includes(newRole)) {
-            console.error("Invalid role specified:", newRole);
-            return;
-        }
+       if (!teamData || !currentUser || !isAdmin || teamData.createdBy === memberUid) {
+           console.warn("Role change condition not met.");
+           return; // Don't allow changing creator's role or if not admin
+       }
+       if (!['admin', 'member'].includes(newRole)) {
+           console.error("Invalid role specified:", newRole);
+           return;
+       }
 
-        const teamDocRef = doc(db, "teams", teamId);
-        const rolesUpdate = { ...teamData.roles }; // Copy existing roles
-        rolesUpdate[memberUid] = newRole; // Set the new role
+       const teamDocRef = doc(db, "teams", teamId);
+       const rolesUpdate = { ...teamData.roles }; // Copy existing roles
+       rolesUpdate[memberUid] = newRole; // Set the new role
 
-        try {
-            await updateDoc(teamDocRef, { roles: rolesUpdate });
-            console.log(`Role for ${memberUid} updated to ${newRole}`);
-            // Optimistically update local state or rely on useEffect refresh
-            setTeamData(prev => ({ ...prev, roles: rolesUpdate }));
-        } catch (err) {
-            console.error("Error updating role:", err);
-            setError("Failed to update member role.");
-        }
+       try {
+           await updateDoc(teamDocRef, { roles: rolesUpdate });
+           console.log(`Role for ${memberUid} updated to ${newRole}`);
+           // Optimistically update local state or rely on useEffect refresh
+           setTeamData(prev => ({ ...prev, roles: rolesUpdate }));
+       } catch (err) {
+           console.error("Error updating role:", err);
+           setError("Failed to update member role.");
+       }
     };
 
 
@@ -397,25 +388,25 @@ const TeamView = () => {
                  <button
                     onClick={() => setIsEndorsementModalOpen(true)}
                     className="bg-cyan-500 hover:bg-cyan-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md shadow-sm transition-colors"
-                >
-                    View Endorsements
-                </button>
-                {isAdmin && (
-                    <>
-                        <button
-                            onClick={() => setIsAnnounceModalOpen(true)}
-                            className="bg-green-500 hover:bg-green-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md shadow-sm transition-colors"
-                        >
-                            Announce
-                        </button>
-                        <button
-                            onClick={() => setIsScheduleModalOpen(true)}
-                            className="bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md shadow-sm transition-colors"
-                        >
-                            Schedule Meeting
-                        </button>
-                    </>
-                )}
+                 >
+                     View Endorsements
+                 </button>
+                 {isAdmin && (
+                     <>
+                         <button
+                             onClick={() => setIsAnnounceModalOpen(true)}
+                             className="bg-green-500 hover:bg-green-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md shadow-sm transition-colors"
+                         >
+                             Announce
+                         </button>
+                         <button
+                             onClick={() => setIsScheduleModalOpen(true)}
+                             className="bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md shadow-sm transition-colors"
+                         >
+                             Schedule Meeting
+                         </button>
+                     </>
+                 )}
               </div>
             </div>
 
@@ -428,12 +419,15 @@ const TeamView = () => {
                   <p className="text-base text-gray-600">{teamData.description || 'No description provided.'}</p>
                   <p className="text-xs text-gray-500 mt-3">Created: {formatDate(teamData.createdAt, { dateOnly: true }) || 'N/A'}</p>
                 </div>
-                <AnnouncementsSection
-                  teamId={teamId}
-                  refreshTrigger={announcementRefreshKey}
-                  isAdmin={isAdmin}
-                  onEdit={openEditModal}
-                />
+                {/* WRAP ANNOUNCEMENTS WITH ADDITIONAL BOTTOM MARGIN TO INCREASE SPACING */}
+                <div className="mb-8">
+                  <AnnouncementsSection
+                    teamId={teamId}
+                    refreshTrigger={announcementRefreshKey}
+                    isAdmin={isAdmin}
+                    onEdit={openEditModal}
+                  />
+                </div>
               </div>
 
               {/* Right Column */}
@@ -449,7 +443,8 @@ const TeamView = () => {
               </div>
 
               {/* Bottom Row - Project Table */}
-              <div className="lg:col-span-3 mt-8">
+              {/* INCREASED TOP MARGIN TO ADD MORE SPACING BETWEEN ANNOUNCEMENTS/UPDATES AND THE PROJECT TASKS */}
+              <div className="lg:col-span-3 mt-12">
                 <TeamProjectTable teamId={teamId} />
               </div>
             </div>
