@@ -1,3 +1,4 @@
+// TeamView.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
@@ -10,7 +11,8 @@ import {
   updateDoc,
   deleteDoc,
   serverTimestamp,
-  setDoc // Import setDoc
+  where,
+  addDoc
 } from "firebase/firestore";
 import { db, auth } from '../firebaseConfig';
 import { onAuthStateChanged } from "firebase/auth";
@@ -18,9 +20,16 @@ import InviteMemberModal from './InviteMemberModal';
 import AnnounceModal from './AnnounceModal';
 import ScheduleMeetingModal from './ScheduleMeetingModal';
 import TeamProjectTable from './TeamProjectTable';
-// import NotificationsModal from './NotificationsModal'; // Handled by MainLayout now
 import EditUpdateModal from './EditUpdateModal';
-import EndorsementModal from './EndorsementModal'; // *** IMPORT THE NEW MODAL ***
+import EndorsementModal from './EndorsementModal';
+
+// --- Calendar Imports ---
+import { Calendar, momentLocalizer } from 'react-big-calendar';
+import moment from 'moment';
+import 'react-big-calendar/lib/css/react-big-calendar.css';
+
+// --- Setup Calendar Localizer ---
+const localizer = momentLocalizer(moment);
 
 // --- Spinner component ---
 const Spinner = () => (
@@ -52,7 +61,26 @@ const formatDate = (value, { dateOnly = false, fallback = '' } = {}) => {
   }
 };
 
-// --- AnnouncementsSection ---
+// ---------- Helper utilities (FOR CALENDAR) ----------
+const normalizeValueToDate = (val) => {
+  if (!val) return null;
+  if (typeof val === 'object' && typeof val.toDate === 'function') return val.toDate();
+  if (val instanceof Date) return val;
+  const parsed = new Date(val);
+  if (!isNaN(parsed)) return parsed;
+  return null;
+};
+
+// Checks if a Date object has a time component (is not midnight)
+const hasTimeComponent = (d) => {
+  if (!d || !(d instanceof Date)) return false;
+  return d.getHours() !== 0 || d.getMinutes() !== 0 || d.getSeconds() !== 0 || d.getMilliseconds() !== 0;
+};
+
+const msInDay = 24 * 60 * 60 * 1000;
+
+
+// --- AnnouncementsSection (unchanged) ---
 const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
   const [updates, setUpdates] = useState([]);
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
@@ -65,10 +93,7 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
       const announcementsRef = collection(db, `teams/${teamId}/announcements`);
       const q = query(announcementsRef, orderBy('createdAt', 'desc'));
       const querySnapshot = await getDocs(q);
-      const fetchedUpdates = querySnapshot.docs.map(d => ({
-        id: d.id,
-        ...d.data()
-      }));
+      const fetchedUpdates = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       setUpdates(fetchedUpdates);
     } catch (err) {
       console.error("Error fetching announcements:", err);
@@ -78,9 +103,7 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
     }
   }, [teamId]);
 
-  useEffect(() => {
-    fetchAnnouncements();
-  }, [teamId, fetchAnnouncements, refreshTrigger]);
+  useEffect(() => { fetchAnnouncements(); }, [teamId, fetchAnnouncements, refreshTrigger]);
 
   const handleDelete = async (updateId) => {
     const ok = window.confirm("Delete this announcement/meeting? This cannot be undone.");
@@ -109,25 +132,25 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
             <li key={update.id} className={`text-sm p-2 border-l-4 rounded-r bg-gray-50 ${update.type === 'meeting' ? 'border-blue-500' : 'border-green-500'}`}>
               <div className="flex justify-between items-start gap-2">
                 <div className="flex-1">
-                 {update.type === 'meeting' ? (
-                   <>
-                     <strong className="font-medium text-blue-700">Meeting:</strong> {update.title} <br />
-                     <span className="text-xs text-gray-500">Starts: {formatDate(update.startDateTime) || 'N/A'}</span>
-                     {update.endDateTime && <span className="text-xs text-gray-500"> - Ends: {formatDate(update.endDateTime)}</span>}
-                     {update.description && <p className="text-xs text-gray-600 mt-1">{update.description}</p>}
-                     {update.meetingLink && (
-                       <a href={update.meetingLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-xs mt-1 block">
-                         Join Meeting
-                       </a>
-                     )}
-                     <p className="text-xs text-gray-500 mt-2">Scheduled by: {update.creatorDisplayName} at {formatDate(update.createdAt, { dateOnly: true })}</p>
-                   </>
-                 ) : (
-                   <>
-                     <strong className="font-medium text-green-700">Announcement:</strong> {update.text} <br />
-                     <p className="text-xs text-gray-500">By: {update.creatorDisplayName} at {formatDate(update.createdAt, { dateOnly: true })}</p>
-                   </>
-                 )}
+                  {update.type === 'meeting' ? (
+                    <>
+                      <strong className="font-medium text-blue-700">Meeting:</strong> {update.title} <br />
+                      <span className="text-xs text-gray-500">Starts: {formatDate(update.startDateTime) || 'N/A'}</span>
+                      {update.endDateTime && <span className="text-xs text-gray-500"> - Ends: {formatDate(update.endDateTime)}</span>}
+                      {update.description && <p className="text-xs text-gray-600 mt-1">{update.description}</p>}
+                      {update.meetingLink && (
+                        <a href={update.meetingLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-xs mt-1 block">
+                          Join Meeting
+                        </a>
+                      )}
+                      <p className="text-xs text-gray-500 mt-2">Scheduled by: {update.creatorDisplayName} at {formatDate(update.createdAt, { dateOnly: true })}</p>
+                    </>
+                  ) : (
+                    <>
+                      <strong className="font-medium text-green-700">Announcement:</strong> {update.text} <br />
+                      <p className="text-xs text-gray-500">By: {update.creatorDisplayName} at {formatDate(update.createdAt, { dateOnly: true })}</p>
+                    </>
+                  )}
                 </div>
                 {isAdmin && (
                   <div className="flex-shrink-0 flex items-start gap-1 ml-3">
@@ -144,7 +167,7 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
   );
 };
 
-// --- MembersSection ---
+// --- MembersSection (unchanged) ---
 const MembersSection = ({ membersDetails, teamData, currentUserUid, canManageMembers, onChangeRole, onInviteClick }) => {
   return (
     <div className="bg-white p-4 rounded-lg shadow border h-full">
@@ -200,8 +223,8 @@ const MembersSection = ({ membersDetails, teamData, currentUserUid, canManageMem
                     )}
                   </div>
                 ) : (
-                    <div className="flex items-center gap-2">
-                    </div>
+                  <div className="flex items-center gap-2">
+                  </div>
                 )}
               </li>
             );
@@ -214,8 +237,296 @@ const MembersSection = ({ membersDetails, teamData, currentUserUid, canManageMem
   );
 };
 
+// --- ManualNoteModal (MODIFIED) ---
+const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin }) => {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState(''); // <-- ADDED
 
-// --- TeamView Component ---
+  useEffect(() => {
+    if (!isOpen) return;
+    if (modalData?.type === 'new') {
+      setTitle('');
+      setDescription(''); // <-- ADDED
+    }
+    if (modalData?.type === 'view') {
+      setTitle(modalData?.event?.title?.replace(/^Note:\s*/i, '') || '');
+      setDescription(modalData?.event?.description || ''); // <-- ADDED
+    }
+  }, [isOpen, modalData]);
+
+  if (!isOpen) return null;
+
+  const isNew = modalData?.type === 'new';
+  const isView = modalData?.type === 'view';
+  const event = modalData?.event;
+
+  const handleSave = async () => {
+    if (!title) return; // Only title is required to save
+    const start = modalData.start instanceof Date ? modalData.start : new Date(modalData.start);
+    const end = modalData.end instanceof Date ? modalData.end : new Date(modalData.end);
+    await onSave(title, description, start, end); // <-- PASS DESCRIPTION
+    onClose();
+  };
+
+  const handleDelete = async () => {
+    if (!event || !event.id) return;
+    await onDelete(event.id);
+    onClose();
+  };
+
+  let modalTitle = 'Calendar Event';
+  if (isNew) modalTitle = `Add Note for ${moment(modalData.start).format('MMM D, YYYY')}`;
+  if (isView && event) modalTitle = event.title;
+
+  return (
+    <div aria-modal="true" role="dialog" className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
+      {/* --- Changed max-w-md to max-w-lg --- */}
+      <div className="relative z-10 w-full max-w-lg bg-white rounded-lg shadow-lg p-6">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">{modalTitle}</h3>
+
+        {isNew && (
+          <div className="space-y-4">
+            {/* --- ADDED wrapper div --- */}
+            <div>
+              <label htmlFor="noteTitle" className="block text-sm font-medium text-gray-700">Note Title</label>
+              <input id="noteTitle" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="e.g., Team Holiday" />
+            </div>
+
+            {/* --- ADDED this block --- */}
+            <div>
+              <label htmlFor="noteDescription" className="block text-sm font-medium text-gray-700">Note Body / Description</label>
+              <textarea
+                id="noteDescription"
+                rows="4"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                placeholder="Add details here..."
+              />
+            </div>
+            {/* --- END of new block --- */}
+          </div>
+        )}
+
+        {isView && event && (
+          <div className="space-y-2">
+            <p className="text-sm text-gray-600"><strong>Event:</strong> {event.title}</p>
+            {/* --- ADDED this block --- */}
+            {event.description && (
+              <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                <strong>Description:</strong> {event.description}
+              </p>
+            )}
+            {/* --- END of new block --- */}
+            <p className="text-sm text-gray-600"><strong>Date:</strong> {moment(event.start).format('lll')}</p>
+            <p className="text-sm text-gray-600"><strong>Type:</strong> <span className="capitalize">{event.type}</span></p>
+          </div>
+        )}
+
+        <div className="flex justify-end items-center gap-3 mt-6">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md">Cancel</button>
+
+          {isNew && (
+            <button type="button" onClick={handleSave} disabled={!title} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md disabled:bg-gray-400">Save Note</button>
+          )}
+
+          {isView && event?.type === 'manual' && isAdmin && (
+            <button type="button" onClick={handleDelete} className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md">Delete Note</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+// --- TeamCalendar (MODIFIED) ---
+const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Modal state
+  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+  const [modalData, setModalData] = useState(null);
+
+  // date/view state so toolbar navigation works reliably
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [currentView, setCurrentView] = useState('month');
+
+  const fetchCalendarData = useCallback(async () => {
+    if (!teamId) return;
+    setLoading(true);
+    try {
+      const tasksQuery = query(collection(db, 'teams', teamId, 'tasks'));
+      const meetingsQuery = query(collection(db, 'teams', teamId, 'announcements'), where('type', '==', 'meeting'));
+      const notesQuery = query(collection(db, 'teams', teamId, 'calendarNotes'));
+
+      const [taskDocs, meetingDocs, noteDocs] = await Promise.all([
+        getDocs(tasksQuery),
+        getDocs(meetingsQuery),
+        getDocs(notesQuery),
+      ]);
+
+      // --- Task events ---
+      const taskEvents = taskDocs.docs
+        .filter(d => d.data().startDate && d.data().endDate) // Ensure both dates exist
+        .map(d => {
+          const data = d.data();
+          const startDate = normalizeValueToDate(data.startDate);
+          const endDate = normalizeValueToDate(data.endDate);
+
+          if (!startDate || !endDate) return null;
+
+          // --- THIS IS THE FIX ---
+          // Use 'ticketNo' (from table) first, then 'title', then ID
+          const title = `Ticket: ${data.ticketNo || data.title || d.id}`;
+          // --- END OF FIX ---
+
+          // Make sure end date is at least the start date for calendar
+          const safeEndDate = (endDate < startDate) ? startDate : endDate;
+
+          return {
+            id: d.id,
+            title: title,
+            start: startDate, 
+            end: safeEndDate,     
+            allDay: true, // Tasks are always all-day
+            type: 'ticket',
+          };
+        })
+        .filter(Boolean); // Remove any null (invalid) events
+
+      // --- Meeting events ---
+      const meetingEvents = meetingDocs.docs.map(d => {
+        const data = d.data();
+        const start = normalizeValueToDate(data.startDateTime) || new Date();
+        const end = normalizeValueToDate(data.endDateTime) || start;
+        
+        // Meetings are NOT all-day
+        return {
+          id: d.id,
+          title: `Meeting: ${data.title || 'Untitled'}`,
+          start,
+          end: (end > start) ? end : new Date(start.getTime() + 30 * 60 * 1000), // Default 30min
+          allDay: false, 
+          type: 'meeting',
+        };
+      });
+
+      // --- Note events ---
+      const noteEvents = noteDocs.docs.map(d => {
+        const data = d.data();
+        const start = normalizeValueToDate(data.start) || new Date();
+        
+        // Notes are all-day
+        return {
+          id: d.id,
+          title: `Note: ${data.title || 'Note'}`,
+          description: data.description || '', // <-- ADDED
+          start: start,
+          end: start, // All-day notes just need a start date
+          allDay: true,
+          type: 'manual',
+        };
+      });
+
+      setEvents([...taskEvents, ...meetingEvents, ...noteEvents]);
+    } catch (err) {
+      console.error("Error fetching calendar data:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [teamId]);
+
+
+  useEffect(() => { fetchCalendarData(); }, [fetchCalendarData, refreshTrigger]);
+
+  // handlers:
+  const handleSelectSlot = useCallback(({ start, end }) => {
+    setModalData({ type: 'new', start, end });
+    if (isAdmin) setIsNoteModalOpen(true);
+  }, [isAdmin]);
+
+  const handleSelectEvent = useCallback((event) => {
+    setModalData({ type: 'view', event });
+    setIsNoteModalOpen(true);
+  }, []);
+
+  const handleDoubleClickEvent = useCallback((event) => {
+    setModalData({ type: 'view', event });
+    setIsNoteModalOpen(true);
+  }, []);
+
+  const handleSaveNote = useCallback(async (title, description, start, end) => { // <-- ADDED description
+    if (!title || !teamId) return;
+    try {
+      const newNote = {
+        title,
+        description, // <-- ADDED
+        start: start instanceof Date ? start : new Date(start),
+        end: end instanceof Date ? end : new Date(end),
+        allDay: true, // Notes are all-day
+        createdAt: serverTimestamp(),
+      };
+      await addDoc(collection(db, 'teams', teamId, 'calendarNotes'), newNote);
+      await fetchCalendarData();
+    } catch (err) {
+      console.error("Error adding manual note:", err);
+    }
+  }, [teamId, fetchCalendarData]);
+
+  const handleDeleteNote = useCallback(async (eventId) => {
+    if (!teamId || !eventId) return;
+    try {
+      await deleteDoc(doc(db, 'teams', teamId, 'calendarNotes', eventId));
+      await fetchCalendarData();
+    } catch (err) {
+      console.error("Error deleting note:", err);
+    }
+  }, [teamId, fetchCalendarData]);
+
+  const eventPropGetter = useCallback((event) => ({
+    style: { cursor: 'pointer' },
+    'data-type': event.type,
+  }), []);
+
+  if (loading) return <Spinner />;
+
+  return (
+    <div style={{ height: 600, padding: '1rem' }}>
+      <Calendar
+        localizer={localizer}
+        events={events}
+        startAccessor="start"
+        endAccessor="end"
+        date={currentDate}
+        view={currentView}
+        onNavigate={(date) => setCurrentDate(date)}
+        onView={(view) => setCurrentView(view)}
+        style={{ height: '100%' }}
+        selectable={true}
+        onSelectSlot={handleSelectSlot}
+        onSelectEvent={handleSelectEvent}
+        onDoubleClickEvent={handleDoubleClickEvent}
+        eventPropGetter={eventPropGetter}
+        popup={true}
+        showMultiDayTimes={true} // This will show multi-day timed events in the time grid
+      />
+
+      <ManualNoteModal
+        isOpen={isNoteModalOpen}
+        onClose={() => setIsNoteModalOpen(false)}
+        modalData={modalData}
+        onSave={handleSaveNote}
+        onDelete={handleDeleteNote}
+        isAdmin={isAdmin}
+      />
+    </div>
+  );
+};
+
+// --- TeamView (main) ---
 const TeamView = () => {
   const { teamId } = useParams();
   const navigate = useNavigate();
@@ -231,268 +542,165 @@ const TeamView = () => {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isAnnounceModalOpen, setIsAnnounceModalOpen] = useState(false);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
-  // const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false); // Handled by Layout
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
-  // *** NEW STATE FOR ENDORSEMENT MODAL ***
   const [isEndorsementModalOpen, setIsEndorsementModalOpen] = useState(false);
 
-
-  // Role Checks
   const isTeamCreator = teamData?.createdBy === currentUser?.uid;
   const currentUserRole = teamData?.roles?.[currentUser?.uid] || 'member';
   const isAdmin = currentUserRole === 'admin' || isTeamCreator;
 
-  // Callbacks & Data Fetching
-  const refreshAnnouncements = useCallback(() => {
-     setAnnouncementRefreshKey(prevKey => prevKey + 1);
-  }, []);
+  const refreshAnnouncements = useCallback(() => { setAnnouncementRefreshKey(k => k + 1); }, []);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsub = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
-      // Re-evaluate authorization or redirect if user logs out while viewing
-      if (!user && teamId) {
-          navigate('/login', { replace: true });
-      }
+      if (!user && teamId) navigate('/login', { replace: true });
     });
-    return unsubscribe;
-  }, [navigate, teamId]); // Added teamId dependency
+    return unsub;
+  }, [navigate, teamId]);
 
+  const fetchTeamAndMembers = useCallback(async () => {
+    if (!teamId) { setError("No team ID provided."); setIsLoading(false); return; }
+    if (!currentUser) { console.log("User not available yet, waiting..."); return; }
 
-  useEffect(() => {
-    const fetchTeamAndMembers = async () => {
-      if (!teamId) { setError("No team ID provided."); setIsLoading(false); return; }
-      if (!currentUser) { console.log("User not available yet, waiting..."); return; } // Wait for user
+    setIsLoading(true); setError(null); setTeamData(null); setMembersDetails([]); setIsAuthorized(false);
 
-      setIsLoading(true); setError(null); setTeamData(null); setMembersDetails([]); setIsAuthorized(false);
+    try {
+      const teamDocRef = doc(db, "teams", teamId);
+      const teamDocSnap = await getDoc(teamDocRef);
+
+      if (!teamDocSnap.exists()) { setError("Team not found."); setIsLoading(false); return; }
+
+      const fetchedTeamData = teamDocSnap.data();
+      const memberUIDs = fetchedTeamData.members || [];
+      const isMember = memberUIDs.some(member =>
+        (typeof member === 'object' && member.uid === currentUser.uid) ||
+        (typeof member ==='string' && member === currentUser.uid)
+      );
+
+      if (!isMember) {
+        console.warn("Access Denied: User not a member.");
+        navigate('/home', { replace: true });
+        setIsLoading(false);
+        return;
+      }
+
+      setIsAuthorized(true);
+      setTeamData({ id: teamDocSnap.id, ...fetchedTeamData });
+
+      const allMemberUIDs = memberUIDs.map(m => typeof m === 'object' ? m.uid : m);
+      const uniqueMemberUIDs = [...new Set(allMemberUIDs)];
+
+      if (uniqueMemberUIDs.length > 0) {
+        const memberPromises = uniqueMemberUIDs.map(uid => getDoc(doc(db, "users", uid)));
+        const memberDocsSnap = await Promise.all(memberPromises);
+
+        const memberInfo = memberDocsSnap.map((userDoc, index) => {
+          const uid = uniqueMemberUIDs[index];
+          return userDoc.exists()
+              ? { uid: uid, ...userDoc.data() }
+              : { uid: uid, displayName: null, email: 'Profile not found' };
+        });
+        setMembersDetails(memberInfo);
+      } else {
+        setMembersDetails([]);
+      }
+    } catch (err) {
+      console.error("Error fetching team/members:", err);
+      setError("Failed to load team data. Please check permissions or network.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [teamId, currentUser, navigate]);
+
+  useEffect(() => { fetchTeamAndMembers(); }, [fetchTeamAndMembers, announcementRefreshKey]);
+
+  const changeRole = async (memberUid, newRole) => {
+      if (!teamData || !currentUser || !isAdmin || teamData.createdBy === memberUid) return;
+      if (!['admin', 'member'].includes(newRole)) return;
+
+      const teamDocRef = doc(db, "teams", teamId);
+      const rolesUpdate = { ...teamData.roles, [memberUid]: newRole };
 
       try {
-        const teamDocRef = doc(db, "teams", teamId);
-        const teamDocSnap = await getDoc(teamDocRef);
-
-        if (!teamDocSnap.exists()) { setError("Team not found."); setIsLoading(false); return; }
-
-        const fetchedTeamData = teamDocSnap.data();
-
-        // Check if current user is a member
-        const memberUIDs = fetchedTeamData.members || [];
-        const isMember = memberUIDs.some(member =>
-             (typeof member === 'object' && member.uid === currentUser.uid) ||
-             (typeof member === 'string' && member === currentUser.uid)
-        );
-
-        if (!isMember) {
-            console.warn("Access Denied: User not a member.");
-            // Consider showing an "Access Denied" message instead of redirecting immediately
-            // setError("You are not authorized to view this team.");
-            navigate('/home', { replace: true }); // Or redirect as before
-            setIsLoading(false);
-            return;
-        }
-
-        setIsAuthorized(true);
-        setTeamData({ id: teamDocSnap.id, ...fetchedTeamData });
-
-        // Fetch details only for actual members listed
-        const actualMemberUIDs = memberUIDs.map(m => typeof m === 'object' ? m.uid : m);
-        if (actualMemberUIDs.length > 0) {
-          const memberPromises = actualMemberUIDs.map(uid => getDoc(doc(db, "users", uid)));
-          const memberDocsSnap = await Promise.all(memberPromises);
-          const memberInfo = memberDocsSnap.map((userDoc, index) => {
-            const uid = actualMemberUIDs[index];
-            return userDoc.exists()
-                 ? { uid: uid, ...userDoc.data() }
-                 : { uid: uid, displayName: null, email: 'Profile not found' }; // Handle missing profiles
-          });
-          setMembersDetails(memberInfo);
-        } else {
-          setMembersDetails([]);
-        }
-
+          await updateDoc(teamDocRef, { roles: rolesUpdate });
+          setTeamData(prev => ({ ...prev, roles: rolesUpdate }));
       } catch (err) {
-        console.error("Error fetching team/members:", err);
-        setError("Failed to load team data. Please check permissions or network.");
-      } finally {
-        setIsLoading(false);
+          console.error("Error updating role:", err);
+          setError("Failed to update member role.");
       }
-    };
-
-     fetchTeamAndMembers(); // Fetch immediately if teamId and currentUser are available
-
-  }, [teamId, currentUser, navigate]); // Rerun when teamId or currentUser changes
-
-  // Function to change member role
-    const changeRole = async (memberUid, newRole) => {
-       if (!teamData || !currentUser || !isAdmin || teamData.createdBy === memberUid) {
-           console.warn("Role change condition not met.");
-           return; // Don't allow changing creator's role or if not admin
-       }
-       if (!['admin', 'member'].includes(newRole)) {
-           console.error("Invalid role specified:", newRole);
-           return;
-       }
-
-       const teamDocRef = doc(db, "teams", teamId);
-       const rolesUpdate = { ...teamData.roles }; // Copy existing roles
-       rolesUpdate[memberUid] = newRole; // Set the new role
-
-       try {
-           await updateDoc(teamDocRef, { roles: rolesUpdate });
-           console.log(`Role for ${memberUid} updated to ${newRole}`);
-           // Optimistically update local state or rely on useEffect refresh
-           setTeamData(prev => ({ ...prev, roles: rolesUpdate }));
-       } catch (err) {
-           console.error("Error updating role:", err);
-           setError("Failed to update member role.");
-       }
-    };
-
-
-  // Refresh member list after invite (could also just refetch everything)
-  const onInviteCompleteRefresh = () => {
-     // Trigger a refetch by changing the dependency key (or implement more granular update)
-     console.log("Invite complete, potentially refreshing member list...");
-     // You might want to refetch just the members or the whole team data
-     // For simplicity, changing announcementRefreshKey also refetches team data in the current setup
-     setAnnouncementRefreshKey(k => k + 1);
   };
 
-  // Open Edit Modal for Announcements/Meetings
-  const openEditModal = (update) => {
-    setEditTarget(update);
-    setIsEditModalOpen(true);
-  };
-
-  const closeEditModal = () => {
-    setEditTarget(null);
-    setIsEditModalOpen(false);
-  };
+  const onInviteCompleteRefresh = () => { fetchTeamAndMembers(); };
+  const openEditModal = (update) => { setEditTarget(update); setIsEditModalOpen(true); };
+  const closeEditModal = () => { setEditTarget(null); setIsEditModalOpen(false); };
 
   return (
     <>
-      <div className="px-4 sm:px-6 lg:px-8 py-8"> {/* Added py-8 */}
-
+      <div className="px-4 sm:px-6 lg:px-8 py-8">
         {isLoading && <Spinner />}
         {error && <div className="text-center text-red-600 bg-red-100 p-4 rounded-md shadow">{error}</div>}
 
         {!isLoading && !error && teamData && isAuthorized && (
-          <>
-            {/* Back Link & Admin Buttons */}
-            <div className="mb-6 flex flex-wrap justify-between items-center gap-y-2"> {/* Added flex-wrap */}
-              <Link to="/home" className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800 hover:underline">
-                &larr; Back to Teams
-              </Link>
-              {/* --- ADDED ENDORSEMENT BUTTON --- */}
-              <div className="flex gap-2 flex-wrap"> {/* Added flex-wrap */}
-                 <button
-                    onClick={() => setIsEndorsementModalOpen(true)}
-                    className="bg-cyan-500 hover:bg-cyan-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md shadow-sm transition-colors"
-                 >
-                     View Endorsements
-                 </button>
-                 {isAdmin && (
-                     <>
-                         <button
-                             onClick={() => setIsAnnounceModalOpen(true)}
-                             className="bg-green-500 hover:bg-green-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md shadow-sm transition-colors"
-                         >
-                             Announce
-                         </button>
-                         <button
-                             onClick={() => setIsScheduleModalOpen(true)}
-                             className="bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md shadow-sm transition-colors"
-                         >
-                             Schedule Meeting
-                         </button>
-                     </>
-                 )}
+          <div className="space-y-8">
+            <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+              <div>
+                <Link to="/home" className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800 hover:underline mb-2">
+                  &larr; Back to Teams
+                </Link>
+                <h1 className="text-3xl font-bold text-gray-900">{teamData.teamName}</h1>
+                <p className="text-base text-gray-600 mt-1">{teamData.description || 'No description provided.'}</p>
+                <p className="text-xs text-gray-500 mt-2">Created: {formatDate(teamData.createdAt, { dateOnly: true }) || 'N/A'}</p>
+              </div>
+
+              <div className="flex-shrink-0 flex gap-2 flex-wrap justify-end">
+                <button onClick={() => setIsEndorsementModalOpen(true)} className="bg-cyan-500 hover:bg-cyan-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md">View Endorsements</button>
+                {isAdmin && (
+                  <>
+                    <button onClick={() => setIsAnnounceModalOpen(true)} className="bg-green-500 hover:bg-green-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md">Announce</button>
+                    <button onClick={() => setIsScheduleModalOpen(true)} className="bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md">Schedule Meeting</button>
+                  </>
+                )}
               </div>
             </div>
 
-            {/* Main Content Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Left Column */}
-              <div className="lg:col-span-2 space-y-6">
-                <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
-                  <h1 className="text-3xl font-bold text-gray-800 mb-2">{teamData.teamName}</h1>
-                  <p className="text-base text-gray-600">{teamData.description || 'No description provided.'}</p>
-                  <p className="text-xs text-gray-500 mt-3">Created: {formatDate(teamData.createdAt, { dateOnly: true }) || 'N/A'}</p>
-                </div>
-                {/* WRAP ANNOUNCEMENTS WITH ADDITIONAL BOTTOM MARGIN TO INCREASE SPACING */}
-                <div className="mb-8">
-                  <AnnouncementsSection
-                    teamId={teamId}
-                    refreshTrigger={announcementRefreshKey}
-                    isAdmin={isAdmin}
-                    onEdit={openEditModal}
-                  />
-                </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <AnnouncementsSection teamId={teamId} refreshTrigger={announcementRefreshKey} isAdmin={isAdmin} onEdit={openEditModal} />
               </div>
-
-              {/* Right Column */}
               <div className="lg:col-span-1">
-                <MembersSection
-                  membersDetails={membersDetails}
-                  teamData={teamData}
-                  currentUserUid={currentUser?.uid}
-                  canManageMembers={isAdmin}
-                  onChangeRole={changeRole}
-                  onInviteClick={() => setIsInviteModalOpen(true)}
-                />
-              </div>
-
-              {/* Bottom Row - Project Table */}
-              {/* INCREASED TOP MARGIN TO ADD MORE SPACING BETWEEN ANNOUNCEMENTS/UPDATES AND THE PROJECT TASKS */}
-              <div className="lg:col-span-3 mt-12">
-                <TeamProjectTable teamId={teamId} />
+                <MembersSection membersDetails={membersDetails} teamData={teamData} currentUserUid={currentUser?.uid} canManageMembers={isAdmin} onChangeRole={changeRole} onInviteClick={() => setIsInviteModalOpen(true)} />
               </div>
             </div>
-          </>
+
+            <div>
+              <h2 className="text-2xl font-semibold text-gray-800 mb-4">Team Calendar</h2>
+              <div className="bg-white rounded-lg shadow border overflow-hidden">
+                <TeamCalendar teamId={teamId} isAdmin={isAdmin} refreshTrigger={announcementRefreshKey} />
+              </div>
+            </div>
+
+            <div>
+              <h2 className="text-2xl font-semibold text-gray-800 mb-4">Team Project Tasks</h2>
+              <TeamProjectTable
+                teamId={teamId}
+                onTaskChange={refreshAnnouncements}
+              />
+            </div>
+            
+          </div>
         )}
-      </div> {/* End of padding container */}
+      </div>
 
-
-      {/* Render Modals (only if authorized) */}
       {isAuthorized && teamId && (
         <>
-          <InviteMemberModal
-            isOpen={isInviteModalOpen}
-            onClose={() => setIsInviteModalOpen(false)}
-            teamId={teamId}
-            onInvited={onInviteCompleteRefresh}
-          />
-          <AnnounceModal
-            isOpen={isAnnounceModalOpen}
-            onClose={() => setIsAnnounceModalOpen(false)}
-            teamId={teamId}
-            onAnnouncementPosted={refreshAnnouncements}
-          />
-          <ScheduleMeetingModal
-            isOpen={isScheduleModalOpen}
-            onClose={() => setIsScheduleModalOpen(false)}
-            teamId={teamId}
-            onMeetingScheduled={refreshAnnouncements}
-          />
-           {/* --- RENDER ENDORSEMENT MODAL --- */}
-           <EndorsementModal
-              isOpen={isEndorsementModalOpen}
-              onClose={() => setIsEndorsementModalOpen(false)}
-              teamId={teamId}
-           />
-          {/* NotificationsModal is handled by MainLayout */}
-          {/* <NotificationsModal isOpen={isNotificationsModalOpen} onClose={() => setIsNotificationsModalOpen(false)} /> */}
-
+          <InviteMemberModal isOpen={isInviteModalOpen} onClose={() => setIsInviteModalOpen(false)} teamId={teamId} onInvited={onInviteCompleteRefresh} />
+          <AnnounceModal isOpen={isAnnounceModalOpen} onClose={() => setIsAnnounceModalOpen(false)} teamId={teamId} onAnnouncementPosted={refreshAnnouncements} />
+          <ScheduleMeetingModal isOpen={isScheduleModalOpen} onClose={() => setIsScheduleModalOpen(false)} teamId={teamId} onMeetingScheduled={refreshAnnouncements} />
+          <EndorsementModal isOpen={isEndorsementModalOpen} onClose={() => setIsEndorsementModalOpen(false)} teamId={teamId} />
           {isEditModalOpen && editTarget && (
-            <EditUpdateModal
-              isOpen={isEditModalOpen}
-              onClose={closeEditModal}
-              teamId={teamId}
-              updateId={editTarget.id}
-              updateType={editTarget.type}
-              initialData={editTarget}
-              onSaved={refreshAnnouncements}
-            />
+            <EditUpdateModal isOpen={isEditModalOpen} onClose={closeEditModal} teamId={teamId} updateId={editTarget.id} updateType={editTarget.type} initialData={editTarget} onSaved={refreshAnnouncements} />
           )}
         </>
       )}

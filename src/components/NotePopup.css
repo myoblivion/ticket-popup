@@ -1,0 +1,11 @@
+/* Add this to your CSS file */
+
+.note-editor a {
+  color: #2563eb; 
+  text-decoration: underline;
+  cursor: text; 
+}
+
+.note-editor a:hover {
+  color: #3b82f6;
+}

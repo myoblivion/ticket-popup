@@ -68,11 +68,19 @@ const UI_STRINGS = [
   'Active',
   'Completed',
   'No active tasks created yet.',
-  'No completed tasks found.'
+  'No completed tasks found.',
+  // --- NEW FILTER STRINGS ---
+  'Filter by Company:',
+  'Filter by Developer:',
+  'Filter by Category:',
+  'All Developers',
+  'All Categories',
+  'Clear Filters',
+  'No tasks match the current filters.'
 ];
 
-const TeamProjectTable = ({ teamId }) => {
-  const [tasks, setTasks] = useState([]);
+const TeamProjectTable = ({ teamId, onTaskChange }) => {
+    const [tasks, setTasks] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isPopupOpen, setIsPopupOpen] = useState(false);
@@ -128,6 +136,13 @@ const TeamProjectTable = ({ teamId }) => {
 
   // --- NEW: Tab State ---
   const [activeTab, setActiveTab] = useState('active'); // 'active' or 'completed'
+  
+  // --- NEW: Filter State ---
+  const [filters, setFilters] = useState({
+    company: '',
+    developer: '',
+    category: ''
+  });
 
   // headers (defined here so translation hook can access it)
   const headers = useMemo(() => [
@@ -172,9 +187,44 @@ const TeamProjectTable = ({ teamId }) => {
   }, [tasks]);
   // --- END UPDATE ---
 
+  // Select tasks based on the active tab
   const tasksToDisplay = useMemo(() => {
     return activeTab === 'active' ? activeTasks : completedTasks;
   }, [activeTab, activeTasks, completedTasks]);
+
+  // --- NEW: Apply Filters ---
+  const filteredTasksToDisplay = useMemo(() => {
+    const { company, developer, category } = filters;
+    
+    if (!company && !developer && !category) {
+      return tasksToDisplay; // No filters, return original list
+    }
+
+    return tasksToDisplay.filter(task => {
+      // Company filter (case-insensitive text search)
+      if (company) {
+        if (!task.company || !task.company.toLowerCase().includes(company.toLowerCase())) {
+          return false;
+        }
+      }
+      
+      // Developer filter (exact match on UID)
+      if (developer) {
+        if (task.developer !== developer) {
+          return false;
+        }
+      }
+      
+      // Category filter (exact match on string)
+      if (category) {
+        if (task.category !== category) {
+          return false;
+        }
+      }
+      
+      return true; // Passed all active filters
+    });
+  }, [tasksToDisplay, filters]);
 
   // Load team members / options, and resolve member UIDs to labels if needed
   useEffect(() => {
@@ -207,31 +257,63 @@ const TeamProjectTable = ({ teamId }) => {
         }
 
         // members can be stored as array of uids OR array of objects { uid, label }
+// members can be stored as array of uids, array of objects {uid, label}, or a mix
         if (data.members && Array.isArray(data.members)) {
-          // check if first member is an object
-          if (data.members.length > 0 && typeof data.members[0] === 'object' && data.members[0].uid) {
-            // already objects
-            setMembersList(data.members.map(m => ({ uid: m.uid, label: m.label || m.name || m.email || m.uid })));
-          } else {
-            // assume array of UIDs: fetch user docs in parallel to get labels
-            const uids = data.members;
-            const resolved = await Promise.all(uids.map(async (uid) => {
-              try {
-                const uSnap = await getDoc(doc(db, 'users', uid));
-                if (uSnap.exists()) {
-                  const udata = uSnap.data();
-                  const label = udata.displayName || udata.name || udata.email || uid;
-                  return { uid, label };
-                } else {
-                  return { uid, label: uid };
-                }
-              } catch (err) {
-                console.error('Failed to load user for uid', uid, err);
-                return { uid, label: uid };
-              }
-            }));
-            setMembersList(resolved);
-          }
+          const resolved = await Promise.all(data.members.map(async (member) => {
+            let memberUid;
+            let existingLabel = null;
+
+            // Check if 'member' is an object {uid, label} or just a string uid
+            if (typeof member === 'object' && member !== null && member.uid) {
+              memberUid = member.uid;
+              existingLabel = member.label || member.name || member.email;
+            } else if (typeof member === 'string') {
+              memberUid = member;
+            } else {
+              // Invalid member data
+              console.warn('Skipping invalid member data:', member);
+              return null; // Will be filtered out later
+            }
+            
+            // Guard against empty/invalid UIDs
+            if (!memberUid) {
+                console.warn('Skipping member with empty UID:', member);
+                return null;
+            }
+
+            // If we already have a good label from the member object, don't re-fetch
+            if (existingLabel) {
+              return { uid: memberUid, label: existingLabel };
+            }
+
+            // If we only have a UID, fetch the user doc
+            try {
+              // **THE FIX**: memberUid is now guaranteed to be a string
+              const uSnap = await getDoc(doc(db, 'users', memberUid));
+              if (uSnap.exists()) {
+                const udata = uSnap.data();
+                const label = udata.displayName || udata.name || udata.email || memberUid;
+                return { uid: memberUid, label };
+              } else {
+                return { uid: memberUid, label: memberUid }; // Fallback
+  _             }
+            } catch (err) {
+              // Log the original problematic item (string or object) for better debugging
+              console.error('Failed to load user data for:', member, err);
+              return { uid: memberUid, label: memberUid }; // Fallback
+            }
+          }));
+          
+          // Filter out any nulls from invalid data
+          const validMembers = resolved.filter(m => m !== null);
+          
+          // --- FIX: Filter for unique UIDs ---
+          const uniqueMembers = Array.from(
+            new Map(validMembers.map(m => [m.uid, m])).values()
+          );
+          setMembersList(uniqueMembers);
+          // --- END FIX ---
+
         } else {
           // no members field -> use defaults
           setMembersList(DEFAULT_PLACEHOLDERS.members);
@@ -257,7 +339,13 @@ const TeamProjectTable = ({ teamId }) => {
 
             if (data.members && Array.isArray(data.members)) {
               if (data.members.length > 0 && typeof data.members[0] === 'object' && data.members[0].uid) {
-                setMembersList(data.members.map(m => ({ uid: m.uid, label: m.label || m.name || m.email || m.uid })));
+                // --- FIX: De-duplicate object array ---
+                const membersFromObjects = data.members.map(m => ({ uid: m.uid, label: m.label || m.name || m.email || m.uid }));
+                const uniqueMembersFromObjects = Array.from(
+                  new Map(membersFromObjects.map(m => [m.uid, m])).values()
+                );
+                setMembersList(uniqueMembersFromObjects);
+                // --- END FIX ---
               } else {
                 const uids = data.members;
                 const resolved = await Promise.all(uids.map(async (uid) => {
@@ -275,7 +363,12 @@ const TeamProjectTable = ({ teamId }) => {
                     return { uid, label: uid };
                   }
                 }));
-                setMembersList(resolved);
+                // --- FIX: De-duplicate resolved UID array ---
+                const uniqueMembersFallback = Array.from(
+                  new Map(resolved.map(m => [m.uid, m])).values()
+                );
+                setMembersList(uniqueMembersFallback);
+                // --- END FIX ---
               }
             } else {
               setMembersList(DEFAULT_PLACEHOLDERS.members);
@@ -618,17 +711,17 @@ const TeamProjectTable = ({ teamId }) => {
       if (ref.current) {
         // Delay focus slightly to ensure element is fully rendered and ready
         setTimeout(() => {
-           try {
-            ref.current.focus();
-            // Move cursor to end for inputs/textareas
-            const el = ref.current;
-            if (el.setSelectionRange && typeof el.value === 'string') {
-              const pos = el.value.length;
-              el.setSelectionRange(pos, pos);
-            } else if (el.select && !isSelect) { // select() is often for inputs, not dropdowns
-              el.select();
-            }
-          } catch (e) { console.warn("Auto-focus failed:", e); }
+            try {
+              ref.current.focus();
+              // Move cursor to end for inputs/textareas
+              const el = ref.current;
+              if (el.setSelectionRange && typeof el.value === 'string') {
+                const pos = el.value.length;
+                el.setSelectionRange(pos, pos);
+              } else if (el.select && !isSelect) { // select() is often for inputs, not dropdowns
+                el.select();
+              }
+            } catch (e) { console.warn("Auto-focus failed:", e); }
         }, 50);
       }
     }
@@ -717,6 +810,33 @@ const TeamProjectTable = ({ teamId }) => {
 
   // Toggle table expansion
   const toggleAllColumns = () => setIsAllExpanded(prev => !prev);
+  
+  // --- NEW: Filter Handlers ---
+  const handleFilterChange = useCallback((key, value) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+  }, []);
+
+  const clearFilters = useCallback(() => {
+    setFilters({ company: '', developer: '', category: '' });
+  }, []);
+
+  // --- NEW: Task Creation Handler ---
+  const handleTaskCreated = () => {
+    // This function is now called by the CreateTaskModal
+    // when it successfully creates a task OR when it's just closed.
+    
+    // 1. Close the modal
+    setIsCreateTaskModalOpen(false);
+    
+    // 2. Call the onTaskChange prop (which is refreshAnnouncements from TeamView)
+    if (onTaskChange) {
+      onTaskChange(); // This tells TeamView to refresh the calendar
+    }
+    
+    // You could also add code here to refresh the table itself if needed,
+    // but the onSnapshot listener should handle that automatically.
+  };
+
 
   // --- Add New Option Logic ---
 
@@ -785,8 +905,8 @@ const TeamProjectTable = ({ teamId }) => {
 
           if (!currentStatuses.includes(value)) { // Only add if it's truly new
             const completeStatus = currentStatuses.pop(); // Remove the last (assumed complete) status
-            currentStatuses.push(value);              // Add the new status
-            if (completeStatus !== undefined) {       // Add the complete status back at the end
+            currentStatuses.push(value);               // Add the new status
+            if (completeStatus !== undefined) {   // Add the complete status back at the end
               currentStatuses.push(completeStatus);
             }
             // Overwrite the entire array in Firestore
@@ -977,15 +1097,15 @@ const TeamProjectTable = ({ teamId }) => {
         if (members.length > 0 && typeof members[0] === 'object') {
              // Already objects, just add if not present
              if (!members.some(m => m.uid === uid)) {
-                newMembers = [...members, { uid, label }];
+                  newMembers = [...members, { uid, label }];
              } else {
-                newMembers = members; // Already exists
+                  newMembers = members; // Already exists
              }
         } else {
              // Convert existing UIDs to objects and add the new one
              newMembers = members.map(mUid => ({ uid: mUid, label: mUid }));
              if (!newMembers.some(m => m.uid === uid)) {
-                 newMembers.push({ uid, label });
+                  newMembers.push({ uid, label });
              }
         }
 
@@ -1116,14 +1236,14 @@ const TeamProjectTable = ({ teamId }) => {
       // Fallback for any other INLINE_EDITABLE_COLUMNS (shouldn't happen with current config)
       return (
          <input
-            ref={inputRef}
-            type="text"
-            value={editingValue}
-            onChange={(e) => setEditingValue(e.target.value)}
-            onBlur={(e) => handleBlurSave(task.id, header.key, e.target.value)}
-            onKeyDown={handleInputKeyDown}
-            className="absolute inset-0 w-full h-full px-3 py-2 border-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm z-10"
-          />
+           ref={inputRef}
+           type="text"
+           value={editingValue}
+           onChange={(e) => setEditingValue(e.target.value)}
+           onBlur={(e) => handleBlurSave(task.id, header.key, e.target.value)}
+           onKeyDown={handleInputKeyDown}
+           className="absolute inset-0 w-full h-full px-3 py-2 border-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm z-10"
+         />
       );
     }
 
@@ -1151,10 +1271,10 @@ const TeamProjectTable = ({ teamId }) => {
         const textToShow = t(label) || '-';
         return (
              <div
-                className={`px-4 py-2.5 text-sm text-gray-700 ${isAllExpanded ? 'whitespace-pre-wrap break-words' : 'truncate'}`}
-                title={textToShow}
+               className={`px-4 py-2.5 text-sm text-gray-700 ${isAllExpanded ? 'whitespace-pre-wrap break-words' : 'truncate'}`}
+               title={textToShow}
              >
-                {textToShow}
+               {textToShow}
              </div>
         );
      }
@@ -1221,6 +1341,66 @@ const TeamProjectTable = ({ teamId }) => {
               + {t('New Task')}
             </button>
           </div>
+        </div>
+
+        {/* --- NEW: Filter Bar --- */}
+        <div className="px-6 py-3 border-b border-gray-200 bg-gray-50 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <span className="text-sm font-medium text-gray-700">Filters:</span>
+          
+          {/* Company Filter */}
+          <div className="flex items-center gap-1.5">
+            <label htmlFor="filter-company" className="text-sm text-gray-600">{t('Filter by Company:')}</label>
+            <input
+              type="text"
+              id="filter-company"
+              value={filters.company}
+              onChange={(e) => handleFilterChange('company', e.target.value)}
+              placeholder="Company name..."
+              className="text-sm py-1 px-2 rounded border border-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          
+          {/* Developer Filter */}
+          <div className="flex items-center gap-1.5">
+            <label htmlFor="filter-developer" className="text-sm text-gray-600">{t('Filter by Developer:')}</label>
+            <select
+              id="filter-developer"
+              value={filters.developer}
+              onChange={(e) => handleFilterChange('developer', e.target.value)}
+              className="text-sm py-1 px-2 rounded border border-gray-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="">{t('All Developers')}</option>
+              {membersList.map(m => (
+                <option key={m.uid} value={m.uid}>{t(m.label)}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Category Filter */}
+          <div className="flex items-center gap-1.5">
+            <label htmlFor="filter-category" className="text-sm text-gray-600">{t('Filter by Category:')}</label>
+            <select
+              id="filter-category"
+              value={filters.category}
+              onChange={(e) => handleFilterChange('category', e.target.value)}
+              className="text-sm py-1 px-2 rounded border border-gray-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="">{t('All Categories')}</option>
+              {categoriesList.map(c => (
+                <option key={c} value={c}>{t(c)}</option>
+              ))}
+            </select>
+          </div>
+          
+          {/* Clear Button */}
+          {(filters.company || filters.developer || filters.category) && (
+            <button
+              onClick={clearFilters}
+              className="text-sm text-blue-600 hover:underline focus:outline-none"
+            >
+              {t('Clear Filters')}
+            </button>
+          )}
         </div>
 
         {/* Tabs Section */}
@@ -1307,19 +1487,24 @@ const TeamProjectTable = ({ teamId }) => {
               )}
 
               {/* Empty State */}
-              {!isLoading && !error && tasksToDisplay.length === 0 && (
+              {!isLoading && !error && filteredTasksToDisplay.length === 0 && (
                 <tr>
                   <td colSpan={headers.length} className="text-center py-10 text-gray-500">
-                    {activeTab === 'active'
-                      ? t('No active tasks created yet.')
-                      : t('No completed tasks found.')
-                    }
+                    {/* --- UPDATED LOGIC --- */}
+                    {tasksToDisplay.length > 0 ? (
+                      t('No tasks match the current filters.') // Filters are active but found nothing
+                    ) : (
+                      activeTab === 'active'
+                        ? t('No active tasks created yet.') // Tab is genuinely empty
+                        : t('No completed tasks found.')  // Tab is genuinely empty
+                    )}
+                    {/* --- END UPDATE --- */}
                   </td>
                 </tr>
               )}
 
               {/* Task Rows */}
-              {!isLoading && tasksToDisplay.map(task => (
+              {!isLoading && filteredTasksToDisplay.map(task => (
                 <tr key={task.id} className="group hover:bg-gray-50 transition-colors duration-100 relative">
                   {headers.map(header => {
                     const cellKey = getCellKey(task.id, header.key);
@@ -1389,14 +1574,15 @@ const TeamProjectTable = ({ teamId }) => {
         </div>
       )}
 
+      {/* --- THIS IS THE FIX --- */}
       {/* Create Task Modal */}
       <CreateTaskModal
         isOpen={isCreateTaskModalOpen}
-        onClose={() => setIsCreateTaskModalOpen(false)}
+        onClose={handleTaskCreated} 
         teamId={teamId}
-        // onTaskCreated might be useful later, e.g., to highlight the new row
-        onTaskCreated={() => { console.log('Task created'); }}
+        onTaskCreated={handleTaskCreated}
       />
+      {/* --- END OF FIX --- */}
 
       {/* Add New Option Modal */}
       {isAddOptionOpen && addOptionMeta && (
@@ -1487,7 +1673,7 @@ function OptionsEditorModal({
   statusOptions,
   persistTeamArrayField, // (fieldName, array) => Promise<void>
   saveMemberLabel,       // (uid, newLabel) => Promise<void>
-  removeMember,          // (uid) => Promise<void>
+  removeMember,       // (uid) => Promise<void>
   addMemberObject,       // (uid, label) => Promise<void>
   // Optimistic update callbacks (optional now)
   onCategoriesChange,
@@ -1497,8 +1683,8 @@ function OptionsEditorModal({
   onStatusOptionsChange,
 }) {
   const [tab, setTab] = useState('categories'); // 'categories' | 'types' | 'priorities' | 'statuses' | 'members'
-  const [items, setItems] = useState([]);        // Current list being edited (strings or member objects)
-  const [newValue, setNewValue] = useState('');   // Input for adding new items
+  const [items, setItems] = useState([]);       // Current list being edited (strings or member objects)
+  const [newValue, setNewValue] = useState('');     // Input for adding new items
   const [editingIndex, setEditingIndex] = useState(null); // Index of item being edited
   const [editingValueLocal, setEditingValueLocal] = useState(''); // Local state for the item being edited
   const [modalError, setModalError] = useState(''); // Error specific to this modal
@@ -1568,7 +1754,7 @@ function OptionsEditorModal({
      }
   };
 
-   const handleRemoveMember = async (uid) => {
+  const handleRemoveMember = async (uid) => {
      setModalError('');
      setIsSaving(true);
      try {
@@ -1581,7 +1767,7 @@ function OptionsEditorModal({
      }
   };
 
-   const handleAddMemberObject = async (uid, label) => {
+  const handleAddMemberObject = async (uid, label) => {
      setModalError('');
      setIsSaving(true);
      try {
@@ -1703,11 +1889,11 @@ function OptionsEditorModal({
     await handlePersistArray(fieldName, next);
   };
 
-   const cancelEdit = () => {
-        setEditingIndex(null);
-        setEditingValueLocal('');
-        setModalError('');
-    };
+  const cancelEdit = () => {
+     setEditingIndex(null);
+     setEditingValueLocal('');
+     setModalError('');
+  };
 
   const handleRemove = async (idx) => {
     if (isSaving) return; // Prevent double actions
@@ -1821,6 +2007,7 @@ function OptionsEditorModal({
           ) : (
             <>
               <button className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-xs hover:bg-yellow-200 disabled:opacity-50" onClick={() => startEdit(idx)} disabled={isSaving}>Edit</button>
+
               <button className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200 disabled:opacity-50" onClick={() => handleRemove(idx)} disabled={isSaving}>Remove</button>
             </>
           )}
@@ -1977,7 +2164,7 @@ function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
       // 3. Check if user is already a member (handle both UID array and object array)
       const isAlreadyMember = members.some(member =>
           (typeof member === 'object' && member.uid === invitedUserId) || // Check object array
-          (typeof member === 'string' && member === invitedUserId)        // Check UID string array
+          (typeof member === 'string' && member === invitedUserId)     // Check UID string array
       );
 
       if (isAlreadyMember) {
@@ -1989,7 +2176,7 @@ function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
       // 4. Create the invitation notification for the invited user
       const senderName = currentUser.displayName || currentUser.email || 'A team member';
       await addDoc(collection(db, 'notifications'), {
-        userId: invitedUserId,        // Recipient
+        userId: invitedUserId,       // Recipient
         type: 'INVITATION',
         senderId: currentUser.uid,
         senderName: senderName,
@@ -2031,8 +2218,8 @@ function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
       {/* Modal Content */}
       <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6 relative">
-          {/* Close Button */}
-         <button onClick={handleClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 focus:outline-none" disabled={isInviting}>&times;</button>
+         {/* Close Button */}
+        <button onClick={handleClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 focus:outline-none" disabled={isInviting}>&times;</button>
         {/* Header */}
         <div className="mb-4">
           <h3 className="text-xl font-semibold text-gray-800">Invite Member</h3>
@@ -2045,20 +2232,20 @@ function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
 
         {/* Input Field */}
         {!success && ( // Hide input after success
-            <div className="space-y-4">
-            <div>
-                <label htmlFor="inviteEmail" className="sr-only">User's Email</label>
-                <input
-                type="email"
-                id="inviteEmail"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="e.g., teammate@example.com"
-                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                disabled={isInviting}
-                />
-            </div>
-            </div>
+           <div className="space-y-4">
+           <div>
+               <label htmlFor="inviteEmail" className="sr-only">User's Email</label>
+               <input
+               type="email"
+               id="inviteEmail"
+               value={email}
+               onChange={(e) => setEmail(e.target.value)}
+               placeholder="e.g., teammate@example.com"
+               className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+               disabled={isInviting}
+               />
+           </div>
+           </div>
         )}
 
         {/* Action Buttons */}

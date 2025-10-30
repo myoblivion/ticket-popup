@@ -48,17 +48,29 @@ const CreateTaskModal = ({ isOpen, onClose, teamId, onTaskCreated }) => {
           const teamData = teamSnap.data();
           const members = teamData.members || []; // Can be array of UIDs or objects
 
+          // First, get a clean array of just UIDs.
+          const memberUIDs = members
+            .map(member => {
+              if (typeof member === 'object' && member.uid) {
+                return member.uid;
+              }
+              if (typeof member === 'string') {
+                return member;
+              }
+              return null; // Invalid entry
+            })
+            .filter(Boolean); // Remove any null/undefined entries
+
+          // --- FIX #1: Ensure all UIDs are unique before fetching ---
+          const uniqueMemberUIDs = [...new Set(memberUIDs)];
+          // --- END OF FIX #1 ---
+
+          // Now, fetch each user doc using the clean, unique UID list
           let resolvedMembers = [];
-          if (members.length > 0 && typeof members[0] === 'object' && members[0].uid) {
-            // Already objects: { uid, label }
-            resolvedMembers = members.map(m => ({
-              uid: m.uid,
-              label: m.label || m.name || m.email || m.uid // Use label, fallback to other fields
-            }));
-          } else if (members.length > 0) {
-            // Array of UIDs: Fetch each user doc
+          if (uniqueMemberUIDs.length > 0) {
             resolvedMembers = await Promise.all(
-              members.map(async (uid) => {
+              uniqueMemberUIDs.map(async (uid) => { // Use unique list
+                // uid is now guaranteed to be a string
                 const userDoc = await getDoc(doc(db, 'users', uid));
                 if (userDoc.exists()) {
                   const udata = userDoc.data();
@@ -69,6 +81,7 @@ const CreateTaskModal = ({ isOpen, onClose, teamId, onTaskCreated }) => {
               })
             );
           }
+          
           setTeamMembers(resolvedMembers);
         }
       } catch (err) {
@@ -175,8 +188,16 @@ const CreateTaskModal = ({ isOpen, onClose, teamId, onTaskCreated }) => {
         // Continue anyway, just assign them
     }
 
-    // Add new member to our local state for the dropdowns
-    setTeamMembers(prev => [...prev, { uid: invitedUid, label: invitedLabel }]);
+    // --- FIX #2: Check for duplicates before adding to local state ---
+    setTeamMembers(prev => {
+      // Check if user is already in the list
+      if (prev.some(member => member.uid === invitedUid)) {
+        return prev; // Return the list unchanged
+      }
+      // Otherwise, add the new user
+      return [...prev, { uid: invitedUid, label: invitedLabel }];
+    });
+    // --- END OF FIX #2 ---
     
     // Automatically assign the newly invited user to the correct field
     if (inviteMeta && typeof inviteMeta.onInvite === 'function') {
@@ -248,20 +269,20 @@ const CreateTaskModal = ({ isOpen, onClose, teamId, onTaskCreated }) => {
 
             {/* Type */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-               <div>
+                <div>
                 <label htmlFor="type" className="block text-sm font-medium text-gray-700 mb-1">Type</label>
                 <select id="type" value={type} onChange={e => { setType(e.target.value); if(e.target.value !== 'CREATE_NEW') setNewType(''); }} className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500 bg-white">
-                   <option value="">Select Type</option>
-                   {placeholderTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                   <option value="CREATE_NEW">-- Create New --</option>
+                    <option value="">Select Type</option>
+                    {placeholderTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                    <option value="CREATE_NEW">-- Create New --</option>
                 </select>
-               </div>
-               {type === 'CREATE_NEW' && (
-                 <div>
-                   <label htmlFor="newType" className="block text-sm font-medium text-gray-700 mb-1">New Type Name</label>
-                   <input type="text" id="newType" value={newType} onChange={e => setNewType(e.target.value)} className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500" required/>
-                 </div>
-               )}
+                </div>
+                {type === 'CREATE_NEW' && (
+                  <div>
+                    <label htmlFor="newType" className="block text-sm font-medium text-gray-700 mb-1">New Type Name</label>
+                    <input type="text" id="newType" value={newType} onChange={e => setNewType(e.target.value)} className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500" required/>
+                  </div>
+                )}
             </div>
 
             {/* Status */}
@@ -277,72 +298,72 @@ const CreateTaskModal = ({ isOpen, onClose, teamId, onTaskCreated }) => {
 
             {/* Ticket # & Company */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-               <div>
-                 <label htmlFor="ticketNo" className="block text-sm font-medium text-gray-700 mb-1">Ticket #</label>
-                 <input type="text" id="ticketNo" value={ticketNo} onChange={e => setTicketNo(e.target.value)} className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"/>
-               </div>
-               <div>
-                 <label htmlFor="company" className="block text-sm font-medium text-gray-700 mb-1">Company</label>
-                 <input type="text" id="company" value={company} onChange={e => setCompany(e.target.value)} className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"/>
-               </div>
+                <div>
+                  <label htmlFor="ticketNo" className="block text-sm font-medium text-gray-700 mb-1">Ticket #</label>
+                  <input type="text" id="ticketNo" value={ticketNo} onChange={e => setTicketNo(e.target.value)} className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"/>
+                </div>
+                <div>
+                  <label htmlFor="company" className="block text-sm font-medium text-gray-700 mb-1">Company</label>
+                  <input type="text" id="company" value={company} onChange={e => setCompany(e.target.value)} className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"/>
+                </div>
             </div>
 
             {/* Inquiry Details */}
             <div>
-               <label htmlFor="inquiryDetails" className="block text-sm font-medium text-gray-700 mb-1">Inquiry Details *</label>
-               <textarea id="inquiryDetails" value={inquiryDetails} onChange={e => setInquiryDetails(e.target.value)} rows="3" className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500" required/>
+                <label htmlFor="inquiryDetails" className="block text-sm font-medium text-gray-700 mb-1">Inquiry Details *</label>
+                <textarea id="inquiryDetails" value={inquiryDetails} onChange={e => setInquiryDetails(e.target.value)} rows="3" className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500" required/>
             </div>
 
             {/* Assignees (CS, QA, Dev) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-               {/* CS Manager */}
-               <div>
-                   <label htmlFor="csManager" className="block text-sm font-medium text-gray-700 mb-1">CS Manager</label>
-                   <select 
-                     id="csManager" 
-                     value={csManager} 
-                     onChange={e => handleMemberSelectChange(e.target.value, setCsManager)} 
-                     className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500 bg-white mb-1"
-                   >
-                       {renderMemberOptions()}
-                   </select>
-               </div>
-               {/* QA Manager */}
-               <div>
-                   <label htmlFor="qaManager" className="block text-sm font-medium text-gray-700 mb-1">QA Manager</label>
-                   <select 
-                     id="qaManager" 
-                     value={qaManager} 
-                     onChange={e => handleMemberSelectChange(e.target.value, setQaManager)} 
-                     className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500 bg-white mb-1"
-                   >
-                       {renderMemberOptions()}
-                   </select>
-               </div>
-               {/* Developer */}
-               <div>
-                   <label htmlFor="developer" className="block text-sm font-medium text-gray-700 mb-1">Developer</label>
-                   <select 
-                     id="developer" 
-                     value={developer} 
-                     onChange={e => handleMemberSelectChange(e.target.value, setDeveloper)} 
-                     className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500 bg-white mb-1"
-                   >
-                       {renderMemberOptions()}
-                   </select>
-               </div>
+                {/* CS Manager */}
+                <div>
+                    <label htmlFor="csManager" className="block text-sm font-medium text-gray-700 mb-1">CS Manager</label>
+                    <select 
+                      id="csManager" 
+                      value={csManager} 
+                      onChange={e => handleMemberSelectChange(e.target.value, setCsManager)} 
+                      className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500 bg-white mb-1"
+                    >
+                        {renderMemberOptions()}
+                    </select>
+                </div>
+                {/* QA Manager */}
+                <div>
+                    <label htmlFor="qaManager" className="block text-sm font-medium text-gray-700 mb-1">QA Manager</label>
+                    <select 
+                      id="qaManager" 
+                      value={qaManager} 
+                      onChange={e => handleMemberSelectChange(e.target.value, setQaManager)} 
+                      className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500 bg-white mb-1"
+                    >
+                        {renderMemberOptions()}
+                    </select>
+                </div>
+                {/* Developer */}
+                <div>
+                    <label htmlFor="developer" className="block text-sm font-medium text-gray-700 mb-1">Developer</label>
+                    <select 
+                      id="developer" 
+                      value={developer} 
+                      onChange={e => handleMemberSelectChange(e.target.value, setDeveloper)} 
+                      className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500 bg-white mb-1"
+                    >
+                        {renderMemberOptions()}
+                    </select>
+                </div>
             </div>
 
             {/* Dates */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-               <div>
-                   <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-                   <input type="date" id="startDate" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"/>
-               </div>
-               <div>
-                   <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-                   <input type="date" id="endDate" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full p-2 border rounded focus:ring-blue-5J00 focus:border-blue-500"/>
-               </div>
+                <div>
+                    <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                    <input type="date" id="startDate" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"/>
+                </div>
+                <div>
+                    <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                    <input type="date" id="endDate" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"/>
+                </div>
             </div>
 
           </form>

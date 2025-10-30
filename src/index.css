@@ -1,3 +1,74 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+
+/* Add this to your global index.css or App.css file.
+  This overrides react-big-calendar's default styles with a modern, Tailwind-inspired look.
+*/
+
+/* --- Toolbar Buttons --- */
+.rbc-toolbar {
+  @apply mb-4 flex flex-col sm:flex-row items-center gap-2;
+}
+
+.rbc-toolbar .rbc-toolbar-label {
+  @apply text-xl font-semibold text-gray-800 flex-grow text-center sm:text-left;
+}
+
+.rbc-btn-group {
+  @apply flex items-center gap-1;
+}
+
+.rbc-toolbar button {
+  @apply px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm transition-colors;
+}
+
+.rbc-toolbar button:hover,
+.rbc-toolbar button:focus {
+  @apply bg-gray-100 text-gray-900 outline-none ring-2 ring-blue-500 ring-offset-0;
+}
+
+.rbc-toolbar button.rbc-active {
+  @apply bg-blue-600 text-white border-blue-600 shadow-inner;
+}
+
+/* --- Calendar Grid --- */
+.rbc-header {
+  @apply px-2 py-2 text-sm font-semibold text-gray-600 bg-gray-50 border-b border-gray-200;
+  text-align: left; /* Ensure headers align left */
+}
+
+.rbc-day-bg {
+  @apply border-l border-gray-200;
+}
+.rbc-day-bg:first-child {
+  border-left: 0;
+}
+
+/* --- "Today" Cell --- */
+.rbc-today {
+  @apply bg-blue-50;
+}
+
+/* --- Event Colors --- */
+.rbc-event {
+  @apply p-1.5 text-sm rounded-lg border-0 cursor-pointer;
+  background-color: #3b82f6; /* Default: blue-500 */
+}
+
+/* Custom types for our events */
+.rbc-event[data-type="ticket"] {
+  background-color: #6366f1; /* indigo-500 */
+}
+.rbc-event[data-type="meeting"] {
+  background-color: #a855f7; /* purple-500 */
+}
+.rbc-event[data-type="manual"] {
+  background-color: #14b8a6; /* teal-500 */
+}
+
+/* --- "Show More" Link --- */
+.rbc-show-more {
+  @apply text-sm font-medium text-blue-600 hover:text-blue-800;
+}

@@ -1,207 +1,96 @@
+// NotePopup.jsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { db, storage } from '../firebaseConfig'; // Assumes storage is exported from your config
+import { db, storage } from '../firebaseConfig';
 import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
-import {
-  ref,
-  uploadBytesResumable,
-  getDownloadURL,
-  deleteObject
-} from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
+import './NotePopup.css';
 
-// Small spinners
+/* ---------- Small spinners ---------- */
 const Spinner = () => <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>;
 const MiniSpinner = () => <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>;
 
-// ---------------- Modal Shell (overlay + center + scroll lock) ----------------
+/* ---------- ModalShell (overlay & scroll lock) ---------- */
 const ModalShell = ({ children, onClose, width = 1000, maxWidth = '90vw', maxHeight = '90vh' }) => {
   useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden'; // prevent background scroll
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', onKey);
-    };
+    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey); };
   }, [onClose]);
 
   return (
-    <div
-      aria-modal="true"
-      role="dialog"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '20px',
-      }}
-    >
-      {/* Overlay */}
-      <div
-        onClick={onClose}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          backgroundColor: 'rgba(0,0,0,0.45)',
-          zIndex: 1000,
-        }}
-      />
-
-      {/* Content container */}
-      <div
-        style={{
-          position: 'relative',
-          zIndex: 1001,
-          width: width,
-          maxWidth: maxWidth,
-          maxHeight: maxHeight,
-          height: '80vh',
-        }}
-      >
-        {children}
-      </div>
+    <div aria-modal="true" role="dialog" style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)' }} />
+      <div style={{ position: 'relative', zIndex: 1001, width, maxWidth, maxHeight, height: '80vh' }}>{children}</div>
     </div>
   );
 };
 
-// ---------------- Editor Toolbar ----------------
-const EditorToolbar = ({
-  onFormat,
-  onInsertLink,
-  // Props for the new link input
-  showLinkInput,
-  linkUrl,
-  setLinkUrl,
-  onApplyLink,
-  onCancelLink
-}) => {
-  // Use onMouseDown to avoid editor blur
-  const handleMouseDown = (e, command, value = null) => {
-    e.preventDefault();
-    onFormat(command, value);
-  };
+/* ---------- Editor toolbar ---------- */
+const EditorToolbar = ({ onFormat, onInsertLink, showLinkInput, linkUrl, setLinkUrl, onApplyLink, onCancelLink }) => {
+  const btn = { padding: '4px 8px', border: '1px solid #ccc', borderRadius: 4, cursor: 'pointer', minWidth: 30, background: 'white' };
+  const select = { padding: 4, border: '1px solid #ccc', borderRadius: 4, background: 'white' };
+  const colorInputStyle = { padding: 0, border: 'none', width: 30, height: 30, cursor: 'pointer', background: 'transparent' };
+  const linkInputStyle = { border: '1px solid #9ca3af', borderRadius: 4, padding: '4px 6px', fontSize: '0.875rem', outline: 'none' };
 
-  const handleLink = (e) => {
-    e.preventDefault();
-    onInsertLink();
-  };
-
-  const handleColorChange = (e) => {
-    e.preventDefault();
-    onFormat('foreColor', e.target.value);
-  };
-
-  const handleSizeChange = (e) => {
-    e.preventDefault();
-    onFormat('fontSize', e.target.value);
-  };
-
-  const handleApplyLink = (e) => {
-    e.preventDefault();
-    onApplyLink();
-  };
-
-  const btnStyle = {
-    padding: '4px 8px',
-    border: '1px solid #ccc',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    minWidth: '30px',
-    backgroundColor: 'white'
-  };
-
-  const selectStyle = {
-    padding: '4px',
-    border: '1px solid #ccc',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    backgroundColor: 'white',
-  };
-
-  const colorInputStyle = {
-    padding: 0,
-    border: 'none',
-    width: '30px',
-    height: '30px',
-    cursor: 'pointer',
-    backgroundColor: 'transparent',
-    verticalAlign: 'middle'
-  };
-
-  const linkInputStyle = {
-    border: '1px solid #9ca3af',
-    borderRadius: '4px',
-    padding: '4px 6px',
-    fontSize: '0.875rem',
-    outline: 'none',
-  };
-
+  const handleMouseDown = (e, cmd, val = null) => { e.preventDefault(); onFormat(cmd, val); };
   return (
-    <div style={{
-      display: 'flex',
-      gap: '8px',
-      padding: '8px',
-      borderBottom: '1px solid #e5e7eb',
-      flexWrap: 'wrap',
-      backgroundColor: '#f9fafb',
-      borderRadius: '0.375rem 0.375rem 0 0',
-      position: 'relative'
-    }}>
-      <button onMouseDown={(e) => handleMouseDown(e, 'bold')} style={btnStyle} title="Bold"><b>B</b></button>
-      <button onMouseDown={(e) => handleMouseDown(e, 'italic')} style={btnStyle} title="Italic"><i>I</i></button>
-      <button onMouseDown={(e) => handleMouseDown(e, 'underline')} style={btnStyle} title="Underline"><u>U</u></button>
-      <button onMouseDown={(e) => handleMouseDown(e, 'strikeThrough')} style={btnStyle} title="Strikethrough"><s style={{ textDecoration: 'line-through' }}>S</s></button>
+    <div style={{ display: 'flex', gap: 8, padding: 8, borderBottom: '1px solid #e5e7eb', flexWrap: 'wrap', background: '#f9fafb', position: 'relative' }}>
+      <button onMouseDown={(e) => handleMouseDown(e, 'bold')} style={btn}><b>B</b></button>
+      <button onMouseDown={(e) => handleMouseDown(e, 'italic')} style={btn}><i>I</i></button>
+      <button onMouseDown={(e) => handleMouseDown(e, 'underline')} style={btn}><u>U</u></button>
+      <button onMouseDown={(e) => handleMouseDown(e, 'strikeThrough')} style={btn}><s>S</s></button>
 
-      <select onMouseDown={e => e.preventDefault()} onChange={handleSizeChange} style={selectStyle} title="Font Size">
+      {/* *
+        * THE FIX IS HERE: 
+        * I removed onMouseDown={e => e.preventDefault()} from this <select> tag.
+        *
+      */}
+      <select onChange={(e) => onFormat('fontSize', e.target.value)} style={select}>
         <option value="3">Normal</option>
         <option value="5">Large</option>
         <option value="1">Small</option>
       </select>
 
-      <input type="color" onInput={handleColorChange} style={colorInputStyle} title="Font Color" />
+      <input type="color" onInput={(e) => onFormat('foreColor', e.target.value)} style={colorInputStyle} />
 
-      <button onMouseDown={handleLink} style={btnStyle} title="Insert Link">🔗</button>
-      <button onMouseDown={(e) => handleMouseDown(e, 'unlink')} style={btnStyle} title="Remove Link"><s>🔗</s></button>
+      <button onMouseDown={(e) => { e.preventDefault(); onInsertLink(); }} style={btn}>🔗</button>
+      <button onMouseDown={(e) => { e.preventDefault(); onFormat('unlink'); }} style={btn}>Unlink</button>
 
       {showLinkInput && (
-        <div style={{
-          position: 'absolute',
-          top: '100%',
-          left: '8px',
-          backgroundColor: 'white',
-          border: '1px solid #ccc',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-          padding: '8px',
-          borderRadius: '6px',
-          zIndex: 20,
-          display: 'flex',
-          gap: '8px',
-          marginTop: '4px'
-        }}>
-          <input
-            id="note-link-input"
-            type="text"
-            style={linkInputStyle}
-            placeholder="https://example.com"
-            value={linkUrl}
-            onChange={(e) => setLinkUrl(e.target.value)}
-            autoFocus
-            onMouseDown={(e) => e.stopPropagation()}
-          />
-          <button onMouseDown={handleApplyLink} style={{ ...btnStyle, backgroundColor: '#3b82f6', color: 'white' }}>Apply</button>
-          <button onMouseDown={(e) => { e.preventDefault(); onCancelLink(); }} style={btnStyle}>Cancel</button>
+        <div style={{ position: 'absolute', top: '100%', left: 8, background: 'white', border: '1px solid #ccc', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', padding: 8, borderRadius: 6, zIndex: 20, display: 'flex', gap: 8, marginTop: 4 }}>
+          <input id="note-link-input" type="text" style={linkInputStyle} placeholder="https://example.com" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} autoFocus onMouseDown={(e) => e.stopPropagation()} />
+          <button onMouseDown={(e) => { e.preventDefault(); onApplyLink(); }} style={{ ...btn, background: '#3b82f6', color: 'white' }}>Apply</button>
+          <button onMouseDown={(e) => { e.preventDefault(); onCancelLink(); }} style={btn}>Cancel</button>
         </div>
       )}
     </div>
   );
 };
 
-// ---------------- NotePopupContent (core editor & logic) ----------------
+/* ---------- Utility: remove anchors inside a Node (unwrap them) ---------- */
+function unwrapAnchors(node) {
+  // Walk the node tree and replace <a> elements with their children
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT, {
+    acceptNode: (n) => n.nodeName === 'A' ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP
+  });
+  // collect anchors first because replacing while walking is problematic
+  const anchors = [];
+  let cur;
+  while ((cur = walker.nextNode())) anchors.push(cur);
+  anchors.forEach(a => {
+    const parent = a.parentNode;
+    if (!parent) return;
+    // move children out
+    while (a.firstChild) parent.insertBefore(a.firstChild, a);
+    parent.removeChild(a);
+  });
+}
+
+/* ---------- Note editor (main) ---------- */
 const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
-  const [saveStatus, setSaveStatus] = useState('loading');
+  const [saveStatus, setSaveStatus] = useState('loading'); // loading | idle | saving | saved | error
   const [initialHtml, setInitialHtml] = useState(null);
 
   // files state
@@ -210,39 +99,39 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
   const [fileError, setFileError] = useState('');
   const [isDeletingFile, setIsDeletingFile] = useState(null);
 
-  // link input state
+  // link UI
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
-  const linkSelectionRef = useRef(null); // useRef for stable ref
+  // saved info: { type: 'placeholder', id } | { type: 'caret', range } | { type: 'edit', anchor } | { type: 'none' }
+  const linkSelectionRef = useRef(null);
 
   const editorRef = useRef(null);
   const fileInputRef = useRef(null);
   const debounceTimerRef = useRef(null);
   const lastSavedHtmlRef = useRef(null);
   const isMountedRef = useRef(true);
-  const hasInjectedInitialRef = useRef(false);
+  const injectedRef = useRef(false);
 
-  const getFilesFieldName = useCallback(() => `${columnKey}_files`, [columnKey]);
+  const getFilesFieldName = React.useCallback(() => `${columnKey}_files`, [columnKey]);
 
-  // fetch initial doc
+  /* ---------- load initial content ---------- */
   useEffect(() => {
     isMountedRef.current = true;
-    hasInjectedInitialRef.current = false;
+    injectedRef.current = false;
     if (!teamId || !taskId || !columnKey) {
       setSaveStatus('error');
-      console.error('Missing required props: teamId, taskId, or columnKey');
+      console.error('Missing props teamId/taskId/columnKey');
       return;
     }
-    const fetchData = async () => {
+    (async () => {
       setSaveStatus('loading');
       setFiles([]);
       try {
         const docRef = doc(db, 'teams', teamId, 'tasks', taskId);
-        const docSnap = await getDoc(docRef);
-        let noteHtml = '';
-        let noteFiles = [];
-        if (docSnap.exists()) {
-          const data = docSnap.data();
+        const snap = await getDoc(docRef);
+        let noteHtml = '', noteFiles = [];
+        if (snap.exists()) {
+          const data = snap.data();
           noteHtml = data[columnKey] || '';
           noteFiles = data[getFilesFieldName()] || [];
         }
@@ -252,70 +141,51 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
           lastSavedHtmlRef.current = noteHtml;
           setSaveStatus('idle');
         }
-      } catch (error) {
-        console.error('Failed to fetch note or files:', error);
-        if (isMountedRef.current) {
-          setInitialHtml('');
-          setFiles([]);
-          setSaveStatus('error');
-        }
+      } catch (err) {
+        console.error('fetch note error', err);
+        if (isMountedRef.current) { setInitialHtml(''); setFiles([]); setSaveStatus('error'); }
       }
-    };
-    fetchData();
-    return () => {
-      isMountedRef.current = false;
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-    };
+    })();
+    return () => { isMountedRef.current = false; if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current); };
   }, [teamId, taskId, columnKey, getFilesFieldName]);
 
-  // inject once
   useEffect(() => {
     if (initialHtml === null) return;
-    if (editorRef.current && !hasInjectedInitialRef.current) {
+    if (editorRef.current && !injectedRef.current) {
       editorRef.current.innerHTML = initialHtml;
-      hasInjectedInitialRef.current = true;
+      injectedRef.current = true;
     }
   }, [initialHtml]);
 
-  // autosave
-  const saveToFirebase = async (htmlToSave) => {
-    if (htmlToSave === lastSavedHtmlRef.current) {
-      setSaveStatus('idle');
-      return;
-    }
+  /* ---------- autosave ---------- */
+  const saveToFirebase = useCallback(async (html) => {
+    if (html === lastSavedHtmlRef.current) { setSaveStatus('idle'); return; }
     const docRef = doc(db, 'teams', teamId, 'tasks', taskId);
     try {
-      await updateDoc(docRef, { [columnKey]: htmlToSave });
-      if (isMountedRef.current) {
-        lastSavedHtmlRef.current = htmlToSave;
-        setSaveStatus('saved');
-        setTimeout(() => { if (isMountedRef.current) setSaveStatus('idle'); }, 1500);
-      }
-    } catch (error) {
-      console.error('Autosave error:', error);
+      await updateDoc(docRef, { [columnKey]: html });
+      if (isMountedRef.current) { lastSavedHtmlRef.current = html; setSaveStatus('saved'); setTimeout(() => { if (isMountedRef.current) setSaveStatus('idle'); }, 1500); }
+    } catch (err) {
+      console.error('Autosave error', err);
       if (isMountedRef.current) setSaveStatus('error');
     }
-  };
+  }, [teamId, taskId, columnKey]);
 
-  const handleInput = () => {
+  const handleInput = useCallback(() => {
     if (showLinkInput) setShowLinkInput(false);
     if (saveStatus === 'loading') return;
     setSaveStatus('saving');
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
-      if (editorRef.current) {
-        const currentHtml = editorRef.current.innerHTML;
-        saveToFirebase(currentHtml);
-      }
-    }, 1500);
-  };
+      if (editorRef.current) saveToFirebase(editorRef.current.innerHTML);
+    }, 1200);
+  }, [showLinkInput, saveStatus, saveToFirebase]);
 
-  // Image paste/upload logic (unchanged)
+  /* ---------- image paste/upload (kept) ---------- */
   const handleImageUpload = (file) => {
     if (!file || !editorRef.current || !file.type.startsWith('image/')) return;
     const placeholderId = `upload-placeholder-${Date.now()}`;
     const blobUrl = URL.createObjectURL(file);
-    const imgHtml = `<img src="${blobUrl}" id="${placeholderId}" alt="Uploading..." style="max-width: 90%; opacity: 0.5; filter: blur(3px); border-radius: 4px; display:block; margin: 8px 0;"/>`;
+    const imgHtml = `<img src="${blobUrl}" id="${placeholderId}" alt="Uploading..." style="max-width:90%; opacity:.5; filter:blur(3px); border-radius:4px; display:block; margin:8px 0;" />`;
     document.execCommand('insertHTML', false, imgHtml);
 
     const storagePath = `notes_images/${teamId}/${taskId}/${columnKey}/${Date.now()}-${file.name}`;
@@ -323,39 +193,33 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
     const uploadTask = uploadBytesResumable(storageRef, file);
     setFileUploadProgress('Uploading image (0%)...');
     uploadTask.on('state_changed',
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+      (snap) => {
+        const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
         if (isMountedRef.current) setFileUploadProgress(`Uploading image (${Math.round(progress)}%)...`);
       },
-      (error) => {
-        console.error('Image upload failed:', error);
-        if (isMountedRef.current) {
-          setFileUploadProgress('Image upload failed.');
-          setTimeout(() => setFileUploadProgress(null), 3000);
-        }
+      (err) => {
+        console.error('Image upload failed', err);
+        if (isMountedRef.current) { setFileUploadProgress('Image upload failed.'); setTimeout(() => setFileUploadProgress(null), 3000); }
         const placeholder = editorRef.current?.querySelector(`#${placeholderId}`);
         if (placeholder) placeholder.remove();
       },
       async () => {
         try {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
           if (isMountedRef.current && editorRef.current) {
             const placeholder = editorRef.current.querySelector(`#${placeholderId}`);
             if (placeholder) {
-              placeholder.src = downloadURL;
+              placeholder.src = url;
               placeholder.style.opacity = '1';
               placeholder.style.filter = 'none';
               placeholder.removeAttribute('id');
-              placeholder.alt = 'Pasted content';
+              placeholder.alt = 'Image';
               handleInput();
             }
           }
-          if (isMountedRef.current) {
-            setFileUploadProgress('Upload complete!');
-            setTimeout(() => setFileUploadProgress(null), 3000);
-          }
-        } catch (error) {
-          console.error('Failed to get download URL:', error);
+          if (isMountedRef.current) { setFileUploadProgress('Upload complete!'); setTimeout(() => setFileUploadProgress(null), 3000); }
+        } catch (err) {
+          console.error('getDownloadURL failed', err);
           if (isMountedRef.current) setFileUploadProgress('Upload failed.');
         }
       }
@@ -365,33 +229,45 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
   const handlePaste = (e) => {
     const items = e.clipboardData?.items;
     if (!items) return;
-    let foundImage = false;
+    let found = false;
     for (let i = 0; i < items.length; i++) {
       if (items[i].type.indexOf('image') !== -1) {
         const file = items[i].getAsFile();
-        if (file) {
-          e.preventDefault();
-          handleImageUpload(file);
-          foundImage = true;
-          break;
-        }
+        if (file) { e.preventDefault(); handleImageUpload(file); found = true; break; }
       }
     }
-    if (!foundImage) {
-      // allow plain text paste
+    if (!found) {
       e.preventDefault();
       const text = e.clipboardData.getData('text/plain');
       document.execCommand('insertText', false, text);
     }
   };
 
-  // file upload helpers (unchanged)
-  const handleUploadButtonClick = () => fileInputRef.current?.click();
-  const handleFileSelected = (e) => {
-    const file = e.target.files?.[0];
-    if (file) handleFileUpload(file);
-    e.target.value = null;
+  /* *****************************************
+    * NEW CLICK HANDLER            *
+    *****************************************
+  */
+  const handleEditorClick = (e) => {
+    // Check for Ctrl/Cmd key
+    const isSpecialClick = e.ctrlKey || e.metaKey;
+
+    if (isSpecialClick) {
+      // Find the nearest <a> tag ancestor
+      const anchor = e.target.closest('a');
+      
+      if (anchor && anchor.href) {
+        // Prevent the editor from doing anything (like moving the cursor)
+        e.preventDefault();
+        // Open the link in a new tab
+        window.open(anchor.href, '_blank', 'noopener,noreferrer');
+      }
+    }
+    // If not Ctrl/Cmd+Click, do nothing and let the default contentEditable behavior happen
   };
+
+  /* ---------- file upload helpers (kept) ---------- */
+  const handleUploadButtonClick = () => fileInputRef.current?.click();
+  const handleFileSelected = (e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = null; };
 
   const handleFileUpload = (file) => {
     if (!file) return;
@@ -401,264 +277,342 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
     const uploadTask = uploadBytesResumable(storageRef, file);
     setFileUploadProgress(`Uploading ${file.name} (0%)...`);
     uploadTask.on('state_changed',
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+      (snap) => {
+        const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
         if (isMountedRef.current) setFileUploadProgress(`Uploading ${file.name} (${Math.round(progress)}%)...`);
       },
-      (error) => {
-        console.error('File upload failed:', error);
-        if (isMountedRef.current) {
-          setFileError(`Failed to upload ${file.name}.`);
-          setFileUploadProgress(null);
-        }
+      (err) => {
+        console.error('file upload failed', err);
+        if (isMountedRef.current) { setFileError(`Failed to upload ${file.name}`); setFileUploadProgress(null); }
       },
       async () => {
         try {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          const newFileObject = {
-            name: file.name,
-            url: downloadURL,
-            path: storagePath,
-            createdAt: new Date().toISOString(),
-          };
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          const newFile = { name: file.name, url, path: storagePath, createdAt: new Date().toISOString() };
           const docRef = doc(db, 'teams', teamId, 'tasks', taskId);
           const filesField = getFilesFieldName();
-          await updateDoc(docRef, { [filesField]: arrayUnion(newFileObject) });
-          if (isMountedRef.current) {
-            setFiles(prevFiles => [...prevFiles, newFileObject]);
-            setFileUploadProgress('Upload complete!');
-            setTimeout(() => setFileUploadProgress(null), 3000);
-          }
-        } catch (error) {
-          console.error('Failed to update document with new file:', error);
-          if (isMountedRef.current) {
-            setFileError(`Upload succeeded but failed to save. Please refresh.`);
-            setFileUploadProgress(null);
-          }
+          await updateDoc(docRef, { [filesField]: arrayUnion(newFile) });
+          if (isMountedRef.current) { setFiles(prev => [...prev, newFile]); setFileUploadProgress('Upload complete!'); setTimeout(() => setFileUploadProgress(null), 3000); }
+        } catch (err) {
+          console.error('save file meta failed', err);
+          if (isMountedRef.current) { setFileError('Upload succeeded but failed to save. Refresh.'); setFileUploadProgress(null); }
         }
       }
     );
   };
 
   const handleFileDelete = async (fileToDelete) => {
-    if (!fileToDelete || !window.confirm(`Are you sure you want to delete ${fileToDelete.name}?`)) return;
+    if (!fileToDelete || !window.confirm(`Delete ${fileToDelete.name}?`)) return;
     setIsDeletingFile(fileToDelete.path);
     setFileError('');
     try {
-      const fileStorageRef = ref(storage, fileToDelete.path);
-      await deleteObject(fileStorageRef);
+      const fileRef = ref(storage, fileToDelete.path);
+      await deleteObject(fileRef);
       const docRef = doc(db, 'teams', teamId, 'tasks', taskId);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        const currentFiles = docSnap.data()[getFilesFieldName()] || [];
-        const newFiles = currentFiles.filter(f => f.path !== fileToDelete.path);
-        await updateDoc(docRef, { [getFilesFieldName()]: newFiles });
-        if (isMountedRef.current) setFiles(newFiles);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const cur = snap.data()[getFilesFieldName()] || []; // Corrected: getFieOlsFieldName() -> getFilesFieldName()
+        const next = cur.filter(f => f.path !== fileToDelete.path);
+        await updateDoc(docRef, { [getFilesFieldName()]: next });
+        if (isMountedRef.current) setFiles(next);
       }
-    } catch (error) {
-      console.error('Failed to delete file:', error);
-      if (isMountedRef.current) setFileError(`Failed to delete ${fileToDelete.name}. Please try again.`);
+    } catch (err) {
+      console.error('delete failed', err);
+      if (isMountedRef.current) setFileError('Delete failed. Try again.');
     } finally {
       if (isMountedRef.current) setIsDeletingFile(null);
     }
   };
 
-  // ---------------- Link handling ----------------
+  /* ---------- Link handling improvements ---------- */
+
+  // wrapper for simple format commands
   const handleFormat = useCallback((command, value = null) => {
     document.execCommand(command, false, value);
     editorRef.current?.focus();
     handleInput();
-  }, []); // stable
+  }, [handleInput]);
 
+  // When Insert Link is clicked:
+  // - if selection is inside an <a>: we will set type 'edit' and prefill url
+  // - if selection is non-empty inside editor: extract contents into placeholder span and save placeholder id
+  // - if collapsed caret inside editor: save caret Range
   const handleInsertLink = useCallback(() => {
-    const selection = window.getSelection();
-    if (selection && selection.rangeCount > 0) {
-      // Save a clone of the range (store in ref so it's not part of state lifecycle)
-      linkSelectionRef.current = selection.getRangeAt(0).cloneRange();
-    } else {
-      linkSelectionRef.current = null;
+    const sel = window.getSelection();
+    let range = null;
+    try { if (sel && sel.rangeCount > 0) range = sel.getRangeAt(0).cloneRange(); } catch (e) { range = null; }
+
+    linkSelectionRef.current = null;
+
+    // if selection inside an existing anchor, edit mode
+    if (range && editorRef.current && editorRef.current.contains(range.commonAncestorContainer)) {
+      // find closest anchor ancestor
+      let node = range.startContainer;
+      while (node && node !== editorRef.current) {
+        if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'A') {
+          // edit this anchor
+          linkSelectionRef.current = { type: 'edit', anchor: node };
+          setLinkUrl(node.getAttribute('href') || 'https://');
+          setShowLinkInput(true);
+          return;
+        }
+        node = node.parentNode;
+      }
     }
-    setShowLinkInput(true);
+
+    if (range && !range.collapsed && editorRef.current && editorRef.current.contains(range.commonAncestorContainer)) {
+      // Extract content into a placeholder span immediately (prevents losing selection)
+      const placeholderId = `pl-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+      let extracted;
+      try {
+        extracted = range.extractContents();
+      } catch (err) {
+        // fallback: plain text
+        const text = (window.getSelection()?.toString()) || '';
+        extracted = document.createDocumentFragment();
+        extracted.appendChild(document.createTextNode(text));
+        try { range.deleteContents(); } catch (e) { /* ignore */ }
+      }
+      const span = document.createElement('span');
+      span.setAttribute('data-link-placeholder', '1');
+      span.setAttribute('id', placeholderId);
+      span.style.background = 'transparent';
+      span.appendChild(extracted);
+      range.insertNode(span);
+      linkSelectionRef.current = { type: 'placeholder', id: placeholderId };
+      setLinkUrl('https://');
+      setShowLinkInput(true);
+      return;
+    }
+
+    // If collapsed caret inside editor: save caret range
+    if (range && editorRef.current && editorRef.current.contains(range.commonAncestorContainer)) {
+      linkSelectionRef.current = { type: 'caret', range };
+    } else {
+      linkSelectionRef.current = { type: 'none' };
+    }
     setLinkUrl('https://');
-    // Focus will move to input automatically (autoFocus on input) but we keep the cloned range in ref.
+    setShowLinkInput(true);
   }, []);
 
+  // Cleanup helper: remove empty anchors
+  const removeEmptyAnchors = (root) => {
+    const anchors = (root || editorRef.current)?.querySelectorAll('a') || [];
+    anchors.forEach(a => {
+      if (!a.textContent.trim() && !a.querySelector('img')) {
+        // remove empty anchor
+        const parent = a.parentNode;
+        if (parent) parent.removeChild(a);
+      }
+    });
+  };
+
+  // apply link: handles 'edit', 'placeholder', 'caret', 'none'
   const applyLink = useCallback(() => {
-    // Basic url normalization
     let url = (linkUrl || '').trim();
+    if (!editorRef.current) { setShowLinkInput(false); setLinkUrl(''); linkSelectionRef.current = null; return; }
     if (!url) {
-      // nothing to do
+      // If there was a placeholder, restore its inner content
+      const saved = linkSelectionRef.current;
+      if (saved?.type === 'placeholder') {
+        const ph = editorRef.current.querySelector(`#${saved.id}`);
+        if (ph) {
+          const parent = ph.parentNode;
+          while (ph.firstChild) parent.insertBefore(ph.firstChild, ph);
+          parent.removeChild(ph);
+        }
+      }
       setShowLinkInput(false);
       setLinkUrl('');
       linkSelectionRef.current = null;
       return;
     }
-    if (!/^https?:\/\//i.test(url)) {
-      url = 'https://' + url;
-    }
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
 
-    const range = linkSelectionRef.current;
     try {
-      if (range && range.startContainer && document.contains(range.startContainer)) {
-        // restore selection
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
+      const saved = linkSelectionRef.current;
+      const sel = window.getSelection();
 
-        // If selection has text, createLink should wrap it.
-        const selectedText = sel.toString();
-        if (selectedText && selectedText.trim().length > 0) {
-          document.execCommand('createLink', false, url);
-        } else {
-          // Collapsed selection - insert an anchor with the URL text
-          const a = document.createElement('a');
-          a.href = url;
-          a.textContent = url;
-          a.target = '_blank';
-          a.rel = 'noopener noreferrer';
-          range.deleteContents();
-          range.insertNode(a);
-          // move caret after inserted node
-          range.setStartAfter(a);
-          range.collapse(true);
+      if (saved?.type === 'edit' && saved.anchor) {
+        // update href of existing anchor
+        const anchor = saved.anchor;
+        anchor.setAttribute('href', url);
+        anchor.setAttribute('target', '_blank');
+        anchor.setAttribute('rel', 'noopener noreferrer');
+        // if anchor has no text, set text to url
+        if (!anchor.textContent.trim()) anchor.textContent = url;
+        // place caret after anchor
+        const after = document.createRange();
+        after.setStartAfter(anchor);
+        after.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(after);
+      } else if (saved?.type === 'placeholder') {
+        const ph = editorRef.current.querySelector(`#${saved.id}`);
+        if (ph) {
+          // create anchor and move inner nodes into it, unwrapping any anchors inside
+          const frag = document.createDocumentFragment();
+          while (ph.firstChild) frag.appendChild(ph.firstChild);
+          // unwrap any anchors inside fragment
+          const temp = document.createElement('div');
+          temp.appendChild(frag);
+          unwrapAnchors(temp);
+          const anchor = document.createElement('a');
+          anchor.setAttribute('href', url);
+          anchor.setAttribute('target', '_blank');
+          anchor.setAttribute('rel', 'noopener noreferrer');
+          // move children from temp into anchor
+          while (temp.firstChild) anchor.appendChild(temp.firstChild);
+          ph.parentNode.replaceChild(anchor, ph);
+          // caret after anchor
+          const after = document.createRange();
+          after.setStartAfter(anchor);
+          after.collapse(true);
           sel.removeAllRanges();
-          sel.addRange(range);
+          sel.addRange(after);
+        } else {
+          // fallback
+          document.execCommand('createLink', false, url);
+        }
+      } else if (saved?.type === 'caret' && saved.range) {
+        // restore range and insert anchor with url text
+        const r = saved.range;
+        sel.removeAllRanges();
+        try { sel.addRange(r); } catch (err) { /* ignore */ }
+        // if caret is inside an anchor, update that anchor instead
+        let node = r.startContainer;
+        while (node && node !== editorRef.current) {
+          if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'A') {
+            node.setAttribute('href', url);
+            node.setAttribute('target', '_blank');
+            node.setAttribute('rel', 'noopener noreferrer');
+            sel.removeAllRanges();
+            const after = document.createRange();
+            after.setStartAfter(node);
+            after.collapse(true);
+            sel.addRange(after);
+            removeEmptyAnchors();
+            handleInput();
+            setShowLinkInput(false);
+            setLinkUrl('');
+            linkSelectionRef.current = null;
+            return;
+          }
+          node = node.parentNode;
+        }
+        // create anchor element
+        const a = document.createElement('a');
+        a.setAttribute('href', url);
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noopener noreferrer');
+        a.textContent = url;
+        try {
+          r.insertNode(a);
+          // caret after
+          const after = document.createRange();
+          after.setStartAfter(a);
+          after.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(after);
+        } catch (err) {
+          // fallback
+          document.execCommand('createLink', false, url);
         }
       } else {
-        // No valid saved range: append link at caret or at end of editor.
-        const sel = window.getSelection();
-        if (sel && sel.rangeCount > 0) {
-          const r = sel.getRangeAt(0);
-          const a = document.createElement('a');
-          a.href = url;
-          a.textContent = url;
-          a.target = '_blank';
-          a.rel = 'noopener noreferrer';
-          r.deleteContents();
-          r.insertNode(a);
-          r.setStartAfter(a);
-          r.collapse(true);
-          sel.removeAllRanges();
-          sel.addRange(r);
-        } else if (editorRef.current) {
-          // fallback: append at end
-          const a = document.createElement('a');
-          a.href = url;
-          a.textContent = url;
-          a.target = '_blank';
-          a.rel = 'noopener noreferrer';
-          editorRef.current.appendChild(a);
+        // no saved info: fallback to createLink, then set rel/target for last anchor
+        document.execCommand('createLink', false, url);
+        const anchors = editorRef.current.querySelectorAll('a[href]');
+        if (anchors.length) {
+          const a = anchors[anchors.length - 1];
+          a.setAttribute('target', '_blank');
+          a.setAttribute('rel', 'noopener noreferrer');
+          if (!a.textContent.trim()) a.textContent = url;
         }
       }
+
+      // remove any empty anchors left behind
+      removeEmptyAnchors(editorRef.current);
+
     } catch (err) {
-      console.error('Failed to apply link:', err);
+      console.error('applyLink error', err);
+      try { document.execCommand('createLink', false, url); } catch (e) { /* ignore */ }
     } finally {
-      // reset link UI
       setShowLinkInput(false);
       setLinkUrl('');
       linkSelectionRef.current = null;
-      editorRef.current?.focus();
       handleInput();
     }
   }, [linkUrl, handleInput]);
 
+  // cancel link, restore placeholder if present
   const cancelLink = useCallback(() => {
+    const saved = linkSelectionRef.current;
+    if (saved?.type === 'placeholder') {
+      const ph = editorRef.current?.querySelector(`#${saved.id}`);
+      if (ph) {
+        const p = ph.parentNode;
+        while (ph.firstChild) p.insertBefore(ph.firstChild, ph);
+        p.removeChild(ph);
+      }
+    }
     setShowLinkInput(false);
     setLinkUrl('');
     linkSelectionRef.current = null;
     editorRef.current?.focus();
   }, []);
 
-  // ---------------- Status utility ----------------
+  /* ---------- small UI helpers ---------- */
   const getStatusMessage = () => {
     switch (saveStatus) {
-      case 'saving': return { msg: 'Saving note...', color: 'text-gray-500' };
-      case 'saved': return { msg: 'Note saved', color: 'text-green-600' };
-      case 'error': return { msg: 'Error saving note. Check console.', color: 'text-red-600' };
-      default: return { msg: '', color: 'text-gray-500' };
+      case 'saving': return { msg: 'Saving note...', color: '#6b7280' };
+      case 'saved': return { msg: 'Note saved', color: '#16a34a' };
+      case 'error': return { msg: 'Error saving note', color: '#dc2626' };
+      default: return { msg: '', color: '#6b7280' };
     }
   };
-  const { msg: saveMsg, color: saveColor } = getStatusMessage();
+  const status = getStatusMessage();
 
-  // ---------------- Render ----------------
+  /* ---------- render ---------- */
   return (
-    <div
-      style={{
-        width: '100%',
-        height: '100%',
-        backgroundColor: 'white',
-        borderRadius: '0.5rem',
-        boxShadow: '0 25px 50px -12px rgb(0 0 0 / 0.25)',
-        display: 'flex',
-        flexDirection: 'column',
-        boxSizing: 'border-box',
-        overflow: 'hidden',
-      }}
-    >
+    <div style={{ width: '100%', height: '100%', background: 'white', borderRadius: 8, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Header */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        borderBottom: '1px solid #e5e7eb',
-        padding: '0.75rem 1.25rem',
-        flexShrink: 0,
-      }}>
-        <h2 style={{ fontSize: '1.125rem', fontWeight: 600, color: '#1f2937' }}>
-          Note: <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Helvetica Neue", monospace', color: '#2563eb' }}>{columnKey}</span>
-        </h2>
-        <button onClick={onClose} aria-label="Close" style={{ color: '#9ca3af', fontSize: '24px', lineHeight: '1', background: 'none', border: 'none', cursor: 'pointer' }}>
-          &times;
-        </button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e5e7eb', padding: '12px 16px' }}>
+        <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1f2937' }}>Note: <span style={{ fontFamily: 'monospace', color: '#2563eb' }}>{columnKey}</span></h2>
+        <button onClick={onClose} aria-label="Close" style={{ color: '#9ca3af', fontSize: 24, background: 'none', border: 'none', cursor: 'pointer' }}>&times;</button>
       </div>
 
-      {/* Main */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Left sidebar */}
-        <div style={{
-          width: '280px',
-          flexShrink: 0,
-          borderRight: '1px solid #e5e7eb',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          backgroundColor: '#f9fafb'
-        }}>
-          <h3 style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151', padding: '1rem 1rem 0.5rem 1rem', flexShrink: 0 }}>
-            File Attachments
-          </h3>
-          {fileError && <div style={{ color: '#dc2626', fontSize: '0.875rem', margin: '0 1rem 0.5rem 1rem' }}>{fileError}</div>}
-          <ul style={{ flex: 1, overflowY: 'auto', listStyle: 'none', padding: '0 1rem', margin: 0 }}>
-            {files.length === 0 && <p style={{ fontSize: '0.875rem', color: '#6b7280', fontStyle: 'italic', padding: '0.5rem 0' }}>No files attached.</p>}
-            {files.map(file => (
-              <li key={file.path} style={{ display: 'flex', flexDirection: 'column', padding: '0.5rem 0.75rem', border: '1px solid #e5e7eb', borderRadius: '0.375rem', marginBottom: '0.5rem', backgroundColor: '#ffffff' }}>
-                <span style={{ fontSize: '0.875rem', color: '#1f2937', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', fontWeight: 500 }} title={file.name}>
-                  {file.name}
-                </span>
-                <div style={{ display: 'flex', gap: '0.75rem', flexShrink: 0, marginTop: '0.25rem' }}>
-                  <a href={file.url} target="_blank" rel="noopener noreferrer" download={file.name} style={{ fontSize: '0.75rem', color: '#2563eb', textDecoration: 'none', fontWeight: 500 }}>Download</a>
-                  <button onClick={() => handleFileDelete(file)} disabled={isDeletingFile === file.path} style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 0 }}>
-                    {isDeletingFile === file.path ? <MiniSpinner /> : 'Delete'}
+        {/* Left file area */}
+        <div style={{ width: 280, borderRight: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', flexDirection: 'column' }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, padding: '12px 12px 6px 12px' }}>File Attachments</h3>
+          {fileError && <div style={{ color: '#dc2626', padding: '0 12px' }}>{fileError}</div>}
+          <ul style={{ listStyle: 'none', padding: '8px 12px', margin: 0, overflowY: 'auto', flex: 1 }}>
+            {files.length === 0 && <p style={{ color: '#6b7280', fontStyle: 'italic' }}>No files attached.</p>}
+            {files.map(f => (
+              <li key={f.path} style={{ background: 'white', padding: 8, border: '1px solid #e5e7eb', borderRadius: 6, marginBottom: 8 }}>
+                <div style={{ fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.name}>{f.name}</div>
+                <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
+                  <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', fontSize: 13 }}>Download</a>
+                  <button onClick={() => handleFileDelete(f)} disabled={isDeletingFile === f.path} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 13 }}>
+                    {isDeletingFile === f.path ? <MiniSpinner /> : 'Delete'}
                   </button>
                 </div>
               </li>
             ))}
           </ul>
 
-          <div style={{ padding: '1rem', borderTop: '1px solid #e5e7eb', flexShrink: 0 }}>
+          <div style={{ padding: 12, borderTop: '1px solid #e5e7eb' }}>
             <input type="file" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileSelected} />
-            <button onClick={handleUploadButtonClick} disabled={!!fileUploadProgress || isDeletingFile} style={{ width: '100%', padding: '0.5rem 1rem', backgroundColor: '#3b82f6', color: 'white', borderRadius: '0.375rem', fontWeight: 600, border: 'none', cursor: 'pointer', opacity: (!!fileUploadProgress || isDeletingFile) ? 0.5 : 1, display: 'flex', justifyContent: 'center' }}>
+            <button onClick={handleUploadButtonClick} disabled={!!fileUploadProgress || !!isDeletingFile} style={{ width: '100%', padding: '10px', background: '#3b82f6', color: 'white', borderRadius: 6, border: 'none', fontWeight: 600 }}>
               {fileUploadProgress ? <MiniSpinner /> : 'Upload File'}
             </button>
           </div>
         </div>
 
-        {/* Editor */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Editor area */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           {saveStatus === 'loading' || initialHtml === null ? (
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Spinner />
-            </div>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spinner /></div>
           ) : (
             <>
               <EditorToolbar
@@ -673,20 +627,15 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
 
               <div
                 ref={editorRef}
-                contentEditable={true}
+                contentEditable
                 onInput={handleInput}
                 onPaste={handlePaste}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => e.preventDefault()}
+                onClick={handleEditorClick} /* <-- MODIFICATION */
+                className="note-editor"   /* <-- MODIFICATION */
                 tabIndex={0}
-                style={{
-                  flex: 1,
-                  border: 'none',
-                  padding: '0.75rem',
-                  overflowY: 'auto',
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                }}
+                style={{ flex: 1, padding: 12, overflowY: 'auto', outline: 'none' }}
               />
             </>
           )}
@@ -694,36 +643,21 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
       </div>
 
       {/* Footer */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        borderTop: '1px solid #e5e7eb',
-        padding: '0.75rem 1.25rem',
-        marginTop: 'auto',
-        flexShrink: 0,
-      }}>
-        <div style={{ fontSize: '0.875rem', display: 'flex', flexDirection: 'column' }}>
-          <span style={
-            saveColor === 'text-green-600' ? { color: '#16a34a', fontWeight: 500 } :
-              saveColor === 'text-red-600' ? { color: '#dc2626', fontWeight: 500 } : { color: '#6b7280', fontWeight: 500 }
-          }>
-            {saveMsg}
-          </span>
-          <span style={{ color: '#2563eb', fontWeight: 500, height: '1.25rem' }}>{fileUploadProgress}</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e5e7eb', padding: '12px 16px' }}>
+        <div style={{ fontSize: 13 }}>
+          <div style={{ color: status.color, fontWeight: 600 }}>{status.msg}</div>
+          <div style={{ color: '#2563eb', height: 18 }}>{fileUploadProgress}</div>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button onClick={onClose} style={{ padding: '0.5rem 1rem', backgroundColor: '#e5e7eb', color: '#111827', borderRadius: '0.375rem', fontWeight: 600, border: 'none', cursor: 'pointer' }}>
-            Close
-          </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onClose} style={{ padding: '8px 12px', background: '#e5e7eb', borderRadius: 6, border: 'none', fontWeight: 600 }}>Close</button>
         </div>
       </div>
     </div>
   );
 };
 
-// ---------------- Exported modal component (wraps content in overlay) ----------------
+/* ---------- Wrapper export ---------- */
 const NotePopup = (props) => {
   const { onClose } = props;
   return (

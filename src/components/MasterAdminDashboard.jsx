@@ -11,21 +11,30 @@ import {
   updateDoc,
   limit as firestoreLimit,
   startAfter,
+  where,  // <-- IMPORTED
+  addDoc, // <-- IMPORTED
+  serverTimestamp // <-- IMPORTED
 } from 'firebase/firestore';
 import { db, auth } from '../firebaseConfig';
 import Spinner from './Spinner';
 import TeamProjectTable from './TeamProjectTable';
 
-// Modals (kept as your originals)
+// --- NEW CALENDAR IMPORTS ---
+import { Calendar, momentLocalizer } from 'react-big-calendar';
+import moment from 'moment';
+import 'react-big-calendar/lib/css/react-big-calendar.css';
+
+// Modals
 import InviteMemberModal from './InviteMemberModal';
 import AnnounceModal from './AnnounceModal';
 import ScheduleMeetingModal from './ScheduleMeetingModal';
-// import NotificationsModal from './NotificationsModal'; // Handled by MainLayout
 import EditUpdateModal from './EditUpdateModal';
 import AnnounceMultiTeamModal from './AnnounceMultiTeamModal';
-// REMOVED MasterAdminChatModal import
 
-// --- Icons (kept) ---
+// --- Setup Calendar Localizer ---
+const localizer = momentLocalizer(moment);
+
+// --- Icons ---
 const UsersIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -46,7 +55,12 @@ const UserGroupIcon = () => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.08-.986-.234-1.224M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.08-.986.234-1.224M12 11c-1.657 0-3-1.343-3-3s1.343-3 3-3 3 1.343 3 3-1.343 3-3 3zM3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
   </svg>
 );
-// REMOVED ChatIcon as it's not used here
+// --- NEW CALENDAR ICON ---
+const CalendarIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+  </svg>
+);
 
 // --- Utility: formatDate ---
 const formatDate = (value, { dateOnly = false, fallback = '' } = {}) => {
@@ -60,6 +74,25 @@ const formatDate = (value, { dateOnly = false, fallback = '' } = {}) => {
     return dateOnly ? d.toLocaleDateString() : d.toLocaleString();
   } catch (err) { console.error('formatDate error', err, value); return String(value); }
 };
+
+// --- NEW CALENDAR HELPER FUNCTIONS ---
+const normalizeValueToDate = (val) => {
+  if (!val) return null;
+  if (typeof val === 'object' && typeof val.toDate === 'function') return val.toDate();
+  if (val instanceof Date) return val;
+  const parsed = new Date(val);
+  if (!isNaN(parsed)) return parsed;
+  return null;
+};
+
+const hasTimeComponent = (d) => {
+  if (!d || !(d instanceof Date)) return false;
+  return d.getHours() !== 0 || d.getMinutes() !== 0 || d.getSeconds() !== 0 || d.getMilliseconds() !== 0;
+};
+
+const msInDay = 24 * 60 * 60 * 1000;
+// --- END CALENDAR HELPER FUNCTIONS ---
+
 
 // ---------- Constants for pagination / UI ----------
 const TEAMS_PAGE_SIZE = 18;
@@ -182,11 +215,11 @@ const MembersSection = ({ membersDetails, teamData, canManageMembers, onChangeRo
 const UserManagementSection = ({ allUsers, allTeams, loadingUsers, errorUsers, onLoadMoreUsers, hasMoreUsers, onToggleCompact }) => {
   const findTeamsForUser = useCallback((userId) => {
     return allTeams.filter(team => team.members?.includes(userId))
-              .map(team => ({ id: team.id, teamName: team.teamName || `Team ${team.id}` }));
+            .map(team => ({ id: team.id, teamName: team.teamName || `Team ${team.id}` }));
   }, [allTeams]);
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
+    <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200 h-full">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold flex items-center text-gray-800"><UserGroupIcon /> All Registered Users ({allUsers.length})</h3>
         <div className="flex items-center gap-2">
@@ -240,6 +273,278 @@ const UserManagementSection = ({ allUsers, allTeams, loadingUsers, errorUsers, o
   );
 };
 
+// ---------- NEW: ManualNoteModal (Copied from TeamView) ----------
+const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin }) => {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (modalData?.type === 'new') {
+      setTitle('');
+      setDescription('');
+    }
+    if (modalData?.type === 'view') {
+      setTitle(modalData?.event?.title?.replace(/^Note:\s*/i, '') || '');
+      setDescription(modalData?.event?.description || '');
+    }
+  }, [isOpen, modalData]);
+
+  if (!isOpen) return null;
+
+  const isNew = modalData?.type === 'new';
+  const isView = modalData?.type === 'view';
+  const event = modalData?.event;
+
+  const handleSave = async () => {
+    if (!title) return; // Only title is required
+    const start = modalData.start instanceof Date ? modalData.start : new Date(modalData.start);
+    const end = modalData.end instanceof Date ? modalData.end : new Date(modalData.end);
+    await onSave(title, description, start, end); // Pass description
+    onClose();
+  };
+
+  const handleDelete = async () => {
+    if (!event || !event.id) return;
+    await onDelete(event.id);
+    onClose();
+  };
+
+  let modalTitle = 'Calendar Event';
+  if (isNew) modalTitle = `Add Note for ${moment(modalData.start).format('MMM D, YYYY')}`;
+  if (isView && event) modalTitle = event.title;
+
+  return (
+    <div aria-modal="true" role="dialog" className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-lg bg-white rounded-lg shadow-lg p-6">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">{modalTitle}</h3>
+
+        {isNew && (
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="noteTitle" className="block text-sm font-medium text-gray-700">Note Title</label>
+              <input id="noteTitle" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="e.g., Team Holiday" />
+            </div>
+            <div>
+              <label htmlFor="noteDescription" className="block text-sm font-medium text-gray-700">Note Body / Description</label>
+              <textarea
+                id="noteDescription"
+                rows="4"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                placeholder="Add details here..."
+              />
+            </div>
+          </div>
+        )}
+
+        {isView && event && (
+          <div className="space-y-2">
+            <p className="text-sm text-gray-600"><strong>Event:</strong> {event.title}</p>
+            {event.description && (
+              <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                <strong>Description:</strong> {event.description}
+              </p>
+            )}
+            <p className="text-sm text-gray-600"><strong>Date:</strong> {moment(event.start).format('lll')}</p>
+            <p className="text-sm text-gray-600"><strong>Type:</strong> <span className="capitalize">{event.type}</span></p>
+          </div>
+        )}
+
+        <div className="flex justify-end items-center gap-3 mt-6">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md">Cancel</button>
+          {isNew && (
+            <button type="button" onClick={handleSave} disabled={!title} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md disabled:bg-gray-400">Save Note</button>
+          )}
+          {isView && event?.type === 'manual' && isAdmin && (
+            <button type="button" onClick={handleDelete} className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md">Delete Note</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ---------- NEW: TeamCalendar (Copied from TeamView) ----------
+const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Modal state
+  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+  const [modalData, setModalData] = useState(null);
+
+  // date/view state so toolbar navigation works reliably
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [currentView, setCurrentView] = useState('month');
+
+  const fetchCalendarData = useCallback(async () => {
+    if (!teamId) return;
+    setLoading(true);
+    try {
+      const tasksQuery = query(collection(db, 'teams', teamId, 'tasks'));
+      const meetingsQuery = query(collection(db, 'teams', teamId, 'announcements'), where('type', '==', 'meeting'));
+      const notesQuery = query(collection(db, 'teams', teamId, 'calendarNotes'));
+
+      const [taskDocs, meetingDocs, noteDocs] = await Promise.all([
+        getDocs(tasksQuery),
+        getDocs(meetingsQuery),
+        getDocs(notesQuery),
+      ]);
+
+      // --- Task events ---
+      const taskEvents = taskDocs.docs
+        .filter(d => d.data().startDate && d.data().endDate) // Ensure both dates exist
+        .map(d => {
+          const data = d.data();
+          const startDate = normalizeValueToDate(data.startDate);
+          const endDate = normalizeValueToDate(data.endDate);
+
+          if (!startDate || !endDate) return null;
+
+          const title = `Ticket: ${data.ticketNo || data.title || d.id}`;
+          const safeEndDate = (endDate < startDate) ? startDate : endDate;
+
+          return {
+            id: d.id,
+            title: title,
+            start: startDate, 
+            end: safeEndDate,     
+            allDay: true, // Tasks are always all-day
+            type: 'ticket',
+          };
+        })
+        .filter(Boolean); // Remove any null (invalid) events
+
+      // --- Meeting events ---
+      const meetingEvents = meetingDocs.docs.map(d => {
+        const data = d.data();
+        const start = normalizeValueToDate(data.startDateTime) || new Date();
+        const end = normalizeValueToDate(data.endDateTime) || start;
+        
+        return {
+          id: d.id,
+          title: `Meeting: ${data.title || 'Untitled'}`,
+          start,
+          end: (end > start) ? end : new Date(start.getTime() + 30 * 60 * 1000), // Default 30min
+          allDay: false, 
+          type: 'meeting',
+        };
+      });
+
+      // --- Note events ---
+      const noteEvents = noteDocs.docs.map(d => {
+        const data = d.data();
+        const start = normalizeValueToDate(data.start) || new Date();
+        
+        return {
+          id: d.id,
+          title: `Note: ${data.title || 'Note'}`,
+          description: data.description || '',
+          start: start,
+          end: start, // All-day notes just need a start date
+          allDay: true,
+          type: 'manual',
+        };
+      });
+
+      setEvents([...taskEvents, ...meetingEvents, ...noteEvents]);
+    } catch (err) {
+      console.error("Error fetching calendar data:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [teamId]);
+
+  useEffect(() => { fetchCalendarData(); }, [fetchCalendarData, refreshTrigger]);
+
+  // handlers:
+  const handleSelectSlot = useCallback(({ start, end }) => {
+    setModalData({ type: 'new', start, end });
+    if (isAdmin) setIsNoteModalOpen(true);
+  }, [isAdmin]);
+
+  const handleSelectEvent = useCallback((event) => {
+    setModalData({ type: 'view', event });
+    setIsNoteModalOpen(true);
+  }, []);
+
+  const handleDoubleClickEvent = useCallback((event) => {
+    setModalData({ type: 'view', event });
+    setIsNoteModalOpen(true);
+  }, []);
+
+  const handleSaveNote = useCallback(async (title, description, start, end) => {
+    if (!title || !teamId) return;
+    try {
+      const newNote = {
+        title,
+        description,
+        start: start instanceof Date ? start : new Date(start),
+        end: end instanceof Date ? end : new Date(end),
+        allDay: true,
+        createdAt: serverTimestamp(),
+      };
+      await addDoc(collection(db, 'teams', teamId, 'calendarNotes'), newNote);
+      await fetchCalendarData();
+    } catch (err) {
+      console.error("Error adding manual note:", err);
+    }
+  }, [teamId, fetchCalendarData]);
+
+  const handleDeleteNote = useCallback(async (eventId) => {
+    if (!teamId || !eventId) return;
+    try {
+      await deleteDoc(doc(db, 'teams', teamId, 'calendarNotes', eventId));
+      await fetchCalendarData();
+    } catch (err) {
+      console.error("Error deleting note:", err);
+    }
+  }, [teamId, fetchCalendarData]);
+
+  const eventPropGetter = useCallback((event) => ({
+    style: { cursor: 'pointer' },
+    'data-type': event.type,
+  }), []);
+
+  if (loading) return <Spinner />;
+
+  return (
+    <div style={{ height: 600, padding: '1rem' }}>
+      <Calendar
+        localizer={localizer}
+        events={events}
+        startAccessor="start"
+        endAccessor="end"
+        date={currentDate}
+        view={currentView}
+        onNavigate={(date) => setCurrentDate(date)}
+        onView={(view) => setCurrentView(view)}
+        style={{ height: '100%' }}
+        selectable={true}
+        onSelectSlot={handleSelectSlot}
+        onSelectEvent={handleSelectEvent}
+        onDoubleClickEvent={handleDoubleClickEvent}
+        eventPropGetter={eventPropGetter}
+        popup={true}
+        showMultiDayTimes={true}
+      />
+
+      <ManualNoteModal
+        isOpen={isNoteModalOpen}
+        onClose={() => setIsNoteModalOpen(false)}
+        modalData={modalData}
+        onSave={handleSaveNote}
+        onDelete={handleDeleteNote}
+        isAdmin={isAdmin}
+      />
+    </div>
+  );
+};
+
+
 // ---------- Main Dashboard Component ----------
 export default function MasterAdminDashboard() {
   // Lists + pagination state
@@ -271,11 +576,9 @@ export default function MasterAdminDashboard() {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isAnnounceModalOpen, setIsAnnounceModalOpen] = useState(false);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
-  // const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false); // Handled by MainLayout
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [isMultiAnnounceModalOpen, setIsMultiAnnounceModalOpen] = useState(false);
-  // *** REMOVED CHAT MODAL STATE ***
 
   // debounce refs
   const teamsDebounceRef = useRef(null);
@@ -356,12 +659,19 @@ export default function MasterAdminDashboard() {
       setTeamData(fetchedTeamData);
 
       const memberUIDs = fetchedTeamData.members || [];
-      if (memberUIDs.length > 0) {
-        // fetch members in parallel
-        const memberPromises = memberUIDs.map(uid => getDoc(doc(db, "users", uid)));
+      
+      // --- FIX: Filter out invalid UIDs ---
+      const validMemberUIDs = memberUIDs
+        .map(member => (typeof member === 'object' && member.uid) ? member.uid : (typeof member === 'string' ? member : null))
+        .filter(uid => uid && typeof uid === 'string' && uid.trim() !== '');
+      const uniqueMemberUIDs = [...new Set(validMemberUIDs)];
+      // --- END FIX ---
+
+      if (uniqueMemberUIDs.length > 0) { // <--- Use unique filtered list
+        const memberPromises = uniqueMemberUIDs.map(uid => getDoc(doc(db, "users", uid))); 
         const memberDocsSnap = await Promise.all(memberPromises);
         setMembersDetails(memberDocsSnap.map((userDoc, index) => {
-          const uid = memberUIDs[index];
+          const uid = uniqueMemberUIDs[index]; // <--- Use unique filtered list
           return userDoc.exists() ? { uid, ...userDoc.data() } : { uid, displayName: null, email: 'Profile not found' };
         }));
       } else {
@@ -405,7 +715,6 @@ export default function MasterAdminDashboard() {
 
   // --------- Initial load ----------
   useEffect(() => {
-    // load first page for teams and users
     fetchTeamsPage({ reset: true });
     fetchUsersPage({ reset: true });
   }, []); // eslint-disable-line
@@ -438,7 +747,7 @@ export default function MasterAdminDashboard() {
     return (u.displayName || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q) || (u.uid || '').toLowerCase().includes(q);
   });
 
-  // Tab classes (kept)
+  // Tab classes
   const tabClass = (tabName) => {
     const base = "inline-flex items-center pb-3 px-1 border-b-2 font-medium text-sm";
     return activeTab === tabName ? `${base} border-blue-500 text-blue-600` : `${base} border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300`;
@@ -471,7 +780,6 @@ export default function MasterAdminDashboard() {
                 placeholder="Search users..."
                 className="text-sm px-3 py-2 rounded border border-gray-300 bg-white"
               />
-              {/* --- REMOVED "View All Chats" BUTTON --- */}
               <button onClick={() => setIsMultiAnnounceModalOpen(true)} disabled={teams.length === 0} className="inline-flex items-center bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold py-2 px-3 rounded-md shadow-sm transition-colors disabled:opacity-50">
                 <MegaphoneIcon /> Send Global Announcement
               </button>
@@ -489,76 +797,79 @@ export default function MasterAdminDashboard() {
 
           {!isInitialLoading && (
             <>
-              {/* 1) Teams list (paginated + compact toggle) */}
-              <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200 mx-4 sm:mx-6 lg:mx-8 mb-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold">All Teams ({filteredTeams.length})</h3>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => { setTeamsViewCompact(v => !v); }} className="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded">{teamsViewCompact ? 'Grid View' : 'Compact View'}</button>
-                    <button onClick={() => fetchTeamsPage({ reset: true })} className="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded">Refresh</button>
+              {/* GRID: Teams on the left, Users on the right (responsive) */}
+              <div className="mx-4 sm:mx-6 lg:mx-8 mb-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* 1) Teams list (paginated + compact toggle) */}
+                <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold">All Teams ({filteredTeams.length})</h3>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => { setTeamsViewCompact(v => !v); }} className="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded">{teamsViewCompact ? 'Grid View' : 'Compact View'}</button>
+                      <button onClick={() => fetchTeamsPage({ reset: true })} className="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded">Refresh</button>
+                    </div>
                   </div>
+
+                  {filteredTeams.length === 0 ? (
+                    <p className="text-gray-500">No teams found.</p>
+                  ) : teamsViewCompact ? (
+                    // Compact list for many items
+                    <div className="max-h-[52vh] overflow-y-auto pr-2 space-y-2">
+                      {filteredTeams.map(team => (
+                        <div key={team.id} className="flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-100">
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium text-gray-800 truncate">{team.teamName} <span className="text-xs text-gray-500 ml-2">({team.members?.length || 0})</span></div>
+                            <div className="text-xs text-gray-400 truncate">{team.description || 'No description'}</div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => handleDeleteTeam(team.id)} className="text-xs px-2 py-1 rounded bg-red-100 text-red-700">Delete</button>
+                            <button onClick={() => handleViewTeam(team)} className={`text-xs px-2 py-1 rounded ${selectedTeam?.id === team.id ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'}`}>{selectedTeam?.id === team.id ? 'Selected' : 'View'}</button>
+                          </div>
+                        </div>
+                      ))}
+                      {teamsHasMore && (
+                        <div className="flex justify-center">
+                          <button onClick={() => fetchTeamsPage({ reset: false })} className="px-3 py-1.5 bg-white border border-gray-300 rounded-md text-sm hover:bg-gray-50">Load more teams</button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    // Card grid view (better for small numbers)
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {filteredTeams.map(team => (
+                        <div key={team.id} className={`bg-white rounded-lg shadow-sm border flex flex-col justify-between transition-shadow hover:shadow-md ${ selectedTeam?.id === team.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200' }`}>
+                          <div className="p-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-semibold text-gray-900 truncate pr-2">{team.teamName}</span>
+                              <span className="flex-shrink-0 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800"><UsersIcon /> {team.members?.length || 0}</span>
+                            </div>
+                            <p className="text-xs text-gray-600 line-clamp-2 min-h-[32px]">{team.description || 'No description'}</p>
+                            <p className="text-xs text-gray-400 mt-3 font-mono truncate">ID: {team.id}</p>
+                          </div>
+                          <div className="flex items-center justify-end gap-2 p-3 bg-gray-50 border-t border-gray-100 rounded-b-lg">
+                            <button onClick={() => handleDeleteTeam(team.id)} className="text-xs px-3 py-1.5 rounded-md bg-red-100 text-red-700 hover:bg-red-200 transition-colors">Delete</button>
+                            <button onClick={() => handleViewTeam(team)} className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${ selectedTeam?.id === team.id ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100' }`}>{selectedTeam?.id === team.id ? 'Selected' : 'View'}</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {filteredTeams.length === 0 ? (
-                  <p className="text-gray-500">No teams found.</p>
-                ) : teamsViewCompact ? (
-                  // Compact list for many items
-                  <div className="max-h-[52vh] overflow-y-auto pr-2 space-y-2">
-                    {filteredTeams.map(team => (
-                      <div key={team.id} className="flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-100">
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium text-gray-800 truncate">{team.teamName} <span className="text-xs text-gray-500 ml-2">({team.members?.length || 0})</span></div>
-                          <div className="text-xs text-gray-400 truncate">{team.description || 'No description'}</div>
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => handleDeleteTeam(team.id)} className="text-xs px-2 py-1 rounded bg-red-100 text-red-700">Delete</button>
-                          <button onClick={() => handleViewTeam(team)} className={`text-xs px-2 py-1 rounded ${selectedTeam?.id === team.id ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'}`}>{selectedTeam?.id === team.id ? 'Selected' : 'View'}</button>
-                        </div>
-                      </div>
-                    ))}
-                    {teamsHasMore && (
-                      <div className="flex justify-center">
-                        <button onClick={() => fetchTeamsPage({ reset: false })} className="px-3 py-1.5 bg-white border border-gray-300 rounded-md text-sm hover:bg-gray-50">Load more teams</button>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  // Card grid view (better for small numbers)
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filteredTeams.map(team => (
-                      <div key={team.id} className={`bg-white rounded-lg shadow-sm border flex flex-col justify-between transition-shadow hover:shadow-md ${ selectedTeam?.id === team.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200' }`}>
-                        <div className="p-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-semibold text-gray-900 truncate pr-2">{team.teamName}</span>
-                            <span className="flex-shrink-0 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800"><UsersIcon /> {team.members?.length || 0}</span>
-                          </div>
-                          <p className="text-xs text-gray-600 line-clamp-2 min-h-[32px]">{team.description || 'No description'}</p>
-                          <p className="text-xs text-gray-400 mt-3 font-mono truncate">ID: {team.id}</p>
-                        </div>
-                        <div className="flex items-center justify-end gap-2 p-3 bg-gray-50 border-t border-gray-100 rounded-b-lg">
-                          <button onClick={() => handleDeleteTeam(team.id)} className="text-xs px-3 py-1.5 rounded-md bg-red-100 text-red-700 hover:bg-red-200 transition-colors">Delete</button>
-                          <button onClick={() => handleViewTeam(team)} className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${ selectedTeam?.id === team.id ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100' }`}>{selectedTeam?.id === team.id ? 'Selected' : 'View'}</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {/* 2) Users (paginated + compact) */}
+                <div>
+                  <UserManagementSection
+                    allUsers={filteredUsers}
+                    allTeams={teams}
+                    loadingUsers={usersLoading}
+                    errorUsers={usersError}
+                    onLoadMoreUsers={() => fetchUsersPage({ reset: false })}
+                    hasMoreUsers={usersHasMore}
+                    onToggleCompact={() => setUsersViewCompact(v => !v)}
+                  />
+                </div>
               </div>
 
-              {/* 2) Users (paginated + compact) */}
-              <div className="mx-4 sm:mx-6 lg:mx-8 mb-8">
-                <UserManagementSection
-                  allUsers={filteredUsers}
-                  allTeams={teams}
-                  loadingUsers={usersLoading}
-                  errorUsers={usersError}
-                  onLoadMoreUsers={() => fetchUsersPage({ reset: false })}
-                  hasMoreUsers={usersHasMore}
-                  onToggleCompact={() => setUsersViewCompact(v => !v)}
-                />
-              </div>
-
-              {/* 3) Selected Team Details */}
+              {/* 3) Selected Team Details (full width below the two-column area) */}
               {selectedTeam && (
                 <div className="bg-white rounded-t-lg shadow-md border border-gray-200 mx-4 sm:mx-6 lg:mx-8">
                   <div className="p-6 flex justify-between items-center px-4 sm:px-6 lg:px-8">
@@ -576,19 +887,37 @@ export default function MasterAdminDashboard() {
                     <button onClick={() => setIsScheduleModalOpen(true)} className="bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md shadow-sm">Schedule Meeting</button>
                   </div>
 
+                  {/* --- MODIFIED: Added Calendar Tab --- */}
                   <div className="px-4 sm:px-6 lg:px-8 border-b border-gray-200">
                     <nav className="flex space-x-6" aria-label="Tabs">
                       <button onClick={() => setActiveTab('projects')} className={tabClass('projects')}><TableIcon /> Projects</button>
+                      <button onClick={() => setActiveTab('calendar')} className={tabClass('calendar')}><CalendarIcon /> Calendar</button>
                       <button onClick={() => setActiveTab('members')} className={tabClass('members')}><UsersIcon /> Members</button>
                       <button onClick={() => setActiveTab('updates')} className={tabClass('updates')}><MegaphoneIcon /> Updates</button>
                     </nav>
                   </div>
 
-                  <div className="min-h-[360px] p-4">
+                  {/* --- MODIFIED: Removed p-4 from this wrapper ---
+                    This allows TeamProjectTable and TeamCalendar to be full-width cards,
+                    while MembersSection and AnnouncementsSection add their own padding internally.
+                  */}
+                  <div className="min-h-[360px]">
                     {isLoadingDetails && ( <div className="p-6 flex justify-center"><Spinner /></div> )}
                     {!isLoadingDetails && teamData && (
                       <>
-                        {activeTab === 'projects' && ( <TeamProjectTable teamId={selectedTeam.id} /> )}
+                        {activeTab === 'projects' && ( <TeamProjectTable teamId={selectedTeam.id} onTaskChange={refreshAnnouncements} /> )}
+                        
+                        {/* --- NEW: Calendar Render --- */}
+                        {activeTab === 'calendar' && (
+                           <div className="bg-white rounded-lg shadow-sm border-t-0 overflow-hidden">
+                            <TeamCalendar 
+                              teamId={selectedTeam.id} 
+                              isAdmin={true} // Master Admin is always admin
+                              refreshTrigger={announcementRefreshKey} 
+                            />
+                          </div>
+                        )}
+                        
                         {activeTab === 'members' && ( <div className="p-4 sm:p-6 lg:p-8"><MembersSection membersDetails={membersDetails} teamData={teamData} canManageMembers={true} onChangeRole={changeRole} onInviteClick={() => setIsInviteModalOpen(true)} /></div> )}
                         {activeTab === 'updates' && ( <div className="p-4 sm:p-6 lg:p-8"><AnnouncementsSection teamId={selectedTeam.id} refreshTrigger={announcementRefreshKey} isAdmin={true} onEdit={openEditModal}/></div> )}
                       </>
@@ -610,10 +939,7 @@ export default function MasterAdminDashboard() {
           <EditUpdateModal isOpen={isEditModalOpen} onClose={closeEditModal} teamId={selectedTeam.id} updateId={editTarget?.id} updateType={editTarget?.type} initialData={editTarget} onSaved={refreshAnnouncements} />
         </>
       )}
-      {/* <NotificationsModal isOpen={isNotificationsModalOpen} onClose={() => setIsNotificationsModalOpen(false)} /> */}
       <AnnounceMultiTeamModal isOpen={isMultiAnnounceModalOpen} onClose={() => setIsMultiAnnounceModalOpen(false)} allTeams={teams} onAnnouncementSent={() => { if (selectedTeam) refreshAnnouncements(); }} />
-      
-      {/* --- REMOVED MasterAdminChatModal RENDER --- */}
     </>
   );
 }
