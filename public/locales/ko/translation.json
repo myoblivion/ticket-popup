@@ -1,0 +1,30 @@
+{
+  "settings": {
+    "title": "사용자 설정",
+    "emailLabel": "이메일",
+    "displayNameLabel": "표시 이름",
+    "displayNameHint": "이 이름은 다른 팀원에게 표시됩니다.",
+    "languageLabel": "선호하는 언어",
+    "languageHint": "인터페이스에 표시할 기본 언어를 선택하십시오.",
+    "successMsg": "설정이 성공적으로 업데이트되었습니다!",
+    "errorMsg": "설정을 저장하지 못했습니다.",
+    "loading": "설정 불러오는 중..."
+  },
+  "common": {
+    "saveChanges": "변경 사항 저장",
+    "saving": "저장 중...",
+    "backToDashboard": "← 대시보드로 돌아가기"
+  },
+  "header": {
+    "dashboard": "대시보드",
+    "searchPlaceholder": "검색...",
+    "viewNotifications": "알림 보기",
+    "openUserMenu": "사용자 메뉴 열기",
+    "signedInAs": "로그인 계정:",
+    "masterAdmin": "마스터 관리자",
+    "adminDashboard": "관리자 대시보드",
+    "settings": "설정",
+    "logout": "로그아웃",
+    "logoutError": "로그아웃에 실패했습니다."
+  }
+}

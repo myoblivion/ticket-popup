@@ -10,7 +10,7 @@ import TeamView from './components/TeamView';
 import SettingsPage from './components/SettingsPage';
 import MasterAdminRegisterPage from './components/MasterAdminRegisterPage';
 import MasterAdminDashboard from './components/MasterAdminDashboard';
-
+import './i18n'; // Import the i18n configuration
 // --- NEW IMPORT ---
 import MainLayout from './components/MainLayout'; // Import the layout
 

@@ -11,10 +11,13 @@
   },
   "dependencies": {
     "firebase": "^12.4.0",
+    "i18next": "^25.6.0",
+    "i18next-http-backend": "^3.0.2",
     "moment": "^2.30.1",
     "react": "^19.1.1",
     "react-big-calendar": "^1.19.4",
     "react-dom": "^19.1.1",
+    "react-i18next": "^16.2.3",
     "react-router-dom": "^7.9.4"
   },
   "devDependencies": {

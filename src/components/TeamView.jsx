@@ -167,7 +167,7 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
   );
 };
 
-// --- MembersSection (unchanged) ---
+// --- MembersSection (MODIFIED) ---
 const MembersSection = ({ membersDetails, teamData, currentUserUid, canManageMembers, onChangeRole, onInviteClick }) => {
   return (
     <div className="bg-white p-4 rounded-lg shadow border h-full">
@@ -187,9 +187,17 @@ const MembersSection = ({ membersDetails, teamData, currentUserUid, canManageMem
           {membersDetails.map((member) => {
             const uid = member.uid;
             const isCreator = teamData?.createdBy === uid;
+            
+            // --- NEW LOGIC: Check for Master Admin role ---
+            // This 'role' comes from the user's document in the 'users' collection
+            const isMasterAdmin = member.role === 'Master Admin'; 
+            // --- END NEW LOGIC ---
+
             const roleMap = teamData?.roles || {};
             const roleRaw = isCreator ? 'creator' : (roleMap?.[uid] || 'member');
-            const roleLabel = roleRaw === 'creator' ? 'Creator' : (roleRaw === 'admin' ? 'Admin' : 'Member');
+            
+            // Show "Master Admin" as the label if they have that role
+            const roleLabel = isCreator ? 'Creator' : (isMasterAdmin ? 'Master Admin' : (roleRaw === 'admin' ? 'Admin' : 'Member'));
 
             return (
               <li key={uid} className="flex items-center justify-between gap-3 bg-gray-50 p-2 rounded">
@@ -208,8 +216,11 @@ const MembersSection = ({ membersDetails, teamData, currentUserUid, canManageMem
                 </div>
                 {canManageMembers ? (
                   <div className="flex items-center gap-2">
+                    {/* --- MODIFIED LOGIC: Check for Creator OR Master Admin --- */}
                     {isCreator ? (
-                      <div className="text-xs px-2 py-1 bg-yellow-50 rounded border text-yellow-800">Creator</div>
+                      <div className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded border border-yellow-200">Creator</div>
+                    ) : isMasterAdmin ? (
+                      <div className="text-xs px-2 py-1 bg-indigo-100 text-indigo-800 rounded border border-indigo-200">Master Admin</div>
                     ) : (
                       <select
                         value={roleRaw}
@@ -221,6 +232,7 @@ const MembersSection = ({ membersDetails, teamData, currentUserUid, canManageMem
                         <option value="member">Member</option>
                       </select>
                     )}
+                    {/* --- END MODIFIED LOGIC --- */}
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
@@ -368,36 +380,30 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
         getDocs(notesQuery),
       ]);
 
-      // --- Task events ---
+      // --- Task events (MODIFIED per user request) ---
       const taskEvents = taskDocs.docs
-        .filter(d => d.data().startDate && d.data().endDate) // Ensure both dates exist
+        .filter(d => d.data().endDate) // <-- CHANGED: Only require an endDate
         .map(d => {
           const data = d.data();
-          const startDate = normalizeValueToDate(data.startDate);
           const endDate = normalizeValueToDate(data.endDate);
 
-          if (!startDate || !endDate) return null;
+          if (!endDate) return null; // Skip if endDate is invalid
 
-          // --- THIS IS THE FIX ---
-          // Use 'ticketNo' (from table) first, then 'title', then ID
+          // --- FIX: Use 'ticketNo' (from table) first, then 'title', then ID
           const title = `Ticket: ${data.ticketNo || data.title || d.id}`;
-          // --- END OF FIX ---
-
-          // Make sure end date is at least the start date for calendar
-          const safeEndDate = (endDate < startDate) ? startDate : endDate;
 
           return {
             id: d.id,
             title: title,
-            start: startDate, 
-            end: safeEndDate,     
-            allDay: true, // Tasks are always all-day
+            start: endDate, // <-- CHANGED: Use endDate
+            end: endDate,   // <-- CHANGED: Use endDate
+            allDay: true,
             type: 'ticket',
           };
         })
         .filter(Boolean); // Remove any null (invalid) events
 
-      // --- Meeting events ---
+      // --- Meeting events (Unchanged) ---
       const meetingEvents = meetingDocs.docs.map(d => {
         const data = d.data();
         const start = normalizeValueToDate(data.startDateTime) || new Date();
@@ -414,7 +420,7 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
         };
       });
 
-      // --- Note events ---
+      // --- Note events (Unchanged from previous fix) ---
       const noteEvents = noteDocs.docs.map(d => {
         const data = d.data();
         const start = normalizeValueToDate(data.start) || new Date();
@@ -423,7 +429,7 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
         return {
           id: d.id,
           title: `Note: ${data.title || 'Note'}`,
-          description: data.description || '', // <-- ADDED
+          description: data.description || '', // <-- Keep description field
           start: start,
           end: start, // All-day notes just need a start date
           allDay: true,
@@ -599,7 +605,7 @@ const TeamView = () => {
         const memberInfo = memberDocsSnap.map((userDoc, index) => {
           const uid = uniqueMemberUIDs[index];
           return userDoc.exists()
-              ? { uid: uid, ...userDoc.data() }
+              ? { uid: uid, ...userDoc.data() } // <-- This line fetches the user's 'role' field
               : { uid: uid, displayName: null, email: 'Profile not found' };
         });
         setMembersDetails(memberInfo);
@@ -619,6 +625,15 @@ const TeamView = () => {
   const changeRole = async (memberUid, newRole) => {
       if (!teamData || !currentUser || !isAdmin || teamData.createdBy === memberUid) return;
       if (!['admin', 'member'].includes(newRole)) return;
+      
+      // --- NEW: Check if the target is a Master Admin ---
+      // We find them in the memberDetails state to check their main role
+      const targetUser = membersDetails.find(m => m.uid === memberUid);
+      if (targetUser && targetUser.role === 'Master Admin') {
+        alert("You cannot change the team role of a Master Admin.");
+        return;
+      }
+      // --- END NEW CHECK ---
 
       const teamDocRef = doc(db, "teams", teamId);
       const rolesUpdate = { ...teamData.roles, [memberUid]: newRole };

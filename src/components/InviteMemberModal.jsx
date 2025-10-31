@@ -64,6 +64,21 @@ const InviteMemberModal = ({ isOpen, onClose, teamId, onInvited }) => {
       const invitedData = userDoc.data();
       const invitedLabel = invitedData.displayName || invitedData.name || invitedData.email || invitedUserId;
 
+      // --- NEW CHECK #1: Prevent Self-Invite ---
+      if (invitedUserId === currentUser.uid) {
+        setError("You cannot invite yourself to the team.");
+        setIsInviting(false);
+        return;
+      }
+
+      // --- NEW CHECK #2: Prevent Inviting Master Admin ---
+      if (invitedData.role === 'Master Admin') {
+        setError('This user is a Master Admin and does not need to be invited.');
+        setIsInviting(false);
+        return;
+      }
+      // --- END OF NEW CHECKS ---
+
       // 2. Get team doc
       const teamRef = doc(db, 'teams', teamId);
       const teamSnap = await getDoc(teamRef);
