@@ -1,16 +1,21 @@
-import React, { useState, useEffect } from 'react';
+// src/components/Header.jsx
+import React, { useState, useEffect, useContext } from 'react'; // --- IMPORT useContext ---
 import { Link } from 'react-router-dom';
 import { signOut } from "firebase/auth";
 import { auth, db } from '../firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 
-// --- I18N IMPORT ---
-import { useTranslation } from 'react-i18next';
+// --- REMOVE I18N IMPORT ---
+// import { useTranslation } from 'react-i18next';
 // --- END I18N IMPORT ---
 
+// --- NEW CONTEXT IMPORT ---
+import { LanguageContext } from '../contexts/LanguageContext.jsx'; // Import our new context
+// --- END NEW CONTEXT IMPORT ---
 
-// Placeholder Icons
+
+// Placeholder Icons (no changes)
 const BellIcon = () => (
     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341A6.002 6.002 0 006 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
@@ -21,9 +26,9 @@ const SearchIcon = () => (
 );
 
 const Header = ({ onNotificationClick }) => {
-    // --- I18N HOOK ---
-    const { t } = useTranslation();
-    // --- END I18N HOOK ---
+    // --- USE CONTEXT HOOK ---
+    const { t } = useContext(LanguageContext); // Get 't' from our context
+    // --- END CONTEXT HOOK ---
 
     const [user, setUser] = useState(null);
     const [showUserDropdown, setShowUserDropdown] = useState(false);
@@ -53,7 +58,7 @@ const Header = ({ onNotificationClick }) => {
         return () => unsubscribe();
     }, []);
 
-    // Listener for unread notifications
+    // Listener for unread notifications (no changes)
     useEffect(() => {
         if (user) {
             const notifsRef = collection(db, 'notifications');
@@ -73,7 +78,7 @@ const Header = ({ onNotificationClick }) => {
         }
     }, [user]);
 
-    // Close dropdown when clicking outside
+    // Close dropdown when clicking outside (no changes)
     useEffect(() => {
         const handleClickOutside = (event) => {
           if (showUserDropdown && !event.target.closest('#user-menu-button') && !event.target.closest('#user-menu-dropdown')) {
@@ -92,7 +97,7 @@ const Header = ({ onNotificationClick }) => {
             // App.jsx routing will handle redirect
         } catch (error) {
             console.error("Logout Error:", error);
-            // --- USE T() FUNCTION ---
+            // --- USE T() FUNCTION (now from context) ---
             alert(t('header.logoutError'));
         }
     };

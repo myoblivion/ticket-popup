@@ -1,3 +1,4 @@
+// src/App.jsx
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged } from "firebase/auth";
@@ -10,9 +11,13 @@ import TeamView from './components/TeamView';
 import SettingsPage from './components/SettingsPage';
 import MasterAdminRegisterPage from './components/MasterAdminRegisterPage';
 import MasterAdminDashboard from './components/MasterAdminDashboard';
-import './i18n'; // Import the i18n configuration
-// --- NEW IMPORT ---
-import MainLayout from './components/MainLayout'; // Import the layout
+// import './i18n'; // --- REMOVE THIS ---
+
+// --- NEW IMPORTS ---
+import { LanguageProvider } from './contexts/LanguageContext.jsx'; // Import the provider (CHANGED)
+import MainLayout from './components/MainLayout';
+// --- END NEW IMPORTS ---
+
 
 // ProtectedRoute stays the same
 const ProtectedRoute = ({ children }) => {
@@ -35,39 +40,42 @@ const ProtectedRoute = ({ children }) => {
 
 function App() {
   return (
-    <Router>
-      <Routes>
-        {/* Public Routes */}
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="/register-master-admin" element={<MasterAdminRegisterPage />} />
+    // Wrap the *entire app* in the LanguageProvider
+    <LanguageProvider>
+      <Router>
+        <Routes>
+          {/* Public Routes */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/register-master-admin" element={<MasterAdminRegisterPage />} />
 
-        {/* --- Protected Routes --- */}
-        {/* Wrap the MainLayout with ProtectedRoute */}
-        <Route
-          element={
-            <ProtectedRoute>
-              <MainLayout /> {/* This layout now contains Header, Chat button, Modals */}
-            </ProtectedRoute>
-          }
-        >
-          {/* Routes rendered INSIDE MainLayout via <Outlet /> */}
-          <Route path="/home" element={<HomePage />} />
-          <Route path="/admin-dashboard" element={<MasterAdminDashboard />} />
-          <Route path="/team/:teamId" element={<TeamView />} />
-          <Route path="/settings" element={<SettingsPage />} />
+          {/* --- Protected Routes --- */}
+          {/* Wrap the MainLayout with ProtectedRoute */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <MainLayout /> {/* This layout now contains Header, Chat button, Modals */}
+              </ProtectedRoute>
+            }
+          >
+            {/* Routes rendered INSIDE MainLayout via <Outlet /> */}
+            <Route path="/home" element={<HomePage />} />
+            <Route path="/admin-dashboard" element={<MasterAdminDashboard />} />
+            <Route path="/team/:teamId" element={<TeamView />} />
+            <Route path="/settings" element={<SettingsPage />} />
 
-          {/* Default route for logged-in users */}
-          <Route path="/" element={<Navigate to="/home" replace />} />
+            {/* Default route for logged-in users */}
+            <Route path="/" element={<Navigate to="/home" replace />} />
 
-        </Route> {/* End of Protected Routes group */}
+          </Route> {/* End of Protected Routes group */}
 
-        {/* Catch-all route (can redirect to login or home depending on auth) */}
-        {/* This might need adjustment based on ProtectedRoute's loading state handling */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+          {/* Catch-all route (can redirect to login or home depending on auth) */}
+          {/* This might need adjustment based on ProtectedRoute's loading state handling */}
+          <Route path="*" element={<Navigate to="/" replace />} />
 
-      </Routes>
-    </Router>
+        </Routes>
+      </Router>
+    </LanguageProvider>
   );
 }
 

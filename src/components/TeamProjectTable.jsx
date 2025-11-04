@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+// TeamProjectTable.jsx
+import React, { useState, useEffect, useCallback, useRef, useMemo, useContext } from 'react';
 import { db, auth } from '../firebaseConfig';
 import {
   collection,
@@ -21,6 +22,9 @@ import {
 } from 'firebase/firestore';
 import NotePopup from './NotePopup';
 import CreateTaskModal from './CreateTaskModal';
+
+// --- NEW: Language Context ---
+import { LanguageContext } from '../contexts/LanguageContext.jsx';
 
 // placeholders (will be overridden by team meta if present)
 const DEFAULT_PLACEHOLDERS = {
@@ -45,42 +49,13 @@ const INLINE_EDITABLE_COLUMNS = [
 // These columns will use a <textarea> for editing
 const TEXTAREA_COLUMNS = ['ticketNo', 'company', 'inquiryDetails', 'notes'];
 
-// --- Translation UI Strings ---
-const UI_STRINGS = [
-  'Team Project Tasks',
-  'Expand All',
-  'Collapse All',
-  'New Task',
-  'Loading Tasks...',
-  'No tasks created yet.', // This is now a fallback
-  '(open)',
-  '(empty)',
-  'Delete this task? This action cannot be undone.',
-  'Delete task',
-  'Saving…',
-  'Saved',
-  'Add new…',
-  'Cancel',
-  'Save',
-  'Invite user…',
-  'Invite Member',
-  // --- NEW ---
-  'Active',
-  'Completed',
-  'No active tasks created yet.',
-  'No completed tasks found.',
-  // --- NEW FILTER STRINGS ---
-  'Filter by Company:',
-  'Filter by Developer:',
-  'Filter by Category:',
-  'All Developers',
-  'All Categories',
-  'Clear Filters',
-  'No tasks match the current filters.'
-];
+// --- REMOVED UI_STRINGS ARRAY ---
 
 const TeamProjectTable = ({ teamId, onTaskChange }) => {
-    const [tasks, setTasks] = useState([]);
+  // --- NEW: Language Context ---
+  const { t } = useContext(LanguageContext);
+
+  const [tasks, setTasks] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isPopupOpen, setIsPopupOpen] = useState(false);
@@ -103,13 +78,7 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
   // NEW: Single state for expanding all columns
   const [isAllExpanded, setIsAllExpanded] = useState(false);
 
-  // --- NEW: Translation State ---
-  const [currentLanguage, setCurrentLanguage] = useState('en');
-  const [isTranslating, setIsTranslating] = useState(false);
-  // This Map will hold our translations: 'Hello' -> '안녕하세요'
-  const [translations, setTranslations] = useState(new Map());
-  // This ref will cache results for each language to avoid re-fetching
-  const translationCache = useRef(new Map([['en', new Map()]])); // 'en' is pre-cached
+  // --- REMOVED OLD TRANSLATION STATE ---
 
   // dynamic option lists (load from Firestore team doc if available)
   // membersList is now array of objects: { uid, label }
@@ -146,46 +115,38 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
 
   // headers (defined here so translation hook can access it)
   const headers = useMemo(() => [
-    { key: 'priority', label: 'Priority', widthClass: 'w-[110px]', maxWidth: '110px' },
-    { key: 'category', label: 'Category', widthClass: 'w-[140px]', maxWidth: '140px' },
-    { key: 'type', label: 'Type', widthClass: 'w-[140px]', maxWidth: '140px' },
-    { key: 'status', label: 'Status', widthClass: 'w-[120px]', maxWidth: '120px' },
-    { key: 'ticketNo', label: 'Ticket #', widthClass: 'w-[110px]', maxWidth: '110px' },
-    { key: 'company', label: 'Company', widthClass: 'w-[160px]', maxWidth: '160px' },
-    { key: 'inquiry', label: 'Inquiry', widthClass: 'w-[120px]', maxWidth: '140px' },
-    { key: 'inquiryDetails', label: 'Inquiry Details', widthClass: 'min-w-[280px]', maxWidth: '520px' },
-    { key: 'notes', label: 'Notes', widthClass: 'w-[160px]', maxWidth: '260px' },
-    { key: 'csManager', label: 'CS Manager', widthClass: 'w-[160px]', maxWidth: '160px' },
-    { key: 'startDate', label: 'Start Date', widthClass: 'w-[120px]', maxWidth: '120px' },
-    { key: 'endDate', label: 'End Date', widthClass: 'w-[120px]', maxWidth: '120px' },
-    { key: 'qaManager', label: 'QA Manager', widthClass: 'w-[160px]', maxWidth: '160px' },
-    { key: 'developer', label: 'Developer', widthClass: 'w-[160px]', maxWidth: '160px' },
+    { key: 'priority', label: t('tickets.priority'), widthClass: 'w-[110px]', maxWidth: '110px' },
+    { key: 'category', label: t('tickets.category'), widthClass: 'w-[140px]', maxWidth: '140px' },
+    { key: 'type', label: t('tickets.type'), widthClass: 'w-[140px]', maxWidth: '140px' },
+    { key: 'status', label: t('tickets.status'), widthClass: 'w-[120px]', maxWidth: '120px' },
+    { key: 'ticketNo', label: t('tickets.ticketNo'), widthClass: 'w-[110px]', maxWidth: '110px' },
+    { key: 'company', label: t('tickets.company'), widthClass: 'w-[160px]', maxWidth: '160px' },
+    { key: 'inquiry', label: t('tickets.inquiryHeader'), widthClass: 'w-[120px]', maxWidth: '140px' },
+    { key: 'inquiryDetails', label: 'Inquiry Details', widthClass: 'min-w-[280px]', maxWidth: '520px' }, // This label is not in the list, keeping English
+    { key: 'notes', label: t('tickets.notes'), widthClass: 'w-[160px]', maxWidth: '260px' },
+    { key: 'csManager', label: t('tickets.csManager'), widthClass: 'w-[160px]', maxWidth: '160px' },
+    { key: 'startDate', label: t('tickets.startDate'), widthClass: 'w-[120px]', maxWidth: '120px' },
+    { key: 'endDate', label: t('tickets.endDate'), widthClass: 'w-[120px]', maxWidth: '120px' },
+    { key: 'qaManager', label: t('tickets.qaManager'), widthClass: 'w-[160px]', maxWidth: '160px' },
+    { key: 'developer', label: t('tickets.developer'), widthClass: 'w-[160px]', maxWidth: '160px' },
     { key: 'actions', label: '', widthClass: 'w-[64px] text-center', maxWidth: '64px' }
-  ], []);
+  ], [t]); // --- ADDED t ---
 
   // --- Filter tasks based on status ---
   const { activeTasks, completedTasks } = useMemo(() => {
     const active = [];
     const completed = [];
-    // --- UPDATED LOGIC ---
-    // Explicitly check for the string "Complete"
-    const completeStatusString = 'Complete';
-    // --- END UPDATE ---
+    const completeStatusString = 'Complete'; // This is the raw value
 
     for (const task of tasks) {
-      // --- UPDATED COMPARISON ---
       if (task.status === completeStatusString) {
-      // --- END UPDATE ---
         completed.push(task);
       } else {
         active.push(task);
       }
     }
     return { activeTasks: active, completedTasks: completed };
-    // --- UPDATED DEPENDENCY ---
-    // No longer depends on statusOptions for filtering logic itself
   }, [tasks]);
-  // --- END UPDATE ---
 
   // Select tasks based on the active tab
   const tasksToDisplay = useMemo(() => {
@@ -251,12 +212,11 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
         if (data.priorities && Array.isArray(data.priorities)) setPriorityOptions(data.priorities);
         // Ensure statusOptions is set, otherwise use default
         if (data.statusOptions && Array.isArray(data.statusOptions) && data.statusOptions.length > 0) {
-            setStatusOptions(data.statusOptions);
+          setStatusOptions(data.statusOptions);
         } else {
-            setStatusOptions(DEFAULT_STATUS_OPTIONS);
+          setStatusOptions(DEFAULT_STATUS_OPTIONS);
         }
 
-        // members can be stored as array of uids OR array of objects { uid, label }
 // members can be stored as array of uids, array of objects {uid, label}, or a mix
         if (data.members && Array.isArray(data.members)) {
           const resolved = await Promise.all(data.members.map(async (member) => {
@@ -296,7 +256,7 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
                 return { uid: memberUid, label };
               } else {
                 return { uid: memberUid, label: memberUid }; // Fallback
-  _             }
+              }
             } catch (err) {
               // Log the original problematic item (string or object) for better debugging
               console.error('Failed to load user data for:', member, err);
@@ -385,140 +345,9 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
     };
   }, [teamId]);
 
-  // --- Translation Effect ---
-  useEffect(() => {
-    if (currentLanguage === 'en') {
-      setTranslations(new Map());
-      setIsTranslating(false);
-      return;
-    }
-    if (translationCache.current.has(currentLanguage)) {
-      setTranslations(translationCache.current.get(currentLanguage));
-      return;
-    }
+  // --- REMOVED TRANSLATION useEffect ---
 
-    const collectStrings = () => {
-      const strings = new Set();
-      const emailRegex = /[^\s@]+@[^\s@]+\.[^\s@]+/;
-      const numberRegex = /^\d+$/;
-      const dashRegex = /^-+$/;
-      UI_STRINGS.forEach(s => { if (s) strings.add(s); });
-      headers.forEach(h => { if (h.label) strings.add(h.label); });
-      tasks.forEach(task => {
-        headers.forEach(h => {
-          const val = task[h.key];
-          if (val && typeof val === 'string' && val.trim().length > 0) {
-            if (
-              emailRegex.test(val) ||
-              numberRegex.test(val) ||
-              dashRegex.test(val) ||
-              h.key === 'ticketNo'
-            ) {
-              // skip potential PII or IDs
-            } else {
-              strings.add(val);
-            }
-          }
-        });
-      });
-      return Array.from(strings);
-    };
-
-    const runTranslation = async () => {
-      setIsTranslating(true);
-      setError(null);
-      const stringsToTranslate = collectStrings();
-      if (stringsToTranslate.length === 0) {
-        setIsTranslating(false);
-        return;
-      }
-
-      try {
-        // Batch requests to avoid API limits
-        const batches = [];
-        const delimiter = ' ||| ';
-        const delimEncLen = encodeURIComponent(delimiter).length;
-        const MAX_ENCODED_CHARS = 480;
-
-        let currentBatch = [];
-        let currentLen = 0;
-
-        for (const s of stringsToTranslate) {
-          const encLen = encodeURIComponent(s).length;
-          // Handle single strings that exceed limit
-          if (currentBatch.length === 0 && encLen > MAX_ENCODED_CHARS) {
-            batches.push([s]);
-            continue;
-          }
-
-          const predictedLen = currentBatch.length === 0 ? encLen : (currentLen + delimEncLen + encLen);
-          if (predictedLen > MAX_ENCODED_CHARS) {
-            batches.push(currentBatch);
-            currentBatch = [s];
-            currentLen = encLen;
-          } else {
-            currentBatch.push(s);
-            currentLen = predictedLen;
-          }
-        }
-        if (currentBatch.length > 0) batches.push(currentBatch);
-
-        const translatedFullList = [];
-
-        for (const batch of batches) {
-          const joined = batch.join(delimiter);
-          const langPair = `en|${currentLanguage}`;
-          const apiUrl = new URL('https://api.mymemory.translated.net/get');
-          apiUrl.searchParams.append('q', joined);
-          apiUrl.searchParams.append('langpair', langPair);
-
-          const res = await fetch(apiUrl.toString(), {
-            method: 'GET',
-            mode: 'cors',
-          });
-
-          if (!res.ok) {
-            throw new Error(`Translation API returned ${res.status}: ${res.statusText}`);
-          }
-          const data = await res.json();
-          if (data.responseStatus !== 200) {
-            const details = data.responseDetails || data.responseStatus;
-            throw new Error(`Translation API error: ${details}`);
-          }
-
-          const translatedJoinedStrings = data.responseData.translatedText;
-          const translatedStringsArray = translatedJoinedStrings.split(/\s*\|\|\|\s*/);
-          for (let i = 0; i < batch.length; i++) {
-            const translated = translatedStringsArray[i] || batch[i]; // Fallback to original
-            translatedFullList.push(translated.trim());
-          }
-        }
-
-        const newMap = new Map();
-        stringsToTranslate.forEach((original, idx) => {
-          newMap.set(original, translatedFullList[idx] || original);
-        });
-
-        translationCache.current.set(currentLanguage, newMap);
-        setTranslations(newMap);
-      } catch (err) {
-        console.error("Translation error:", err);
-        setError(`Translation failed: ${err.message}. Check the console.`);
-      } finally {
-        setIsTranslating(false);
-      }
-    };
-
-    runTranslation();
-  }, [tasks, currentLanguage, headers]);
-
-  // --- Translation Helper Function ---
-  const t = useCallback((text) => {
-    if (currentLanguage === 'en' || !text) {
-      return text;
-    }
-    return translations.get(text) || text;
-  }, [currentLanguage, translations]);
+  // --- REMOVED OLD t function ---
 
   // --- Firestore realtime listener for tasks ---
   useEffect(() => {
@@ -642,7 +471,7 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
       return;
     }
     const key = getCellKey(taskId, 'actions'); // For saving indicator
-    const confirmed = window.confirm(t('Delete this task? This action cannot be undone.'));
+    const confirmed = window.confirm(t('common.confirmDeleteTask'));
     if (!confirmed) return;
     try {
       setSavingState(key, 'saving');
@@ -905,7 +734,7 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
 
           if (!currentStatuses.includes(value)) { // Only add if it's truly new
             const completeStatus = currentStatuses.pop(); // Remove the last (assumed complete) status
-            currentStatuses.push(value);               // Add the new status
+            currentStatuses.push(value);              // Add the new status
             if (completeStatus !== undefined) {   // Add the complete status back at the end
               currentStatuses.push(completeStatus);
             }
@@ -976,17 +805,17 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
         if (isObjectArray) {
             // Check if member object already exists
             if (!members.some(m => m.uid === invitedUid)) {
-               await updateDoc(teamDocRef, { members: arrayUnion({ uid: invitedUid, label: invitedLabel }) });
+              await updateDoc(teamDocRef, { members: arrayUnion({ uid: invitedUid, label: invitedLabel }) });
             }
         } else {
-             // Assume array of UIDs
-             if (!members.includes(invitedUid)) {
-                await updateDoc(teamDocRef, { members: arrayUnion(invitedUid) });
-             }
+            // Assume array of UIDs
+            if (!members.includes(invitedUid)) {
+              await updateDoc(teamDocRef, { members: arrayUnion(invitedUid) });
+            }
         }
       } else {
-         // Team doc doesn't exist, create it with the member
-         await setDoc(teamDocRef, { members: [invitedUid] }); // Start with UID array for simplicity
+        // Team doc doesn't exist, create it with the member
+        await setDoc(teamDocRef, { members: [invitedUid] }); // Start with UID array for simplicity
       }
 
     } catch (err) {
@@ -1059,7 +888,7 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
     const teamRef = doc(db, 'teams', teamId);
     try {
         const snap = await getDoc(teamRef);
-         if (!snap.exists()) return; // Nothing to remove from
+        if (!snap.exists()) return; // Nothing to remove from
 
         const data = snap.data();
         const members = data.members || [];
@@ -1069,7 +898,7 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
         if (members.length > 0 && typeof members[0] === 'object') {
             updateData.members = members.filter(m => m.uid !== uid);
         } else {
-             updateData.members = arrayRemove(uid); // Use arrayRemove for UID arrays
+            updateData.members = arrayRemove(uid); // Use arrayRemove for UID arrays
         }
 
         // Atomically remove roles/permissions if they exist
@@ -1095,18 +924,18 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
 
         // Standardize to object array
         if (members.length > 0 && typeof members[0] === 'object') {
-             // Already objects, just add if not present
-             if (!members.some(m => m.uid === uid)) {
-                  newMembers = [...members, { uid, label }];
-             } else {
-                  newMembers = members; // Already exists
-             }
+            // Already objects, just add if not present
+            if (!members.some(m => m.uid === uid)) {
+                newMembers = [...members, { uid, label }];
+            } else {
+                newMembers = members; // Already exists
+            }
         } else {
-             // Convert existing UIDs to objects and add the new one
-             newMembers = members.map(mUid => ({ uid: mUid, label: mUid }));
-             if (!newMembers.some(m => m.uid === uid)) {
-                  newMembers.push({ uid, label });
-             }
+            // Convert existing UIDs to objects and add the new one
+            newMembers = members.map(mUid => ({ uid: mUid, label: mUid }));
+            if (!newMembers.some(m => m.uid === uid)) {
+                newMembers.push({ uid, label });
+            }
         }
 
         if (newMembers !== members) { // Only update if changed
@@ -1119,6 +948,18 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
      }
   };
 
+  // --- Mappings for dynamic values ---
+  const categoryKeyMap = {
+    'Tech Issue': 'tickets.techIssue',
+    'Feature Request': 'tickets.featureRequest',
+    'Inquiry': 'tickets.inquiry'
+  };
+  
+  // Add other maps as needed for 'type', 'priority', 'status'
+  // For now, will just translate category or fallback
+  const translateDynamic = (val, map) => {
+    return t(map[val] || val);
+  };
 
   // --- Cell Renderer ---
   const renderCellContent = (task, header) => {
@@ -1132,9 +973,9 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
         <div className="flex items-center justify-center gap-2 px-2 py-2">
           <button
             onClick={(e) => { e.stopPropagation(); deleteRow(task.id); }}
-            title={t("Delete task")}
+            title={t("common.deleteTask")}
             className="p-1 rounded text-gray-500 hover:text-red-600 hover:bg-red-50 focus:outline-none focus:ring-1 focus:ring-red-500"
-            aria-label={`${t("Delete task")} ${task.id}`}
+            aria-label={`${t("common.deleteTask")} ${task.id}`}
           >
             {/* Simple Trash Icon */}
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -1173,25 +1014,25 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
             onBlur={() => {
                 // Delay blur slightly to allow onChange to fire first
                 setTimeout(() => {
-                    // Check if we are *still* editing this cell (e.g., didn't switch to modal)
-                    if (editingCell?.taskId === task.id && editingCell?.columnKey === header.key) {
-                        cancelEditing(); // If still editing, cancel (as select has no explicit save button)
-                    }
+                  // Check if we are *still* editing this cell (e.g., didn't switch to modal)
+                  if (editingCell?.taskId === task.id && editingCell?.columnKey === header.key) {
+                      cancelEditing(); // If still editing, cancel (as select has no explicit save button)
+                  }
                 }, 150);
             }}
             className="absolute inset-0 w-full h-full px-2 py-1 border-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm z-10"
             onKeyDown={handleInputKeyDown} // Handle Escape key
           >
-            <option value="">{t(`(empty)`)}</option>
+            <option value="">{t('common.empty')}</option>
             {/* Render options */}
             {isMemberSelect
               ? membersList.map(m => <option key={m.uid} value={m.uid}>{t(m.label)}</option>)
-              : options.map(opt => <option key={opt} value={opt}>{t(opt)}</option>)
+              : options.map(opt => <option key={opt} value={opt}>{translateDynamic(opt, categoryKeyMap)}</option>) // Use translateDynamic
             }
             {/* Sentinel options */}
             {isMemberSelect
-              ? <option value="__INVITE_USER__">{t('Invite user…')}</option>
-              : <option value="__ADD_NEW__">{t('Add new…')}</option>
+              ? <option value="__INVITE_USER__">{t('admin.inviteUser')}</option>
+              : <option value="__ADD_NEW__">{t('common.addNew')}</option>
             }
             {/* Show original value if it's no longer in the list (e.g., removed member/option) */}
             {isMemberSelect && editingOriginalValue && !membersList.some(m => m.uid === editingOriginalValue) && (
@@ -1236,13 +1077,13 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
       // Fallback for any other INLINE_EDITABLE_COLUMNS (shouldn't happen with current config)
       return (
          <input
-           ref={inputRef}
-           type="text"
-           value={editingValue}
-           onChange={(e) => setEditingValue(e.target.value)}
-           onBlur={(e) => handleBlurSave(task.id, header.key, e.target.value)}
-           onKeyDown={handleInputKeyDown}
-           className="absolute inset-0 w-full h-full px-3 py-2 border-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm z-10"
+          ref={inputRef}
+          type="text"
+          value={editingValue}
+          onChange={(e) => setEditingValue(e.target.value)}
+          onBlur={(e) => handleBlurSave(task.id, header.key, e.target.value)}
+          onKeyDown={handleInputKeyDown}
+          className="absolute inset-0 w-full h-full px-3 py-2 border-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm z-10"
          />
       );
     }
@@ -1258,29 +1099,42 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
             className="text-left w-full text-sm text-blue-600 hover:underline focus:outline-none focus:ring-1 focus:ring-blue-500 rounded"
             type="button"
           >
-            {t('(open)')}
+            {t('common.open')}
           </button>
         </div>
       );
     }
 
     // Member columns: Display label instead of UID
-     if (['csManager', 'qaManager', 'developer'].includes(header.key)) {
+      if (['csManager', 'qaManager', 'developer'].includes(header.key)) {
         const foundMember = membersList.find(m => m.uid === displayValue);
         const label = foundMember ? foundMember.label : displayValue; // Show UID if not found
-        const textToShow = t(label) || '-';
+        const textToShow = t(label) || '-'; // This t is for the label, which might be a key or plain text
         return (
-             <div
-               className={`px-4 py-2.5 text-sm text-gray-700 ${isAllExpanded ? 'whitespace-pre-wrap break-words' : 'truncate'}`}
-               title={textToShow}
-             >
-               {textToShow}
-             </div>
+            <div
+              className={`px-4 py-2.5 text-sm text-gray-700 ${isAllExpanded ? 'whitespace-pre-wrap break-words' : 'truncate'}`}
+              title={textToShow}
+            >
+              {textToShow}
+            </div>
         );
-     }
+      }
+      
+    // Dynamic value columns (Category, Type, Priority, Status)
+    if (['category', 'type', 'priority', 'status'].includes(header.key)) {
+       const textToShow = translateDynamic(displayValue, categoryKeyMap) || '-';
+       return (
+         <div
+           className={`px-4 py-2.5 text-sm text-gray-700 ${isAllExpanded ? 'whitespace-pre-wrap break-words' : 'truncate'}`}
+           title={textToShow}
+         >
+           {textToShow}
+         </div>
+       );
+    }
 
     // Default static display for other columns
-    const textToShow = t(displayValue) || '-';
+    const textToShow = t(displayValue) || '-'; // t() will just return the value if not found
     return (
       <div
         className={`px-4 py-2.5 text-sm text-gray-700 ${isAllExpanded ? 'whitespace-pre-wrap break-words' : 'truncate'}`}
@@ -1298,96 +1152,81 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
       <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
         {/* Header Section */}
         <div className="px-6 pt-4 pb-3 flex flex-wrap justify-between items-center gap-y-2 border-b border-gray-200">
-          <h3 className="text-xl font-semibold text-gray-800">{t('Team Project Tasks')}</h3>
+          <h3 className="text-xl font-semibold text-gray-800">{t('tickets.title')}</h3>
           <div className="flex items-center gap-3 flex-wrap">
-            {/* Language Selector */}
-            <div className="relative">
-              <select
-                value={currentLanguage}
-                onChange={(e) => setCurrentLanguage(e.target.value)}
-                className="text-sm py-1.5 px-3 rounded border bg-white appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                disabled={isTranslating}
-              >
-                <option value="en">English</option>
-                <option value="ko">한국어</option>
-                {/* Add other languages here */}
-              </select>
-              <svg className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-              {isTranslating && (
-                <span className="text-xs text-blue-600 absolute -bottom-4 right-0 animate-pulse">Translating...</span>
-              )}
-            </div>
+            {/* Language Selector (REMOVED) */}
+            
             {/* Expand/Collapse Button */}
             <button
               onClick={toggleAllColumns}
-              title={isAllExpanded ? t('Collapse All') : t('Expand All')}
+              title={isAllExpanded ? t('common.collapseAll') : t('common.expandAll')}
               className="text-sm py-1.5 px-3 rounded border bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              {isAllExpanded ? t('Collapse All') : t('Expand All')}
+              {isAllExpanded ? t('common.collapseAll') : t('common.expandAll')}
             </button>
-             {/* Edit Dropdowns Button */}
+            {/* Edit Dropdowns Button */}
             <button
               onClick={() => setIsOptionsModalOpen(true)}
-              title="Edit dropdown options"
+              title={t('admin.editOptions', 'Edit dropdown options')} // Added translation
               className="text-sm py-1.5 px-3 rounded border bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              Edit Options
+              {t('admin.editOptions', 'Edit Options')}
             </button>
             {/* New Task Button */}
             <button
               onClick={() => setIsCreateTaskModalOpen(true)}
               className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-1.5 px-4 rounded-md shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
             >
-              + {t('New Task')}
+              {t('common.newTicket')}
             </button>
           </div>
         </div>
 
         {/* --- NEW: Filter Bar --- */}
         <div className="px-6 py-3 border-b border-gray-200 bg-gray-50 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <span className="text-sm font-medium text-gray-700">Filters:</span>
+          <span className="text-sm font-medium text-gray-700">{t('tickets.filters')}</span>
           
           {/* Company Filter */}
           <div className="flex items-center gap-1.5">
-            <label htmlFor="filter-company" className="text-sm text-gray-600">{t('Filter by Company:')}</label>
+            <label htmlFor="filter-company" className="text-sm text-gray-600">{t('tickets.filterByCompany')}</label>
             <input
               type="text"
               id="filter-company"
               value={filters.company}
               onChange={(e) => handleFilterChange('company', e.target.value)}
-              placeholder="Company name..."
+              placeholder={t('tickets.companyName')}
               className="text-sm py-1 px-2 rounded border border-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
           
           {/* Developer Filter */}
           <div className="flex items-center gap-1.5">
-            <label htmlFor="filter-developer" className="text-sm text-gray-600">{t('Filter by Developer:')}</label>
+            <label htmlFor="filter-developer" className="text-sm text-gray-600">{t('tickets.filterByDeveloper')}</label>
             <select
               id="filter-developer"
               value={filters.developer}
               onChange={(e) => handleFilterChange('developer', e.target.value)}
               className="text-sm py-1 px-2 rounded border border-gray-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
-              <option value="">{t('All Developers')}</option>
+              <option value="">{t('tickets.allDevelopers')}</option>
               {membersList.map(m => (
-                <option key={m.uid} value={m.uid}>{t(m.label)}</option>
+                <option key={m.uid} value={m.uid}>{m.label}</option> // Labels are already fine, no need to t()
               ))}
             </select>
           </div>
 
           {/* Category Filter */}
           <div className="flex items-center gap-1.5">
-            <label htmlFor="filter-category" className="text-sm text-gray-600">{t('Filter by Category:')}</label>
+            <label htmlFor="filter-category" className="text-sm text-gray-600">{t('tickets.filterByCategory')}</label>
             <select
               id="filter-category"
               value={filters.category}
               onChange={(e) => handleFilterChange('category', e.target.value)}
               className="text-sm py-1 px-2 rounded border border-gray-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
-              <option value="">{t('All Categories')}</option>
+              <option value="">{t('tickets.allCategories')}</option>
               {categoriesList.map(c => (
-                <option key={c} value={c}>{t(c)}</option>
+                <option key={c} value={c}>{translateDynamic(c, categoryKeyMap)}</option>
               ))}
             </select>
           </div>
@@ -1398,7 +1237,7 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
               onClick={clearFilters}
               className="text-sm text-blue-600 hover:underline focus:outline-none"
             >
-              {t('Clear Filters')}
+              {t('common.clearFilters')}
             </button>
           )}
         </div>
@@ -1416,7 +1255,7 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
               `}
             >
-              {t('Active')}
+              {t('common.active')}
               <span className={`
                 rounded-full px-2 py-0.5 ml-2 text-xs font-medium
                 ${activeTab === 'active'
@@ -1436,7 +1275,7 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
               `}
             >
-              {t('Completed')}
+              {t('common.completed')}
               <span className={`
                 rounded-full px-2 py-0.5 ml-2 text-xs font-medium
                 ${activeTab === 'completed'
@@ -1457,7 +1296,7 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
         {/* Table Container */}
         <div className={`relative px-6 pb-6 ${isAllExpanded ? '' : 'overflow-x-auto'}`}>
           <table
-            className={`table-auto w-full border-collapse mt-4 ${isAllExpanded ? '' : 'min-w-[1200px]'}`} // Increased min-width slightly
+            className={`table-auto w-full border-collapse mt-4 ${isAllExpanded ? '' : 'min-w-[1200px]'}`}
             style={{ tableLayout: isAllExpanded ? 'auto' : 'fixed' }}
           >
             <thead className="bg-gray-50 sticky top-0 z-10">
@@ -1474,7 +1313,7 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
                       textOverflow: 'ellipsis',
                     }}
                   >
-                   {t(h.label)}
+                   {h.label}
                   </th>
                 ))}
               </tr>
@@ -1483,22 +1322,20 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
             <tbody className="bg-white divide-y divide-gray-100">
               {/* Loading State */}
               {isLoading && (
-                <tr><td colSpan={headers.length} className="text-center py-10 text-gray-500">{t('Loading Tasks...')}</td></tr>
+                <tr><td colSpan={headers.length} className="text-center py-10 text-gray-500">{t('common.loading')}</td></tr>
               )}
 
               {/* Empty State */}
               {!isLoading && !error && filteredTasksToDisplay.length === 0 && (
                 <tr>
                   <td colSpan={headers.length} className="text-center py-10 text-gray-500">
-                    {/* --- UPDATED LOGIC --- */}
                     {tasksToDisplay.length > 0 ? (
-                      t('No tasks match the current filters.') // Filters are active but found nothing
+                      t('tickets.noFilterMatch') // Filters are active but found nothing
                     ) : (
                       activeTab === 'active'
-                        ? t('No active tasks created yet.') // Tab is genuinely empty
-                        : t('No completed tasks found.')  // Tab is genuinely empty
+                        ? t('tickets.noActiveTasks') // Tab is genuinely empty
+                        : t('tickets.noCompletedTasks')  // Tab is genuinely empty
                     )}
-                    {/* --- END UPDATE --- */}
                   </td>
                 </tr>
               )}
@@ -1539,10 +1376,10 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
                         {renderCellContent(task, header)}
                         {/* Saving Indicators */}
                         {savingStatus[cellKey] === 'saving' && (
-                          <span className="absolute top-1 right-2 text-xs text-gray-500 animate-pulse">{t('Saving…')}</span>
+                          <span className="absolute top-1 right-2 text-xs text-gray-500 animate-pulse">{t('common.saving')}</span>
                         )}
                         {savingStatus[cellKey] === 'saved' && (
-                          <span className="absolute top-1 right-2 text-xs text-green-600">{t('Saved')}</span>
+                          <span className="absolute top-1 right-2 text-xs text-green-600">{t('common.saved')}</span>
                         )}
                       </td>
                     );
@@ -1574,7 +1411,6 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
         </div>
       )}
 
-      {/* --- THIS IS THE FIX --- */}
       {/* Create Task Modal */}
       <CreateTaskModal
         isOpen={isCreateTaskModalOpen}
@@ -1582,17 +1418,16 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
         teamId={teamId}
         onTaskCreated={handleTaskCreated}
       />
-      {/* --- END OF FIX --- */}
 
       {/* Add New Option Modal */}
       {isAddOptionOpen && addOptionMeta && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black opacity-40 z-40" onClick={handleAddOptionCancel}></div>
           <div className="bg-white rounded-lg shadow-xl z-50 max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
-            <h4 className="text-lg font-semibold mb-2">{t('Add new…')}</h4>
-            <p className="text-sm text-gray-600 mb-4">{t(`Add a new ${addOptionMeta.headerKey}`)}:</p>
+            <h4 className="text-lg font-semibold mb-2">{t('common.addNew')}</h4>
+            <p className="text-sm text-gray-600 mb-4">{t('admin.addNewOption', `Add a new ${addOptionMeta.headerKey}`)}:</p>
             {/* Show error specific to this modal if any */}
-             {error && addOptionMeta && <p className="text-red-500 text-sm mb-3">{error}</p>}
+              {error && addOptionMeta && <p className="text-red-500 text-sm mb-3">{error}</p>}
             <input
               autoFocus
               value={addOptionValue}
@@ -1602,11 +1437,11 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
                 if (e.key === 'Escape') handleAddOptionCancel();
               }}
               className="w-full border px-3 py-2 rounded mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder={t(`New ${addOptionMeta.headerKey} value`)}
+              placeholder={t('admin.newOptionValue', `New ${addOptionMeta.headerKey} value`)}
             />
             <div className="flex justify-end gap-2">
-              <button onClick={handleAddOptionCancel} className="px-3 py-1.5 rounded border text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400">{t('Cancel')}</button>
-              <button onClick={handleAddOptionSave} className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1">{t('Save')}</button>
+              <button onClick={handleAddOptionCancel} className="px-3 py-1.5 rounded border text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400">{t('common.cancel')}</button>
+              <button onClick={handleAddOptionSave} className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1">{t('common.save')}</button>
             </div>
           </div>
         </div>
@@ -1618,6 +1453,7 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
           isOpen={isOptionsModalOpen}
           onClose={() => setIsOptionsModalOpen(false)}
           teamId={teamId}
+          t={t} // Pass t function
           // Pass current state lists
           categoriesList={categoriesList}
           typesList={typesList}
@@ -1644,6 +1480,7 @@ const TeamProjectTable = ({ teamId, onTaskChange }) => {
           isOpen={isInviteOpen}
           onClose={handleInviteCanceled}
           teamId={teamId}
+          t={t} // Pass t function
           onInvited={handleInviteCompleted} // Pass the callback
         />
       )}
@@ -1666,6 +1503,7 @@ function OptionsEditorModal({
   isOpen,
   onClose,
   teamId,
+  t, // Receive t function as a prop
   categoriesList,
   typesList,
   membersList, // Array of {uid, label}
@@ -1673,7 +1511,7 @@ function OptionsEditorModal({
   statusOptions,
   persistTeamArrayField, // (fieldName, array) => Promise<void>
   saveMemberLabel,       // (uid, newLabel) => Promise<void>
-  removeMember,       // (uid) => Promise<void>
+  removeMember,          // (uid) => Promise<void>
   addMemberObject,       // (uid, label) => Promise<void>
   // Optimistic update callbacks (optional now)
   onCategoriesChange,
@@ -1684,7 +1522,7 @@ function OptionsEditorModal({
 }) {
   const [tab, setTab] = useState('categories'); // 'categories' | 'types' | 'priorities' | 'statuses' | 'members'
   const [items, setItems] = useState([]);       // Current list being edited (strings or member objects)
-  const [newValue, setNewValue] = useState('');     // Input for adding new items
+  const [newValue, setNewValue] = useState('');       // Input for adding new items
   const [editingIndex, setEditingIndex] = useState(null); // Index of item being edited
   const [editingValueLocal, setEditingValueLocal] = useState(''); // Local state for the item being edited
   const [modalError, setModalError] = useState(''); // Error specific to this modal
@@ -1733,7 +1571,7 @@ function OptionsEditorModal({
       // Let onSnapshot update the list visually
     } catch (err) {
       console.error(`Failed to persist ${fieldName}:`, err);
-      setModalError(`Failed to save changes for ${fieldName}. See console.`);
+      setModalError(t('admin.saveError', `Failed to save changes for ${fieldName}. See console.`));
       // Optionally revert local state if needed, but onSnapshot should correct it
     } finally {
       setIsSaving(false);
@@ -1744,13 +1582,13 @@ function OptionsEditorModal({
      setModalError('');
      setIsSaving(true);
      try {
-        await saveMemberLabel(uid, newLabel);
-        setEditingIndex(null); // Exit editing mode on success
-        setEditingValueLocal('');
+       await saveMemberLabel(uid, newLabel);
+       setEditingIndex(null); // Exit editing mode on success
+       setEditingValueLocal('');
      } catch (err) {
-        setModalError('Failed to save member label. See console.');
+       setModalError(t('admin.saveMemberLabelError', 'Failed to save member label. See console.'));
      } finally {
-        setIsSaving(false);
+       setIsSaving(false);
      }
   };
 
@@ -1758,12 +1596,12 @@ function OptionsEditorModal({
      setModalError('');
      setIsSaving(true);
      try {
-        await removeMember(uid);
-         // Let onSnapshot handle UI update
+       await removeMember(uid);
+       // Let onSnapshot handle UI update
      } catch (err) {
-        setModalError('Failed to remove member. See console.');
+       setModalError(t('admin.removeMemberError', 'Failed to remove member. See console.'));
      } finally {
-        setIsSaving(false);
+       setIsSaving(false);
      }
   };
 
@@ -1771,12 +1609,12 @@ function OptionsEditorModal({
      setModalError('');
      setIsSaving(true);
      try {
-        await addMemberObject(uid, label);
-        setNewValue(''); // Clear input on success
+       await addMemberObject(uid, label);
+       setNewValue(''); // Clear input on success
      } catch (err) {
-        setModalError('Failed to add member. See console.');
+       setModalError(t('admin.addMemberError', 'Failed to add member. See console.'));
      } finally {
-        setIsSaving(false);
+       setIsSaving(false);
      }
   };
 
@@ -1796,12 +1634,12 @@ function OptionsEditorModal({
         label = parts.slice(1).join('|').trim() || uid; // Fallback label to uid if empty
       }
       if (!uid) {
-         setModalError('Please provide a UID (or uid|label).');
+         setModalError(t('admin.uidRequiredError', 'Please provide a UID (or uid|label).'));
          return;
       }
       // Check if UID already exists
-       if (items.some(item => item.uid === uid)) {
-        setModalError("A member with this UID already exists.");
+        if (items.some(item => item.uid === uid)) {
+        setModalError(t('admin.memberExistsError', "A member with this UID already exists."));
         return;
       }
       await handleAddMemberObject(uid, label);
@@ -1810,7 +1648,7 @@ function OptionsEditorModal({
 
     // For string-based lists
     if (items.includes(v)) {
-      setModalError("This item already exists.");
+      setModalError(t('admin.itemExistsError', "This item already exists."));
       return;
     }
 
@@ -1818,20 +1656,20 @@ function OptionsEditorModal({
     let fieldName = '';
      // Special case: Ensure new status is added *before* the last item
     if (tab === 'statuses') {
-        const completeStatus = next.pop(); // Remove last
-        next.push(v); // Add new
-        if (completeStatus !== undefined) next.push(completeStatus); // Add last back
-        fieldName = 'statusOptions';
+       const completeStatus = next.pop(); // Remove last
+       next.push(v); // Add new
+       if (completeStatus !== undefined) next.push(completeStatus); // Add last back
+       fieldName = 'statusOptions';
     } else {
-        // Normal append for others
-        fieldName = tab; // 'categories', 'types', 'priorities'
-         if(tab === 'priorities') fieldName = 'priorities'; // Ensure correct field name
-         else if (tab === 'categories') fieldName = 'categories';
-         else if (tab === 'types') fieldName = 'types';
-         else {
-            setModalError(`Cannot determine field name for tab: ${tab}`);
-            return;
-         }
+       // Normal append for others
+       fieldName = tab; // 'categories', 'types', 'priorities'
+       if(tab === 'priorities') fieldName = 'priorities'; // Ensure correct field name
+       else if (tab === 'categories') fieldName = 'categories';
+       else if (tab === 'types') fieldName = 'types';
+       else {
+         setModalError(t('admin.invalidTabError', `Cannot determine field name for tab: ${tab}`));
+         return;
+       }
     }
 
 
@@ -1844,7 +1682,8 @@ function OptionsEditorModal({
     setModalError('');
     setEditingIndex(idx);
     const itemToEdit = items[idx];
-    setEditingValueLocal(tab === 'members' ? itemToEdit.label : itemToEdit);
+    // Check item type here as well
+    setEditingValueLocal(typeof itemToEdit === 'object' && itemToEdit !== null ? itemToEdit.label : itemToEdit);
   };
 
   const saveEdit = async () => {
@@ -1852,11 +1691,13 @@ function OptionsEditorModal({
     if (!v || editingIndex === null) return;
     setModalError('');
 
-    if (tab === 'members') {
-      const uid = items[editingIndex].uid;
+    // Check item type to decide logic
+    const itemToEdit = items[editingIndex];
+    if (typeof itemToEdit === 'object' && itemToEdit !== null && 'uid' in itemToEdit) {
+      const uid = itemToEdit.uid;
       // Check if new label is empty
       if (!v) {
-        setModalError("Member label cannot be empty.");
+        setModalError(t('admin.memberLabelEmptyError', "Member label cannot be empty."));
         return;
       }
       await handleSaveMemberLabel(uid, v);
@@ -1867,21 +1708,21 @@ function OptionsEditorModal({
     // Check if the edited value duplicates another existing item
     const duplicateIndex = items.findIndex(item => item === v);
     if (duplicateIndex !== -1 && duplicateIndex !== editingIndex) {
-      setModalError("This item already exists.");
+      setModalError(t('admin.itemExistsError', "This item already exists."));
       return;
     }
 
     const next = items.map((it, i) => (i === editingIndex ? v : it));
 
     let fieldName = '';
-     if (tab === 'statuses') fieldName = 'statusOptions';
-     else if(tab === 'priorities') fieldName = 'priorities';
-     else if (tab === 'categories') fieldName = 'categories';
-     else if (tab === 'types') fieldName = 'types';
-     else {
-        setModalError(`Cannot determine field name for tab: ${tab}`);
+      if (tab === 'statuses') fieldName = 'statusOptions';
+      else if(tab === 'priorities') fieldName = 'priorities';
+      else if (tab === 'categories') fieldName = 'categories';
+      else if (tab === 'types') fieldName = 'types';
+      else {
+        setModalError(t('admin.invalidTabError', `Cannot determine field name for tab: ${tab}`));
         return;
-     }
+      }
 
     setItems(next); // Optimistic update
     setEditingIndex(null); // Exit editing mode locally
@@ -1899,8 +1740,11 @@ function OptionsEditorModal({
     if (isSaving) return; // Prevent double actions
     setModalError('');
 
-    if (tab === 'members') {
-      const uid = items[idx].uid;
+    const itemToRemove = items[idx];
+
+    // Check item type to decide logic
+    if (typeof itemToRemove === 'object' && itemToRemove !== null && 'uid' in itemToRemove) {
+      const uid = itemToRemove.uid;
       await handleRemoveMember(uid);
       return;
     }
@@ -1908,25 +1752,25 @@ function OptionsEditorModal({
     // For string-based lists
      // Prevent deleting the last status if it's the 'Complete' status? Maybe allow via confirmation.
     if (tab === 'statuses' && idx === items.length - 1) {
-        if (!window.confirm('Are you sure you want to remove the final status? This is usually the "Complete" status.')) {
-            return;
-        }
-    } else if (!window.confirm('Remove this item?')) {
-        return;
+       if (!window.confirm(t('admin.confirmDeleteFinalStatus', 'Are you sure you want to remove the final status? This is usually the "Complete" status.'))) {
+         return;
+       }
+    } else if (!window.confirm(t('common.confirmDelete'))) { // Use translated confirm
+       return;
     }
 
 
     const next = items.filter((_, i) => i !== idx);
 
     let fieldName = '';
-     if (tab === 'statuses') fieldName = 'statusOptions';
-     else if(tab === 'priorities') fieldName = 'priorities';
-     else if (tab === 'categories') fieldName = 'categories';
-     else if (tab === 'types') fieldName = 'types';
-     else {
-        setModalError(`Cannot determine field name for tab: ${tab}`);
+      if (tab === 'statuses') fieldName = 'statusOptions';
+      else if(tab === 'priorities') fieldName = 'priorities';
+      else if (tab === 'categories') fieldName = 'categories';
+      else if (tab === 'types') fieldName = 'types';
+      else {
+        setModalError(t('admin.invalidTabError', `Cannot determine field name for tab: ${tab}`));
         return;
-     }
+      }
 
     setItems(next); // Optimistic update
     await handlePersistArray(fieldName, next);
@@ -1941,8 +1785,9 @@ function OptionsEditorModal({
   const renderListItem = (it, idx) => {
     const isEditingThisItem = editingIndex === idx;
 
+    // --- FIX 1: Check item type, not tab state ---
     // --- Member List Item ---
-    if (tab === 'members') {
+    if (typeof it === 'object' && it !== null && 'uid' in it) {
       return (
         <li key={it.uid} className="flex items-center justify-between gap-2 bg-gray-50 p-2 rounded text-sm">
           <div className="min-w-0 flex-1">
@@ -1960,18 +1805,18 @@ function OptionsEditorModal({
             ) : (
               <div className="font-medium text-gray-800 truncate" title={it.label}>{it.label}</div>
             )}
-            <div className="text-xs text-gray-500 truncate" title={it.uid}>UID: {it.uid}</div>
+            <div className="text-xs text-gray-500 truncate" title={it.uid}>{t('admin.uidLabel', 'UID')}: {it.uid}</div>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
             {isEditingThisItem ? (
               <>
-                <button className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50" onClick={saveEdit} disabled={isSaving}>Save</button>
-                <button className="px-2 py-1 bg-gray-200 rounded text-xs hover:bg-gray-300 disabled:opacity-50" onClick={cancelEdit} disabled={isSaving}>Cancel</button>
+                <button className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50" onClick={saveEdit} disabled={isSaving}>{t('common.save')}</button>
+                <button className="px-2 py-1 bg-gray-200 rounded text-xs hover:bg-gray-300 disabled:opacity-50" onClick={cancelEdit} disabled={isSaving}>{t('common.cancel')}</button>
               </>
             ) : (
               <>
-                <button className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-xs hover:bg-yellow-200 disabled:opacity-50" onClick={() => startEdit(idx)} disabled={isSaving}>Edit</button>
-                <button className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200 disabled:opacity-50" onClick={() => handleRemove(idx)} disabled={isSaving}>Remove</button>
+                <button className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-xs hover:bg-yellow-200 disabled:opacity-50" onClick={() => startEdit(idx)} disabled={isSaving}>{t('common.edit')}</button>
+                <button className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200 disabled:opacity-50" onClick={() => handleRemove(idx)} disabled={isSaving}>{t('common.remove')}</button>
               </>
             )}
           </div>
@@ -1980,6 +1825,7 @@ function OptionsEditorModal({
     }
 
     // --- Regular String List Item ---
+    // (If it's not an object, it must be a string)
     return (
       <li key={String(it) + idx} className="flex items-center justify-between gap-2 bg-gray-50 p-2 rounded text-sm">
         <div className="min-w-0 flex-1">
@@ -1995,20 +1841,20 @@ function OptionsEditorModal({
               autoFocus
             />
           ) : (
-            <div className="text-gray-800 truncate" title={it}>{it}</div>
+            <div className="text-gray-800 truncate" title={String(it)}>{String(it)}</div>
           )}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           {isEditingThisItem ? (
             <>
-              <button className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50" onClick={saveEdit} disabled={isSaving}>Save</button>
-              <button className="px-2 py-1 bg-gray-200 rounded text-xs hover:bg-gray-300 disabled:opacity-50" onClick={cancelEdit} disabled={isSaving}>Cancel</button>
+              <button className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50" onClick={saveEdit} disabled={isSaving}>{t('common.save')}</button>
+              <button className="px-2 py-1 bg-gray-200 rounded text-xs hover:bg-gray-300 disabled:opacity-50" onClick={cancelEdit} disabled={isSaving}>{t('common.cancel')}</button>
             </>
           ) : (
             <>
-              <button className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-xs hover:bg-yellow-200 disabled:opacity-50" onClick={() => startEdit(idx)} disabled={isSaving}>Edit</button>
+              <button className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-xs hover:bg-yellow-200 disabled:opacity-50" onClick={() => startEdit(idx)} disabled={isSaving}>{t('common.edit')}</button>
 
-              <button className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200 disabled:opacity-50" onClick={() => handleRemove(idx)} disabled={isSaving}>Remove</button>
+              <button className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200 disabled:opacity-50" onClick={() => handleRemove(idx)} disabled={isSaving}>{t('common.remove')}</button>
             </>
           )}
         </div>
@@ -2016,13 +1862,25 @@ function OptionsEditorModal({
     );
   };
 
+  // --- Helper to get translated tab title ---
+  const getTabTitle = (tabKey) => {
+    switch(tabKey) {
+      case 'categories': return t('admin.categories');
+      case 'types': return t('admin.types');
+      case 'priorities': return t('admin.priorities');
+      case 'statuses': return t('admin.statuses');
+      case 'members': return t('admin.tabMembers');
+      default: return tabKey;
+    }
+  }
+
   // --- Modal Structure ---
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
       <div className="bg-white rounded-lg shadow-xl z-50 max-w-3xl w-full p-6 relative flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex justify-between items-center mb-4 pb-2 border-b">
-          <h3 className="text-lg font-semibold text-gray-800">Edit Dropdown Options</h3>
+          <h3 className="text-lg font-semibold text-gray-800">{t('admin.editDropdownOptions', 'Edit Dropdown Options')}</h3>
           <button onClick={handleCloseModal} className="text-gray-400 hover:text-gray-600 focus:outline-none" disabled={isSaving}>&times;</button>
         </div>
 
@@ -2031,11 +1889,11 @@ function OptionsEditorModal({
           {/* Sidebar Navigation */}
           <div className="w-44 bg-gray-50 p-3 rounded flex-shrink-0 overflow-y-auto">
             <nav className="flex flex-col gap-1">
-              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'categories' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('categories')}>Categories</button>
-              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'types' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('types')}>Types</button>
-              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'priorities' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('priorities')}>Priorities</button>
-              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'statuses' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('statuses')}>Statuses</button>
-              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'members' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('members')}>Members</button>
+              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'categories' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('categories')}>{t('admin.categories')}</button>
+              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'types' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('types')}>{t('admin.types')}</button>
+              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'priorities' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('priorities')}>{t('admin.priorities')}</button>
+              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'statuses' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('statuses')}>{t('admin.statuses')}</button>
+              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'members' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('members')}>{t('admin.tabMembers')}</button>
             </nav>
           </div>
 
@@ -2043,7 +1901,7 @@ function OptionsEditorModal({
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Add New Item Form */}
             <div className="mb-3 flex items-center justify-between gap-2 pb-2 border-b">
-              <h4 className="text-base font-medium capitalize text-gray-700">{tab}</h4>
+              <h4 className="text-base font-medium text-gray-700">{getTabTitle(tab)}</h4>
               <form
                 className="flex items-center gap-2"
                 onSubmit={(e) => { e.preventDefault(); handleAdd(); }}
@@ -2051,12 +1909,12 @@ function OptionsEditorModal({
                 <input
                   value={newValue}
                   onChange={(e) => setNewValue(e.target.value)}
-                  placeholder={tab === 'members' ? 'uid|label (or uid)' : 'Add new value'}
+                  placeholder={tab === 'members' ? t('admin.memberPlaceholder', 'uid|label (or uid)') : t('admin.newOptionValue', 'New value')}
                   className="border px-2 py-1 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 flex-grow"
                   disabled={isSaving}
                 />
                 <button type="submit" className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50" disabled={isSaving}>
-                    {isSaving ? 'Adding...' : 'Add'}
+                  {isSaving ? t('common.saving', 'Saving...') : t('common.add', 'Add')}
                 </button>
               </form>
             </div>
@@ -2066,15 +1924,18 @@ function OptionsEditorModal({
 
             {/* List of Items */}
             <ul className="space-y-1.5 overflow-y-auto flex-1 pr-1">
-              {items.length === 0 && <li className="text-sm text-gray-500 px-1 py-4 text-center">No items defined for {tab}.</li>}
+              {/* --- FIX 2: Added key prop --- */}
+              {items.length === 0 && <li key="empty-state" className="text-sm text-gray-500 px-1 py-4 text-center">{t('admin.noItems', 'No items defined for')} {tab}.</li>}
+              
               {items.map((it, idx) => renderListItem(it, idx))}
-               {/* Spacer at the bottom */}
-              <li style={{ height: '10px' }}></li>
+              
+               {/* --- FIX 2: Added key prop --- */}
+              <li key="spacer" style={{ height: '10px' }}></li>
             </ul>
 
             {/* Footer / Close Button */}
             <div className="mt-4 pt-3 border-t flex justify-end gap-2">
-              <button onClick={handleCloseModal} className="px-4 py-1.5 rounded border text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50" disabled={isSaving}>Close</button>
+              <button onClick={handleCloseModal} className="px-4 py-1.5 rounded border text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50" disabled={isSaving}>{t('common.close')}</button>
             </div>
           </div>
         </div>
@@ -2088,7 +1949,7 @@ function OptionsEditorModal({
   InviteMemberModal
   - Finds user by email, sends notification, adds UID to team
 -------------------------------------------------------------------*/
-function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
+function InviteMemberModal({ isOpen, onClose, teamId, t, onInvited }) {
   const [email, setEmail] = useState('');
   const [isInviting, setIsInviting] = useState(false);
   const [error, setError] = useState('');
@@ -2108,7 +1969,7 @@ function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
 
   const handleInvite = async () => {
     if (!email.trim() || !email.includes('@')) { // Basic email validation
-      setError('Please enter a valid email address.');
+      setError(t('admin.invalidEmail', 'Please enter a valid email address.'));
       return;
     }
 
@@ -2128,7 +1989,7 @@ function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
       const querySnapshot = await getDocs(q);
 
       if (querySnapshot.empty) {
-        setError('User with this email not found in the system.');
+        setError(t('admin.userNotFound', 'User with this email not found in the system.'));
         setIsInviting(false);
         return;
       }
@@ -2141,7 +2002,7 @@ function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
 
        // Prevent self-invites
        if (invitedUserId === currentUser.uid) {
-           setError("You cannot invite yourself to the team.");
+           setError(t('admin.inviteSelfError', "You cannot invite yourself to the team."));
            setIsInviting(false);
            return;
        }
@@ -2152,7 +2013,7 @@ function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
 
       if (!teamSnap.exists()) {
         // This case should ideally not happen if the table component loaded correctly
-        setError('Team data not found. Cannot process invitation.');
+        setError(t('admin.teamNotFoundError', 'Team data not found. Cannot process invitation.'));
         setIsInviting(false);
         return;
       }
@@ -2163,12 +2024,12 @@ function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
 
       // 3. Check if user is already a member (handle both UID array and object array)
       const isAlreadyMember = members.some(member =>
-          (typeof member === 'object' && member.uid === invitedUserId) || // Check object array
-          (typeof member === 'string' && member === invitedUserId)     // Check UID string array
+        (typeof member === 'object' && member.uid === invitedUserId) || // Check object array
+        (typeof member === 'string' && member === invitedUserId)     // Check UID string array
       );
 
       if (isAlreadyMember) {
-        setError('This user is already a member of the team.');
+        setError(t('admin.alreadyMemberError', 'This user is already a member of the team.'));
         setIsInviting(false);
         return;
       }
@@ -2176,7 +2037,7 @@ function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
       // 4. Create the invitation notification for the invited user
       const senderName = currentUser.displayName || currentUser.email || 'A team member';
       await addDoc(collection(db, 'notifications'), {
-        userId: invitedUserId,       // Recipient
+        userId: invitedUserId,      // Recipient
         type: 'INVITATION',
         senderId: currentUser.uid,
         senderName: senderName,
@@ -2184,10 +2045,10 @@ function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
         teamName: teamName,
         createdAt: serverTimestamp(),
         isRead: false,
-        message: `${senderName} invited you to join the team "${teamName}".` // Added message
+        message: `${senderName} ${t('admin.inviteNotification', 'invited you to join the team')} "${teamName}".`
       });
 
-      setSuccess(`Invitation sent successfully to ${invitedLabel} (${email})!`);
+      setSuccess(`${t('admin.inviteSuccess', 'Invitation sent successfully to')} ${invitedLabel} (${email})!`);
 
       // 5. Call the onInvited callback to update the team document and potentially the table cell
       if (typeof onInvited === 'function') {
@@ -2201,8 +2062,8 @@ function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
 
     } catch (err) {
       console.error('Error sending invitation:', err);
-      setError('Failed to send invitation. Please check the console and try again.');
-       setIsInviting(false); // Ensure loading state stops on error
+      setError(t('admin.inviteFailError', 'Failed to send invitation. Please check the console and try again.'));
+        setIsInviting(false); // Ensure loading state stops on error
     }
     // No finally block needed for setIsInviting if errors are handled above
   };
@@ -2222,8 +2083,8 @@ function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
         <button onClick={handleClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 focus:outline-none" disabled={isInviting}>&times;</button>
         {/* Header */}
         <div className="mb-4">
-          <h3 className="text-xl font-semibold text-gray-800">Invite Member</h3>
-          <p className="text-sm text-gray-500 mt-1">Enter the email address of the user you want to invite.</p>
+          <h3 className="text-xl font-semibold text-gray-800">{t('admin.inviteMember')}</h3>
+          <p className="text-sm text-gray-500 mt-1">{t('admin.inviteSubtext', 'Enter the email address of the user you want to invite.')}</p>
         </div>
 
         {/* Status Messages */}
@@ -2234,13 +2095,13 @@ function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
         {!success && ( // Hide input after success
            <div className="space-y-4">
            <div>
-               <label htmlFor="inviteEmail" className="sr-only">User's Email</label>
+               <label htmlFor="inviteEmail" className="sr-only">{t('admin.emailLabel', "User's Email")}</label>
                <input
                type="email"
                id="inviteEmail"
                value={email}
                onChange={(e) => setEmail(e.target.value)}
-               placeholder="e.g., teammate@example.com"
+               placeholder={t('admin.emailPlaceholder', 'e.g., teammate@example.com')}
                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
                disabled={isInviting}
                />
@@ -2251,7 +2112,7 @@ function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
         {/* Action Buttons */}
         <div className="flex justify-end gap-2 mt-6 border-t pt-4">
           <button onClick={handleClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md text-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50" disabled={isInviting}>
-            {success ? 'Close' : 'Cancel'}
+            {success ? t('common.close') : t('common.cancel')}
           </button>
           {!success && ( // Hide invite button after success
             <button
@@ -2259,7 +2120,7 @@ function InviteMemberModal({ isOpen, onClose, teamId, onInvited }) {
                 disabled={isInviting || !email.trim()}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-                {isInviting ? 'Sending...' : 'Send Invite'}
+              {isInviting ? t('admin.inviting', 'Sending...') : t('admin.sendInvite', 'Send Invite')}
             </button>
           )}
         </div>

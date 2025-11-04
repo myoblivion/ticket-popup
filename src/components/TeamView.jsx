@@ -1,5 +1,5 @@
 // TeamView.jsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useContext, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   doc,
@@ -23,13 +23,20 @@ import TeamProjectTable from './TeamProjectTable';
 import EditUpdateModal from './EditUpdateModal';
 import EndorsementModal from './EndorsementModal';
 
+// --- Context Import ---
+import { LanguageContext } from '../contexts/LanguageContext.jsx';
+
 // --- Calendar Imports ---
 import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
+import 'moment/locale/ko'; // Korean locale
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
-// --- Setup Calendar Localizer ---
+// --- Setup Localizer ---
 const localizer = momentLocalizer(moment);
+// We will set the locale dynamically in the component
+
+// --- REMOVED hard-coded Korean messages and formats ---
 
 // --- Spinner component ---
 const Spinner = () => (
@@ -80,8 +87,9 @@ const hasTimeComponent = (d) => {
 const msInDay = 24 * 60 * 60 * 1000;
 
 
-// --- AnnouncementsSection (unchanged) ---
+// --- AnnouncementsSection (Translated) ---
 const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
+  const { t } = useContext(LanguageContext);
   const [updates, setUpdates] = useState([]);
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
   const [errorAnnouncements, setErrorAnnouncements] = useState(null);
@@ -97,16 +105,16 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
       setUpdates(fetchedUpdates);
     } catch (err) {
       console.error("Error fetching announcements:", err);
-      setErrorAnnouncements("Failed to load announcements and meetings.");
+      setErrorAnnouncements(t('admin.updatesError'));
     } finally {
       setIsLoadingAnnouncements(false);
     }
-  }, [teamId]);
+  }, [teamId, t]);
 
   useEffect(() => { fetchAnnouncements(); }, [teamId, fetchAnnouncements, refreshTrigger]);
 
   const handleDelete = async (updateId) => {
-    const ok = window.confirm("Delete this announcement/meeting? This cannot be undone.");
+    const ok = window.confirm(t('common.confirmDelete'));
     if (!ok) return;
     try {
       const docRef = doc(db, `teams/${teamId}/announcements`, updateId);
@@ -114,17 +122,17 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
       setUpdates(prev => prev.filter(u => u.id !== updateId));
     } catch (err) {
       console.error("Failed to delete update:", err);
-      setErrorAnnouncements("Failed to delete item. See console.");
+      setErrorAnnouncements(t('common.deleteError'));
     }
   };
 
   return (
     <div className="bg-white p-4 rounded-lg shadow border h-full">
-      <h3 className="text-lg font-semibold mb-3 text-gray-700 border-b pb-2">Updates & Announcements</h3>
+      <h3 className="text-lg font-semibold mb-3 text-gray-700 border-b pb-2">{t('admin.tabUpdates')}</h3>
       {isLoadingAnnouncements && <Spinner />}
       {errorAnnouncements && <p className="text-red-500 text-sm mt-2">{errorAnnouncements}</p>}
       {!isLoadingAnnouncements && updates.length === 0 && (
-        <p className="text-sm text-gray-500 italic">No announcements or meetings yet.</p>
+        <p className="text-sm text-gray-500 italic">{t('admin.noUpdates')}</p>
       )}
       {!isLoadingAnnouncements && updates.length > 0 && (
         <ul className="space-y-3 max-h-96 overflow-y-auto pr-2">
@@ -134,28 +142,28 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
                 <div className="flex-1">
                   {update.type === 'meeting' ? (
                     <>
-                      <strong className="font-medium text-blue-700">Meeting:</strong> {update.title} <br />
-                      <span className="text-xs text-gray-500">Starts: {formatDate(update.startDateTime) || 'N/A'}</span>
-                      {update.endDateTime && <span className="text-xs text-gray-500"> - Ends: {formatDate(update.endDateTime)}</span>}
+                      <strong className="font-medium text-blue-700">{t('admin.meeting')}</strong> {update.title} <br />
+                      <span className="text-xs text-gray-500">{t('admin.starts')} {formatDate(update.startDateTime) || 'N/A'}</span>
+                      {update.endDateTime && <span className="text-xs text-gray-500"> - {t('admin.ends')} {formatDate(update.endDateTime)}</span>}
                       {update.description && <p className="text-xs text-gray-600 mt-1">{update.description}</p>}
                       {update.meetingLink && (
                         <a href={update.meetingLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-xs mt-1 block">
-                          Join Meeting
+                          {t('admin.joinMeeting')}
                         </a>
                       )}
-                      <p className="text-xs text-gray-500 mt-2">Scheduled by: {update.creatorDisplayName} at {formatDate(update.createdAt, { dateOnly: true })}</p>
+                      <p className="text-xs text-gray-500 mt-2">{t('admin.scheduledBy')} {update.creatorDisplayName} at {formatDate(update.createdAt, { dateOnly: true })}</p>
                     </>
                   ) : (
                     <>
-                      <strong className="font-medium text-green-700">Announcement:</strong> {update.text} <br />
-                      <p className="text-xs text-gray-500">By: {update.creatorDisplayName} at {formatDate(update.createdAt, { dateOnly: true })}</p>
+                      <strong className="font-medium text-green-700">{t('admin.announcement')}</strong> {update.text} <br />
+                      <p className="text-xs text-gray-500">{t('admin.by')} {update.creatorDisplayName} at {formatDate(update.createdAt, { dateOnly: true })}</p>
                     </>
                   )}
                 </div>
                 {isAdmin && (
                   <div className="flex-shrink-0 flex items-start gap-1 ml-3">
-                    <button onClick={() => onEdit(update)} className="text-xs bg-yellow-100 hover:bg-yellow-200 text-yellow-800 px-2 py-1 rounded">Edit</button>
-                    <button onClick={() => handleDelete(update.id)} className="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-2 py-1 rounded">Remove</button>
+                    <button onClick={() => onEdit(update)} className="text-xs bg-yellow-100 hover:bg-yellow-200 text-yellow-800 px-2 py-1 rounded">{t('common.edit')}</button>
+                    <button onClick={() => handleDelete(update.id)} className="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-2 py-1 rounded">{t('common.remove')}</button>
                   </div>
                 )}
               </div>
@@ -167,18 +175,20 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
   );
 };
 
-// --- MembersSection (MODIFIED) ---
+// --- MembersSection (Translated) ---
 const MembersSection = ({ membersDetails, teamData, currentUserUid, canManageMembers, onChangeRole, onInviteClick }) => {
+  const { t } = useContext(LanguageContext);
+
   return (
     <div className="bg-white p-4 rounded-lg shadow border h-full">
       <div className="flex justify-between items-center mb-3 border-b pb-2">
-        <h3 className="text-lg font-semibold text-gray-700">Members</h3>
+        <h3 className="text-lg font-semibold text-gray-700">{t('admin.tabMembers')}</h3>
         {canManageMembers && (
           <button
             onClick={onInviteClick}
             className="text-xs bg-blue-500 hover:bg-blue-600 text-white font-semibold py-1 px-3 rounded-md shadow-sm transition-colors"
           >
-            + Invite
+            {t('admin.invite')}
           </button>
         )}
       </div>
@@ -187,17 +197,10 @@ const MembersSection = ({ membersDetails, teamData, currentUserUid, canManageMem
           {membersDetails.map((member) => {
             const uid = member.uid;
             const isCreator = teamData?.createdBy === uid;
-            
-            // --- NEW LOGIC: Check for Master Admin role ---
-            // This 'role' comes from the user's document in the 'users' collection
-            const isMasterAdmin = member.role === 'Master Admin'; 
-            // --- END NEW LOGIC ---
-
+            const isMasterAdmin = member.role === 'Master Admin';
             const roleMap = teamData?.roles || {};
             const roleRaw = isCreator ? 'creator' : (roleMap?.[uid] || 'member');
-            
-            // Show "Master Admin" as the label if they have that role
-            const roleLabel = isCreator ? 'Creator' : (isMasterAdmin ? 'Master Admin' : (roleRaw === 'admin' ? 'Admin' : 'Member'));
+            const roleLabel = isCreator ? t('admin.creator') : (isMasterAdmin ? t('header.masterAdmin') : (roleRaw === 'admin' ? t('admin.admin') : t('common.member')));
 
             return (
               <li key={uid} className="flex items-center justify-between gap-3 bg-gray-50 p-2 rounded">
@@ -216,55 +219,60 @@ const MembersSection = ({ membersDetails, teamData, currentUserUid, canManageMem
                 </div>
                 {canManageMembers ? (
                   <div className="flex items-center gap-2">
-                    {/* --- MODIFIED LOGIC: Check for Creator OR Master Admin --- */}
                     {isCreator ? (
-                      <div className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded border border-yellow-200">Creator</div>
+                      <div className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded border border-yellow-200">{t('admin.creator')}</div>
                     ) : isMasterAdmin ? (
-                      <div className="text-xs px-2 py-1 bg-indigo-100 text-indigo-800 rounded border border-indigo-200">Master Admin</div>
+                      <div className="text-xs px-2 py-1 bg-indigo-100 text-indigo-800 rounded border border-indigo-200">{t('header.masterAdmin')}</div>
                     ) : (
                       <select
                         value={roleRaw}
                         onChange={(e) => onChangeRole(uid, e.target.value)}
                         className="text-xs border rounded px-2 py-1"
-                        title="Change role"
+                        title={t('admin.changeRole')}
                       >
-                        <option value="admin">Admin</option>
-                        <option value="member">Member</option>
+                        <option value="admin">{t('admin.admin')}</option>
+                        <option value="member">{t('common.member')}</option>
                       </select>
                     )}
-                    {/* --- END MODIFIED LOGIC --- */}
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2">
-                  </div>
+                  <div className="flex items-center gap-2" />
                 )}
               </li>
             );
           })}
         </ul>
       ) : (
-        <p className="text-sm text-gray-500 italic">No members listed yet.</p>
+        <p className="text-sm text-gray-500 italic">{t('admin.noMembers')}</p>
       )}
     </div>
   );
 };
 
-// --- ManualNoteModal (MODIFIED) ---
+// --- ManualNoteModal (Translated AND UPDATED with Edit) ---
 const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin }) => {
+  const { t } = useContext(LanguageContext);
   const [title, setTitle] = useState('');
-  const [description, setDescription] = useState(''); // <-- ADDED
+  const [description, setDescription] = useState('');
+  const [isEditing, setIsEditing] = useState(false); // <-- NEW STATE
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setIsEditing(false); // Reset editing state on close
+      return;
+    }
     if (modalData?.type === 'new') {
       setTitle('');
-      setDescription(''); // <-- ADDED
+      setDescription('');
+      setIsEditing(false); // Not editing
     }
     if (modalData?.type === 'view') {
+      // Pre-fill fields for viewing (and for editing if "Edit" is clicked)
       setTitle(modalData?.event?.title?.replace(/^Note:\s*/i, '') || '');
-      setDescription(modalData?.event?.description || ''); // <-- ADDED
+      setDescription(modalData?.event?.description || '');
+      // Don't reset isEditing here, allow it to persist if user clicks "Edit"
     }
-  }, [isOpen, modalData]);
+  }, [isOpen, modalData]); // Only re-run when modal opens or data changes
 
   if (!isOpen) return null;
 
@@ -273,11 +281,18 @@ const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin
   const event = modalData?.event;
 
   const handleSave = async () => {
-    if (!title) return; // Only title is required to save
-    const start = modalData.start instanceof Date ? modalData.start : new Date(modalData.start);
-    const end = modalData.end instanceof Date ? modalData.end : new Date(modalData.end);
-    await onSave(title, description, start, end); // <-- PASS DESCRIPTION
-    onClose();
+    if (!title) return;
+
+    // If it's new, eventId is null. If editing, get ID from event.
+    const eventId = (isView && event?.id) ? event.id : null;
+    const start = isNew ? (modalData.start instanceof Date ? modalData.start : new Date(modalData.start)) : event.start;
+    const end = isNew ? (modalData.end instanceof Date ? modalData.end : new Date(modalData.end)) : event.end;
+
+    // onSave now handles both create and update
+    await onSave(title, description, start, end, eventId);
+    
+    setIsEditing(false); // Reset state
+    onClose(); // Close on save
   };
 
   const handleDelete = async () => {
@@ -285,66 +300,113 @@ const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin
     await onDelete(event.id);
     onClose();
   };
+  
+  const handleCancel = () => {
+    if (isEditing) {
+      setIsEditing(false); // Go back to view mode
+      // Reset fields to original values
+      setTitle(modalData?.event?.title?.replace(/^Note:\s*/i, '') || '');
+      setDescription(modalData?.event?.description || '');
+    } else {
+      onClose(); // Close the modal
+    }
+  };
 
-  let modalTitle = 'Calendar Event';
-  if (isNew) modalTitle = `Add Note for ${moment(modalData.start).format('MMM D, YYYY')}`;
-  if (isView && event) modalTitle = event.title;
+  // --- UPDATED Modal Title Logic ---
+  let modalTitle = t('calendar.modalTitle');
+  if (isNew) {
+    modalTitle = `${t('calendar.addNoteTitle')} ${moment(modalData.start).format('MMM D, YYYY')}`;
+  } else if (isView && isEditing) {
+    modalTitle = t('calendar.editNoteTitle', 'Edit Note'); // <-- NEW
+  } else if (isView && !isEditing && event) {
+    modalTitle = event.title;
+  }
 
   return (
     <div aria-modal="true" role="dialog" className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-      {/* --- Changed max-w-md to max-w-lg --- */}
+      <div className="fixed inset-0 bg-black/50" onClick={handleCancel} /> {/* Use handleCancel */}
       <div className="relative z-10 w-full max-w-lg bg-white rounded-lg shadow-lg p-6">
         <h3 className="text-lg font-semibold text-gray-800 mb-4">{modalTitle}</h3>
 
-        {isNew && (
+        {/* --- UPDATED: Show form if New OR Editing --- */}
+        {(isNew || (isView && isEditing)) && (
           <div className="space-y-4">
-            {/* --- ADDED wrapper div --- */}
             <div>
-              <label htmlFor="noteTitle" className="block text-sm font-medium text-gray-700">Note Title</label>
-              <input id="noteTitle" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="e.g., Team Holiday" />
+              <label htmlFor="noteTitle" className="block text-sm font-medium text-gray-700">{t('calendar.noteTitle')}</label>
+              <input id="noteTitle" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder={t('calendar.noteTitlePlaceholder')} />
             </div>
-
-            {/* --- ADDED this block --- */}
             <div>
-              <label htmlFor="noteDescription" className="block text-sm font-medium text-gray-700">Note Body / Description</label>
+              <label htmlFor="noteDescription" className="block text-sm font-medium text-gray-700">{t('calendar.noteBody')}</label>
               <textarea
                 id="noteDescription"
                 rows="4"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                placeholder="Add details here..."
+                placeholder={t('calendar.noteBodyPlaceholder')}
               />
             </div>
-            {/* --- END of new block --- */}
           </div>
         )}
 
-        {isView && event && (
+        {/* --- UPDATED: Show static text if View AND Not Editing --- */}
+        {isView && !isEditing && event && (
           <div className="space-y-2">
-            <p className="text-sm text-gray-600"><strong>Event:</strong> {event.title}</p>
-            {/* --- ADDED this block --- */}
+            <p className="text-sm text-gray-600"><strong>{t('calendar.event')}</strong> {event.title}</p>
             {event.description && (
               <p className="text-sm text-gray-600 whitespace-pre-wrap">
-                <strong>Description:</strong> {event.description}
+                <strong>{t('calendar.description')}</strong> {event.description}
               </p>
             )}
-            {/* --- END of new block --- */}
-            <p className="text-sm text-gray-600"><strong>Date:</strong> {moment(event.start).format('lll')}</p>
-            <p className="text-sm text-gray-600"><strong>Type:</strong> <span className="capitalize">{event.type}</span></p>
+            <p className="text-sm text-gray-600"><strong>{t('calendar.date')}</strong> {moment(event.start).format('lll')}</p>
+            <p className="text-sm text-gray-600"><strong>{t('calendar.type')}</strong> <span className="capitalize">{event.type}</span></p>
           </div>
         )}
 
+        {/* --- UPDATED Footer Buttons --- */}
         <div className="flex justify-end items-center gap-3 mt-6">
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md">Cancel</button>
+          
+          {/* Show Delete button only in view mode */}
+          {isView && !isEditing && event?.type === 'manual' && isAdmin && (
+            <button 
+              type="button" 
+              onClick={handleDelete} 
+              className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700"
+            >
+              {t('common.deleteNote')}
+            </button>
+          )}
+          
+          {/* Cancel button is always visible, but behavior changes */}
+          <button 
+            type="button" 
+            onClick={handleCancel} 
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+          >
+            {t('common.cancel')}
+          </button>
 
-          {isNew && (
-            <button type="button" onClick={handleSave} disabled={!title} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md disabled:bg-gray-400">Save Note</button>
+          {/* Show Edit button only in view mode */}
+          {isView && !isEditing && event?.type === 'manual' && isAdmin && (
+            <button 
+              type="button" 
+              onClick={() => setIsEditing(true)} 
+              className="px-4 py-2 text-sm font-medium text-white bg-yellow-500 rounded-md hover:bg-yellow-600"
+            >
+              {t('common.editNote', 'Edit Note')}
+            </button>
           )}
 
-          {isView && event?.type === 'manual' && isAdmin && (
-            <button type="button" onClick={handleDelete} className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md">Delete Note</button>
+          {/* Show Save button if New OR Editing */}
+          {(isNew || (isView && isEditing)) && (
+            <button 
+              type="button" 
+              onClick={handleSave} 
+              disabled={!title} 
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md disabled:bg-gray-400 hover:bg-blue-700"
+            >
+              {t('common.saveNote')}
+            </button>
           )}
         </div>
       </div>
@@ -353,8 +415,9 @@ const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin
 };
 
 
-// --- TeamCalendar (MODIFIED) ---
-const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
+// --- TeamCalendar (Translated AND UPDATED) ---
+const TeamCalendar = ({ teamId, isAdmin, refreshTrigger, messages }) => { // Receive messages
+  const { t } = useContext(LanguageContext);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -382,56 +445,53 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
 
       // --- Task events (MODIFIED per user request) ---
       const taskEvents = taskDocs.docs
-        .filter(d => d.data().endDate) // <-- CHANGED: Only require an endDate
+        .filter(d => d.data().endDate) // require an endDate
         .map(d => {
           const data = d.data();
           const endDate = normalizeValueToDate(data.endDate);
 
-          if (!endDate) return null; // Skip if endDate is invalid
+          if (!endDate) return null;
 
-          // --- FIX: Use 'ticketNo' (from table) first, then 'title', then ID
-          const title = `Ticket: ${data.ticketNo || data.title || d.id}`;
+          const title = `${t('calendar.ticket')} ${data.ticketNo || data.title || d.id}`;
 
           return {
             id: d.id,
             title: title,
-            start: endDate, // <-- CHANGED: Use endDate
-            end: endDate,   // <-- CHANGED: Use endDate
+            start: endDate,
+            end: endDate,
             allDay: true,
             type: 'ticket',
           };
         })
-        .filter(Boolean); // Remove any null (invalid) events
+        .filter(Boolean);
 
-      // --- Meeting events (Unchanged) ---
+      // --- Meeting events ---
       const meetingEvents = meetingDocs.docs.map(d => {
         const data = d.data();
         const start = normalizeValueToDate(data.startDateTime) || new Date();
         const end = normalizeValueToDate(data.endDateTime) || start;
-        
-        // Meetings are NOT all-day
+
         return {
           id: d.id,
-          title: `Meeting: ${data.title || 'Untitled'}`,
+          title: `${t('calendar.meeting')} ${data.title || t('calendar.untitled')}`,
           start,
-          end: (end > start) ? end : new Date(start.getTime() + 30 * 60 * 1000), // Default 30min
-          allDay: false, 
+          end: (end > start) ? end : new Date(start.getTime() + 30 * 60 * 1000),
+          allDay: false,
           type: 'meeting',
         };
       });
 
-      // --- Note events (Unchanged from previous fix) ---
+      // --- Note events ---
       const noteEvents = noteDocs.docs.map(d => {
         const data = d.data();
         const start = normalizeValueToDate(data.start) || new Date();
-        
-        // Notes are all-day
+
         return {
           id: d.id,
-          title: `Note: ${data.title || 'Note'}`,
-          description: data.description || '', // <-- Keep description field
+          title: `${t('calendar.note')} ${data.title || 'Note'}`,
+          description: data.description || '',
           start: start,
-          end: start, // All-day notes just need a start date
+          end: start,
           allDay: true,
           type: 'manual',
         };
@@ -443,7 +503,7 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
     } finally {
       setLoading(false);
     }
-  }, [teamId]);
+  }, [teamId, t]);
 
 
   useEffect(() => { fetchCalendarData(); }, [fetchCalendarData, refreshTrigger]);
@@ -464,33 +524,48 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
     setIsNoteModalOpen(true);
   }, []);
 
-  const handleSaveNote = useCallback(async (title, description, start, end) => { // <-- ADDED description
+  // --- UPDATED: Now handles Save OR Update ---
+  const handleSaveOrUpdateNote = useCallback(async (title, description, start, end, eventId) => {
     if (!title || !teamId) return;
+    
     try {
-      const newNote = {
-        title,
-        description, // <-- ADDED
-        start: start instanceof Date ? start : new Date(start),
-        end: end instanceof Date ? end : new Date(end),
-        allDay: true, // Notes are all-day
-        createdAt: serverTimestamp(),
-      };
-      await addDoc(collection(db, 'teams', teamId, 'calendarNotes'), newNote);
-      await fetchCalendarData();
+      if (eventId) {
+        // This is an UPDATE
+        const noteRef = doc(db, 'teams', teamId, 'calendarNotes', eventId);
+        await updateDoc(noteRef, {
+          title,
+          description
+          // We don't update start/end for simplicity, title/desc is enough for an edit.
+        });
+      } else {
+        // This is a NEW note
+        const newNote = {
+          title,
+          description,
+          start: start instanceof Date ? start : new Date(start),
+          end: end instanceof Date ? end : new Date(end),
+          allDay: true,
+          createdAt: serverTimestamp(),
+        };
+        await addDoc(collection(db, 'teams', teamId, 'calendarNotes'), newNote);
+      }
+      await fetchCalendarData(); // Refresh data in both cases
     } catch (err) {
-      console.error("Error adding manual note:", err);
+      console.error("Error saving/updating note:", err);
+      // You could add a user-facing error toast here
     }
   }, [teamId, fetchCalendarData]);
 
   const handleDeleteNote = useCallback(async (eventId) => {
     if (!teamId || !eventId) return;
+    if (!window.confirm(t('common.confirmDelete', 'Delete this item?'))) return; // Add confirm
     try {
       await deleteDoc(doc(db, 'teams', teamId, 'calendarNotes', eventId));
       await fetchCalendarData();
     } catch (err) {
       console.error("Error deleting note:", err);
     }
-  }, [teamId, fetchCalendarData]);
+  }, [teamId, fetchCalendarData, t]);
 
   const eventPropGetter = useCallback((event) => ({
     style: { cursor: 'pointer' },
@@ -517,14 +592,16 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
         onDoubleClickEvent={handleDoubleClickEvent}
         eventPropGetter={eventPropGetter}
         popup={true}
-        showMultiDayTimes={true} // This will show multi-day timed events in the time grid
+        showMultiDayTimes={true}
+        messages={messages}   // Use translated messages
+        // formats prop removed to allow moment locale to control formatting
       />
 
       <ManualNoteModal
         isOpen={isNoteModalOpen}
         onClose={() => setIsNoteModalOpen(false)}
         modalData={modalData}
-        onSave={handleSaveNote}
+        onSave={handleSaveOrUpdateNote} // <-- UPDATED prop
         onDelete={handleDeleteNote}
         isAdmin={isAdmin}
       />
@@ -536,6 +613,7 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
 const TeamView = () => {
   const { teamId } = useParams();
   const navigate = useNavigate();
+  const { t, language } = useContext(LanguageContext); // --- ADDED CONTEXT ---
   const [currentUser, setCurrentUser] = useState(auth.currentUser);
   const [teamData, setTeamData] = useState(null);
   const [membersDetails, setMembersDetails] = useState([]);
@@ -551,6 +629,28 @@ const TeamView = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [isEndorsementModalOpen, setIsEndorsementModalOpen] = useState(false);
+
+  // --- DYNAMICALLY SET MOMENT LOCALE ---
+  useEffect(() => {
+    moment.locale(language);
+  }, [language]);
+
+  // --- DYNAMIC CALENDAR MESSAGES ---
+  const calendarMessages = useMemo(() => ({
+    allDay: t('calendar.allDay', 'All Day'),
+    previous: t('calendar.previous'),
+    next: t('calendar.next'),
+    today: t('calendar.today'),
+    month: t('calendar.month'),
+    week: t('calendar.week'),
+    day: t('calendar.day'),
+    agenda: t('calendar.agenda'),
+    date: t('calendar.date', 'Date'),
+    time: t('calendar.time', 'Time'),
+    event: t('calendar.event', 'Event'),
+    showMore: total => t('calendar.showMore', `+ ${total} more`),
+    noEventsInRange: t('calendar.noEventsInRange', 'There are no events in this range.'),
+  }), [t]);
 
   const isTeamCreator = teamData?.createdBy === currentUser?.uid;
   const currentUserRole = teamData?.roles?.[currentUser?.uid] || 'member';
@@ -605,8 +705,8 @@ const TeamView = () => {
         const memberInfo = memberDocsSnap.map((userDoc, index) => {
           const uid = uniqueMemberUIDs[index];
           return userDoc.exists()
-              ? { uid: uid, ...userDoc.data() } // <-- This line fetches the user's 'role' field
-              : { uid: uid, displayName: null, email: 'Profile not found' };
+              ? { uid: uid, ...userDoc.data() }
+              : { uid: uid, displayName: null, email: t('admin.profileNotFound') };
         });
         setMembersDetails(memberInfo);
       } else {
@@ -618,7 +718,7 @@ const TeamView = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [teamId, currentUser, navigate]);
+  }, [teamId, currentUser, navigate, t]);
 
   useEffect(() => { fetchTeamAndMembers(); }, [fetchTeamAndMembers, announcementRefreshKey]);
 
@@ -626,14 +726,11 @@ const TeamView = () => {
       if (!teamData || !currentUser || !isAdmin || teamData.createdBy === memberUid) return;
       if (!['admin', 'member'].includes(newRole)) return;
       
-      // --- NEW: Check if the target is a Master Admin ---
-      // We find them in the memberDetails state to check their main role
       const targetUser = membersDetails.find(m => m.uid === memberUid);
       if (targetUser && targetUser.role === 'Master Admin') {
-        alert("You cannot change the team role of a Master Admin.");
+        alert(t('admin.cannotChangeMasterAdmin', 'You cannot change the team role of a Master Admin.'));
         return;
       }
-      // --- END NEW CHECK ---
 
       const teamDocRef = doc(db, "teams", teamId);
       const rolesUpdate = { ...teamData.roles, [memberUid]: newRole };
@@ -643,7 +740,7 @@ const TeamView = () => {
           setTeamData(prev => ({ ...prev, roles: rolesUpdate }));
       } catch (err) {
           console.error("Error updating role:", err);
-          setError("Failed to update member role.");
+          setError(t('admin.changeRoleError'));
       }
   };
 
@@ -662,19 +759,19 @@ const TeamView = () => {
             <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
               <div>
                 <Link to="/home" className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800 hover:underline mb-2">
-                  &larr; Back to Teams
+                  &larr; {t('common.backToDashboard')}
                 </Link>
                 <h1 className="text-3xl font-bold text-gray-900">{teamData.teamName}</h1>
-                <p className="text-base text-gray-600 mt-1">{teamData.description || 'No description provided.'}</p>
-                <p className="text-xs text-gray-500 mt-2">Created: {formatDate(teamData.createdAt, { dateOnly: true }) || 'N/A'}</p>
+                <p className="text-base text-gray-600 mt-1">{teamData.description || t('admin.noDescription')}</p>
+                <p className="text-xs text-gray-500 mt-2">{t('admin.created', 'Created')}: {formatDate(teamData.createdAt, { dateOnly: true }) || 'N/A'}</p>
               </div>
 
               <div className="flex-shrink-0 flex gap-2 flex-wrap justify-end">
-                <button onClick={() => setIsEndorsementModalOpen(true)} className="bg-cyan-500 hover:bg-cyan-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md">View Endorsements</button>
+                <button onClick={() => setIsEndorsementModalOpen(true)} className="bg-cyan-500 hover:bg-cyan-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md">{t('admin.viewEndorsements', 'View Endorsements')}</button>
                 {isAdmin && (
                   <>
-                    <button onClick={() => setIsAnnounceModalOpen(true)} className="bg-green-500 hover:bg-green-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md">Announce</button>
-                    <button onClick={() => setIsScheduleModalOpen(true)} className="bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md">Schedule Meeting</button>
+                    <button onClick={() => setIsAnnounceModalOpen(true)} className="bg-green-500 hover:bg-green-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md">{t('admin.announceTeam')}</button>
+                    <button onClick={() => setIsScheduleModalOpen(true)} className="bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md">{t('admin.scheduleMeeting')}</button>
                   </>
                 )}
               </div>
@@ -690,14 +787,19 @@ const TeamView = () => {
             </div>
 
             <div>
-              <h2 className="text-2xl font-semibold text-gray-800 mb-4">Team Calendar</h2>
+              <h2 className="text-2xl font-semibold text-gray-800 mb-4">{t('admin.tabCalendar')}</h2>
               <div className="bg-white rounded-lg shadow border overflow-hidden">
-                <TeamCalendar teamId={teamId} isAdmin={isAdmin} refreshTrigger={announcementRefreshKey} />
+                <TeamCalendar
+                  teamId={teamId}
+                  isAdmin={isAdmin}
+                  refreshTrigger={announcementRefreshKey}
+                  messages={calendarMessages}
+                />
               </div>
             </div>
 
             <div>
-              <h2 className="text-2xl font-semibold text-gray-800 mb-4">Team Project Tasks</h2>
+              <h2 className="text-2xl font-semibold text-gray-800 mb-4">{t('admin.tabProjects')}</h2>
               <TeamProjectTable
                 teamId={teamId}
                 onTaskChange={refreshAnnouncements}
@@ -710,12 +812,12 @@ const TeamView = () => {
 
       {isAuthorized && teamId && (
         <>
-          <InviteMemberModal isOpen={isInviteModalOpen} onClose={() => setIsInviteModalOpen(false)} teamId={teamId} onInvited={onInviteCompleteRefresh} />
-          <AnnounceModal isOpen={isAnnounceModalOpen} onClose={() => setIsAnnounceModalOpen(false)} teamId={teamId} onAnnouncementPosted={refreshAnnouncements} />
-          <ScheduleMeetingModal isOpen={isScheduleModalOpen} onClose={() => setIsScheduleModalOpen(false)} teamId={teamId} onMeetingScheduled={refreshAnnouncements} />
-          <EndorsementModal isOpen={isEndorsementModalOpen} onClose={() => setIsEndorsementModalOpen(false)} teamId={teamId} />
+          <InviteMemberModal t={t} isOpen={isInviteModalOpen} onClose={() => setIsInviteModalOpen(false)} teamId={teamId} onInvited={onInviteCompleteRefresh} />
+          <AnnounceModal t={t} isOpen={isAnnounceModalOpen} onClose={() => setIsAnnounceModalOpen(false)} teamId={teamId} onAnnouncementPosted={refreshAnnouncements} />
+          <ScheduleMeetingModal t={t} isOpen={isScheduleModalOpen} onClose={() => setIsScheduleModalOpen(false)} teamId={teamId} onMeetingScheduled={refreshAnnouncements} />
+          <EndorsementModal t={t} isOpen={isEndorsementModalOpen} onClose={() => setIsEndorsementModalOpen(false)} teamId={teamId} />
           {isEditModalOpen && editTarget && (
-            <EditUpdateModal isOpen={isEditModalOpen} onClose={closeEditModal} teamId={teamId} updateId={editTarget.id} updateType={editTarget.type} initialData={editTarget} onSaved={refreshAnnouncements} />
+            <EditUpdateModal t={t} isOpen={isEditModalOpen} onClose={closeEditModal} teamId={teamId} updateId={editTarget.id} updateType={editTarget.type} initialData={editTarget} onSaved={refreshAnnouncements} />
           )}
         </>
       )}
