@@ -13,7 +13,7 @@ import {
   serverTimestamp,
   where,
   addDoc
-} from "firebase/firestore";
+} from "firebase/firestore"; // <-- Firestore functions are all here
 import { db, auth } from '../firebaseConfig';
 import { onAuthStateChanged } from "firebase/auth";
 import InviteMemberModal from './InviteMemberModal';
@@ -21,7 +21,8 @@ import AnnounceModal from './AnnounceModal';
 import ScheduleMeetingModal from './ScheduleMeetingModal';
 import TeamProjectTable from './TeamProjectTable';
 import EditUpdateModal from './EditUpdateModal';
-import EndorsementModal from './EndorsementModal';
+// Import the HandoversSection implemented in EndorsementModal.jsx (do not hardcode it here)
+import HandoversSection from './EndorsementModal';
 
 // --- Context Import ---
 import { LanguageContext } from '../contexts/LanguageContext.jsx';
@@ -34,18 +35,15 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 
 // --- Setup Localizer ---
 const localizer = momentLocalizer(moment);
-// We will set the locale dynamically in the component
-
-// --- REMOVED hard-coded Korean messages and formats ---
 
 // --- Spinner component ---
-const Spinner = () => (
+const Spinner = ({ large = false }) => ( // Added 'large' prop for flexibility
   <div className="flex justify-center items-center py-10">
-    <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+    <div className={`border-4 border-blue-500 border-t-transparent rounded-full animate-spin ${large ? 'w-8 h-8' : 'w-6 h-6'}`}></div>
   </div>
 );
 
-// --- Utility: formatDate ---
+// --- Utility: formatDate (for general use) ---
 const formatDate = (value, { dateOnly = false, fallback = '' } = {}) => {
   if (!value) return fallback;
   try {
@@ -67,6 +65,52 @@ const formatDate = (value, { dateOnly = false, fallback = '' } = {}) => {
     return String(value);
   }
 };
+
+// --- Utility: formatDate (for handovers table YYYY-MM-DD) ---
+const formatDateForHandover = (value, { fallback = '' } = {}) => {
+  if (!value) return fallback;
+  try {
+      let d;
+      if (typeof value === 'object' && typeof value.toDate === 'function') {
+      d = value.toDate();
+      } else if (value instanceof Date) {
+      d = value;
+      } else if (typeof value === 'string') {
+      const parsed = new Date(value);
+      if (!isNaN(parsed)) d = parsed;
+      else return value;
+      } else {
+      return String(value);
+      }
+      return d.toISOString().split('T')[0];
+  } catch (err) {
+      console.error('formatDate error', err, value);
+      return String(value);
+  }
+};
+
+
+// --- *** NEW: URL Linkify Utility *** ---
+const linkify = (text) => {
+  if (!text) return '';
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  // Use replace with a function to safely handle HTML escaping
+  const parts = text.split(urlRegex);
+  return parts.map((part, i) => {
+    if (part.match(urlRegex)) {
+      return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{part}</a>;
+    }
+    // Need to handle newlines
+    const lines = part.split('\n');
+    return lines.map((line, j) => (
+      <React.Fragment key={`${i}-${j}`}>
+        {line}
+        {j < lines.length - 1 && <br />}
+      </React.Fragment>
+    ));
+  });
+};
+
 
 // ---------- Helper utilities (FOR CALENDAR) ----------
 const normalizeValueToDate = (val) => {
@@ -127,7 +171,7 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
   };
 
   return (
-    <div className="bg-white p-4 rounded-lg shadow border h-full">
+    <div className="bg-white p-4 rounded-lg shadow border">
       <h3 className="text-lg font-semibold mb-3 text-gray-700 border-b pb-2">{t('admin.tabUpdates')}</h3>
       {isLoadingAnnouncements && <Spinner />}
       {errorAnnouncements && <p className="text-red-500 text-sm mt-2">{errorAnnouncements}</p>}
@@ -139,13 +183,13 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
           {updates.map(update => (
             <li key={update.id} className={`text-sm p-2 border-l-4 rounded-r bg-gray-50 ${update.type === 'meeting' ? 'border-blue-500' : 'border-green-500'}`}>
               <div className="flex justify-between items-start gap-2">
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   {update.type === 'meeting' ? (
                     <>
                       <strong className="font-medium text-blue-700">{t('admin.meeting')}</strong> {update.title} <br />
                       <span className="text-xs text-gray-500">{t('admin.starts')} {formatDate(update.startDateTime) || 'N/A'}</span>
                       {update.endDateTime && <span className="text-xs text-gray-500"> - {t('admin.ends')} {formatDate(update.endDateTime)}</span>}
-                      {update.description && <p className="text-xs text-gray-600 mt-1">{update.description}</p>}
+                      {update.description && <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap">{linkify(update.description)}</p>}
                       {update.meetingLink && (
                         <a href={update.meetingLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-xs mt-1 block">
                           {t('admin.joinMeeting')}
@@ -155,8 +199,11 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
                     </>
                   ) : (
                     <>
-                      <strong className="font-medium text-green-700">{t('admin.announcement')}</strong> {update.text} <br />
-                      <p className="text-xs text-gray-500">{t('admin.by')} {update.creatorDisplayName} at {formatDate(update.createdAt, { dateOnly: true })}</p>
+                      <strong className="font-medium text-green-700">{t('admin.announcement')}</strong>
+                      <div className="whitespace-pre-wrap break-words">
+                        {linkify(update.text)}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-2">{t('admin.by')} {update.creatorDisplayName} at {formatDate(update.createdAt, { dateOnly: true })}</p>
                     </>
                   )}
                 </div>
@@ -180,7 +227,7 @@ const MembersSection = ({ membersDetails, teamData, currentUserUid, canManageMem
   const { t } = useContext(LanguageContext);
 
   return (
-    <div className="bg-white p-4 rounded-lg shadow border h-full">
+    <div className="bg-white p-4 rounded-lg shadow border">
       <div className="flex justify-between items-center mb-3 border-b pb-2">
         <h3 className="text-lg font-semibold text-gray-700">{t('admin.tabMembers')}</h3>
         {canManageMembers && (
@@ -572,30 +619,35 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger, messages }) => { // Rec
     'data-type': event.type,
   }), []);
 
-  if (loading) return <Spinner />;
+  if (loading) return <Spinner large />;
 
   return (
-    <div style={{ height: 600, padding: '1rem' }}>
-      <Calendar
-        localizer={localizer}
-        events={events}
-        startAccessor="start"
-        endAccessor="end"
-        date={currentDate}
-        view={currentView}
-        onNavigate={(date) => setCurrentDate(date)}
-        onView={(view) => setCurrentView(view)}
-        style={{ height: '100%' }}
-        selectable={true}
-        onSelectSlot={handleSelectSlot}
-        onSelectEvent={handleSelectEvent}
-        onDoubleClickEvent={handleDoubleClickEvent}
-        eventPropGetter={eventPropGetter}
-        popup={true}
-        showMultiDayTimes={true}
-        messages={messages}   // Use translated messages
-        // formats prop removed to allow moment locale to control formatting
-      />
+    // --- *** LAYOUT FIX *** ---
+    <div className="bg-white rounded-lg shadow border flex flex-col overflow-hidden">
+      <h2 className="text-2xl font-semibold text-gray-800 p-4 border-b">{t('admin.tabCalendar')}</h2>
+      
+      <div className="p-4" style={{ height: '600px' }}>
+        <Calendar
+          localizer={localizer}
+          events={events}
+          startAccessor="start"
+          endAccessor="end"
+          date={currentDate}
+          view={currentView}
+          onNavigate={(date) => setCurrentDate(date)}
+          onView={(view) => setCurrentView(view)}
+          style={{ height: '100%' }} // Calendar fills its 600px parent
+          selectable={true}
+          onSelectSlot={handleSelectSlot}
+          onSelectEvent={handleSelectEvent}
+          onDoubleClickEvent={handleDoubleClickEvent}
+          eventPropGetter={eventPropGetter}
+          popup={true}
+          showMultiDayTimes={true}
+          messages={messages}   // Use translated messages
+          // formats prop removed to allow moment locale to control formatting
+        />
+      </div>
 
       <ManualNoteModal
         isOpen={isNoteModalOpen}
@@ -609,7 +661,10 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger, messages }) => { // Rec
   );
 };
 
+
+// ===================================================================
 // --- TeamView (main) ---
+// ===================================================================
 const TeamView = () => {
   const { teamId } = useParams();
   const navigate = useNavigate();
@@ -628,7 +683,6 @@ const TeamView = () => {
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
-  const [isEndorsementModalOpen, setIsEndorsementModalOpen] = useState(false);
 
   // --- DYNAMICALLY SET MOMENT LOCALE ---
   useEffect(() => {
@@ -751,7 +805,7 @@ const TeamView = () => {
   return (
     <>
       <div className="px-4 sm:px-6 lg:px-8 py-8">
-        {isLoading && <Spinner />}
+        {isLoading && <Spinner large />}
         {error && <div className="text-center text-red-600 bg-red-100 p-4 rounded-md shadow">{error}</div>}
 
         {!isLoading && !error && teamData && isAuthorized && (
@@ -767,7 +821,7 @@ const TeamView = () => {
               </div>
 
               <div className="flex-shrink-0 flex gap-2 flex-wrap justify-end">
-                <button onClick={() => setIsEndorsementModalOpen(true)} className="bg-cyan-500 hover:bg-cyan-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md">{t('admin.viewEndorsements', 'View Endorsements')}</button>
+                {/* --- REMOVED "View Endorsements" Button --- */}
                 {isAdmin && (
                   <>
                     <button onClick={() => setIsAnnounceModalOpen(true)} className="bg-green-500 hover:bg-green-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md">{t('admin.announceTeam')}</button>
@@ -777,18 +831,29 @@ const TeamView = () => {
               </div>
             </div>
 
+            {/* --- REDESIGNED LAYOUT --- */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <AnnouncementsSection teamId={teamId} refreshTrigger={announcementRefreshKey} isAdmin={isAdmin} onEdit={openEditModal} />
+              
+              {/* --- Left Column (Lists) --- */}
+              <div className="lg:col-span-1 space-y-6">
+                <AnnouncementsSection 
+                  teamId={teamId} 
+                  refreshTrigger={announcementRefreshKey} 
+                  isAdmin={isAdmin} 
+                  onEdit={openEditModal} 
+                />
+                <MembersSection 
+                  membersDetails={membersDetails} 
+                  teamData={teamData} 
+                  currentUserUid={currentUser?.uid} 
+                  canManageMembers={isAdmin} 
+                  onChangeRole={changeRole} 
+                  onInviteClick={() => setIsInviteModalOpen(true)} 
+                />
               </div>
-              <div className="lg:col-span-1">
-                <MembersSection membersDetails={membersDetails} teamData={teamData} currentUserUid={currentUser?.uid} canManageMembers={isAdmin} onChangeRole={changeRole} onInviteClick={() => setIsInviteModalOpen(true)} />
-              </div>
-            </div>
 
-            <div>
-              <h2 className="text-2xl font-semibold text-gray-800 mb-4">{t('admin.tabCalendar')}</h2>
-              <div className="bg-white rounded-lg shadow border overflow-hidden">
+              {/* --- Right Column (Calendar) --- */}
+              <div className="lg:col-span-2">
                 <TeamCalendar
                   teamId={teamId}
                   isAdmin={isAdmin}
@@ -797,14 +862,22 @@ const TeamView = () => {
                 />
               </div>
             </div>
-
+            
+            {/* --- Full-width sections below --- */}
             <div>
               <h2 className="text-2xl font-semibold text-gray-800 mb-4">{t('admin.tabProjects')}</h2>
-              <TeamProjectTable
-                teamId={teamId}
-                onTaskChange={refreshAnnouncements}
-              />
+              <div className="bg-white rounded-lg shadow border overflow-hidden">
+                <div className="overflow-x-auto">
+                  <TeamProjectTable
+                    teamId={teamId}
+                    onTaskChange={refreshAnnouncements}
+                  />
+                </div>
+              </div>
             </div>
+
+            {/* --- ADDED HANDOVER SECTION (imported, do not hardcode) --- */}
+            <HandoversSection teamId={teamId} />
             
           </div>
         )}
@@ -815,7 +888,7 @@ const TeamView = () => {
           <InviteMemberModal t={t} isOpen={isInviteModalOpen} onClose={() => setIsInviteModalOpen(false)} teamId={teamId} onInvited={onInviteCompleteRefresh} />
           <AnnounceModal t={t} isOpen={isAnnounceModalOpen} onClose={() => setIsAnnounceModalOpen(false)} teamId={teamId} onAnnouncementPosted={refreshAnnouncements} />
           <ScheduleMeetingModal t={t} isOpen={isScheduleModalOpen} onClose={() => setIsScheduleModalOpen(false)} teamId={teamId} onMeetingScheduled={refreshAnnouncements} />
-          <EndorsementModal t={t} isOpen={isEndorsementModalOpen} onClose={() => setIsEndorsementModalOpen(false)} teamId={teamId} />
+          
           {isEditModalOpen && editTarget && (
             <EditUpdateModal t={t} isOpen={isEditModalOpen} onClose={closeEditModal} teamId={teamId} updateId={editTarget.id} updateType={editTarget.type} initialData={editTarget} onSaved={refreshAnnouncements} />
           )}

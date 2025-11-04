@@ -31,6 +31,9 @@ import ScheduleMeetingModal from './ScheduleMeetingModal';
 import EditUpdateModal from './EditUpdateModal';
 import AnnounceMultiTeamModal from './AnnounceMultiTeamModal';
 
+// --- NEW: Handovers Section import (do not hardcode component here) ---
+import HandoversSection from './EndorsementModal';
+
 // --- NEW LANGUAGE CONTEXT IMPORT ---
 import { LanguageContext } from '../contexts/LanguageContext.jsx';
 
@@ -61,6 +64,12 @@ const UserGroupIcon = () => (
 const CalendarIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+  </svg>
+);
+// --- New Handovers icon ---
+const HandoversIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6M9 16h6M12 4v4m-7 8a2 2 0 012-2h10a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2z" />
   </svg>
 );
 
@@ -138,11 +147,9 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
 
   return (
     <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm border h-full">
-      {/* --- MODIFIED --- */}
       <h3 className="text-lg font-semibold mb-3 text-gray-700 border-b pb-2">{t('admin.tabUpdates')}</h3>
       {isLoading && <Spinner />}
       {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
-      {/* --- MODIFIED --- */}
       {!isLoading && updates.length === 0 && ( <p className="text-sm text-gray-500 italic">{t('admin.noUpdates')}</p> )}
       {!isLoading && updates.length > 0 && (
         <ul className="space-y-3 max-h-[420px] overflow-y-auto pr-2">
@@ -152,7 +159,6 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
                 <div className="flex-1">
                   {update.type === 'meeting' ? (
                     <>
-                      {/* --- MODIFIED --- */}
                       <strong className="font-medium text-blue-700">{t('admin.meeting')}</strong> {update.title} <br />
                       <span className="text-xs text-gray-500">{t('admin.starts')} {formatDate(update.startDateTime) || 'N/A'}</span>
                       {update.endDateTime && <span className="text-xs text-gray-500"> - {t('admin.ends')} {formatDate(update.endDateTime)}</span>}
@@ -162,7 +168,6 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
                     </>
                   ) : (
                     <>
-                      {/* --- MODIFIED --- */}
                       <strong className="font-medium text-green-700">{t('admin.announcement')}</strong> {update.text} <br />
                       <p className="text-xs text-gray-500">{t('admin.by')} {update.creatorDisplayName} at {formatDate(update.createdAt, { dateOnly: true })}</p>
                     </>
@@ -170,7 +175,6 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
                 </div>
                 {isAdmin && (
                   <div className="flex-shrink-0 flex items-start gap-1 ml-3">
-                    {/* --- MODIFIED --- */}
                     <button onClick={() => onEdit(update)} className="text-xs bg-yellow-100 hover:bg-yellow-200 text-yellow-800 px-2 py-1 rounded">{t('common.edit')}</button>
                     <button onClick={() => handleDelete(update.id)} className="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-2 py-1 rounded">{t('common.remove')}</button>
                   </div>
@@ -191,7 +195,6 @@ const MembersSection = ({ membersDetails, teamData, canManageMembers, onChangeRo
   return (
     <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm border h-full">
       <div className="flex justify-between items-center mb-3 border-b pb-2">
-        {/* --- MODIFIED --- */}
         <h3 className="text-lg font-semibold text-gray-700">{t('admin.tabMembers')}</h3>
         {canManageMembers && ( <button onClick={onInviteClick} className="text-xs bg-blue-500 hover:bg-blue-600 text-white font-semibold py-1 px-3 rounded-md shadow-sm transition-colors">{t('admin.invite')}</button> )}
       </div>
@@ -202,7 +205,6 @@ const MembersSection = ({ membersDetails, teamData, canManageMembers, onChangeRo
             const isCreator = teamData?.createdBy === uid;
             const roleMap = teamData?.roles || {};
             const roleRaw = isCreator ? 'creator' : (roleMap?.[uid] || 'member');
-            {/* --- MODIFIED --- */}
             const roleLabel = roleRaw === 'creator' ? t('admin.creator') : (roleRaw === 'admin' ? t('admin.admin') : t('common.member'));
             return (
               <li key={uid} className="flex items-center justify-between gap-3 bg-gray-50 p-2.5 rounded-md">
@@ -215,7 +217,6 @@ const MembersSection = ({ membersDetails, teamData, canManageMembers, onChangeRo
                 </div>
                 {canManageMembers ? (
                   <div className="flex items-center gap-2">
-                    {/* --- MODIFIED --- */}
                     {isCreator ? ( <div className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded border border-yellow-200">{t('admin.creator')}</div> ) : (
                       <select value={roleRaw} onChange={(e) => onChangeRole(uid, e.target.value)} className="text-xs border border-gray-300 rounded px-2 py-1 bg-white hover:border-gray-400" title={t('admin.changeRole')}>
                         <option value="admin">{t('admin.admin')}</option>
@@ -245,11 +246,9 @@ const UserManagementSection = ({ allUsers, allTeams, loadingUsers, errorUsers, o
   return (
     <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200 h-full">
       <div className="flex items-center justify-between mb-4">
-        {/* --- MODIFIED --- */}
         <h3 className="text-lg font-semibold flex items-center text-gray-800"><UserGroupIcon /> {t('admin.allRegisteredUsers')} ({allUsers.length})</h3>
         <div className="flex items-center gap-2">
           <button onClick={onToggleCompact} className="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded">
-            {/* --- MODIFIED --- */}
             {usersViewCompact ? t('common.gridView') : t('common.compactView')}
           </button>
         </div>
@@ -260,10 +259,8 @@ const UserManagementSection = ({ allUsers, allTeams, loadingUsers, errorUsers, o
       {!loadingUsers && !errorUsers && (
         <div className="space-y-4 max-h-[58vh] overflow-y-auto pr-2 custom-scrollbar">
           {allUsers.length === 0 ? (
-            // --- MODIFIED ---
             <p className="text-gray-500 italic text-center py-4">{t('admin.noUsers')}</p>
           ) : (
-            // Render either compact rows or the detailed cards depending on usersViewCompact
             usersViewCompact ? (
               <div className="space-y-1">
                 {allUsers.map(user => {
@@ -280,7 +277,6 @@ const UserManagementSection = ({ allUsers, allTeams, loadingUsers, errorUsers, o
                           <div className="truncate font-medium text-gray-800">
                             {user.displayName || user.email || user.uid}
                           </div>
-                          {/* --- MODIFIED --- */}
                           <div className="text-xs text-gray-500 truncate">{user.email || t('admin.noEmail')}</div>
                         </div>
                       </div>
@@ -288,16 +284,13 @@ const UserManagementSection = ({ allUsers, allTeams, loadingUsers, errorUsers, o
                       <div className="flex items-center gap-3 ml-3">
                         <div className="text-xs whitespace-nowrap">
                           {isAdmin ? (
-                            // --- MODIFIED ---
                             <span className="inline-block text-xs font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full">{t('admin.masterShort')}</span>
                           ) : (
-                            // --- MODIFIED ---
                             <span className="inline-block text-xs font-medium bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">{t('common.member')}</span>
                           )}
                         </div>
 
                         <div className="hidden sm:flex sm:items-center sm:gap-1 sm:max-w-[200px]">
-                          {/* --- MODIFIED --- */}
                           {userTeams.length > 0 ? userTeams.slice(0,3).map(t => (
                             <span key={t.id} className="inline-block text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">{t.teamName}</span>
                           )) : (<span className="text-xs italic text-gray-500">{t('admin.noTeams')}</span>)}
@@ -317,15 +310,12 @@ const UserManagementSection = ({ allUsers, allTeams, loadingUsers, errorUsers, o
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-900 flex items-center flex-wrap">
                         <span className="truncate mr-2">{user.displayName || user.email || user.uid}</span>
-                        {/* --- MODIFIED --- */}
                         {isAdmin ? ( <span className="whitespace-nowrap ml-auto sm:ml-2 text-xs font-bold bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-full">{t('header.masterAdmin').toUpperCase()}</span> ) : ( <span className="whitespace-nowrap ml-auto sm:ml-2 text-xs font-medium bg-gray-200 text-gray-700 px-2.5 py-0.5 rounded-full">{t('common.member')}</span> )}
                       </p>
-                      {/* --- MODIFIED --- */}
                       <p className="text-xs text-gray-600 truncate">{user.email || t('admin.noEmailProvided')}</p>
                       <p className="text-xs text-gray-400 font-mono mt-1 truncate">UID: {user.uid}</p>
                     </div>
                     <div className="text-xs text-gray-700 sm:text-right flex-shrink-0 sm:max-w-[40%]">
-                      {/* --- MODIFIED --- */}
                       <p className="font-medium mb-1 text-gray-500">{t('admin.memberOf')}:</p>
                       {userTeams.length > 0 ? (
                         <div className="flex flex-wrap gap-1 sm:justify-end">
@@ -339,10 +329,8 @@ const UserManagementSection = ({ allUsers, allTeams, loadingUsers, errorUsers, o
             )
           )}
 
-          {/* Load more users control */}
           {hasMoreUsers && (
             <div className="flex justify-center">
-              {/* --- MODIFIED --- */}
               <button onClick={onLoadMoreUsers} className="px-3 py-1.5 bg-white border border-gray-300 rounded-md text-sm hover:bg-gray-50">{t('common.loadMoreUsers')}</button>
             </div>
           )}
@@ -390,7 +378,6 @@ const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin
     onClose();
   };
 
-  // --- MODIFIED ---
   let modalTitle = t('calendar.modalTitle');
   if (isNew) modalTitle = `${t('calendar.addNoteTitle')} ${moment(modalData.start).format('MMM D, YYYY')}`;
   if (isView && event) modalTitle = event.title;
@@ -404,12 +391,10 @@ const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin
         {isNew && (
           <div className="space-y-4">
             <div>
-              {/* --- MODIFIED --- */}
               <label htmlFor="noteTitle" className="block text-sm font-medium text-gray-700">{t('calendar.noteTitle')}</label>
               <input id="noteTitle" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder={t('calendar.noteTitlePlaceholder')} />
             </div>
             <div>
-              {/* --- MODIFIED --- */}
               <label htmlFor="noteDescription" className="block text-sm font-medium text-gray-700">{t('calendar.noteBody')}</label>
               <textarea
                 id="noteDescription"
@@ -425,7 +410,6 @@ const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin
 
         {isView && event && (
           <div className="space-y-2">
-            {/* --- MODIFIED --- */}
             <p className="text-sm text-gray-600"><strong>{t('calendar.event')}</strong> {event.title}</p>
             {event.description && (
               <p className="text-sm text-gray-600 whitespace-pre-wrap">
@@ -438,7 +422,6 @@ const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin
         )}
 
         <div className="flex justify-end items-center gap-3 mt-6">
-          {/* --- MODIFIED --- */}
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md">{t('common.cancel')}</button>
           {isNew && (
             <button type="button" onClick={handleSave} disabled={!title} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md disabled:bg-gray-400">{t('common.saveNote')}</button>
@@ -501,7 +484,6 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
 
           if (!startDate || !endDate) return null;
 
-          // --- MODIFIED ---
           const title = `${t('calendar.ticket')} ${data.ticketNo || data.title || d.id}`;
           const safeEndDate = (endDate < startDate) ? startDate : endDate;
 
@@ -510,11 +492,11 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
             title: title,
             start: startDate,
             end: safeEndDate,
-            allDay: true, // Tasks are always all-day
+            allDay: true,
             type: 'ticket',
           };
         })
-        .filter(Boolean); // Remove any null (invalid) events
+        .filter(Boolean);
 
       // --- Meeting events ---
       const meetingEvents = meetingDocs.docs.map(d => {
@@ -524,10 +506,9 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
         
         return {
           id: d.id,
-          // --- MODIFIED ---
           title: `${t('calendar.meeting')} ${data.title || t('calendar.untitled')}`,
           start,
-          end: (end > start) ? end : new Date(start.getTime() + 30 * 60 * 1000), // Default 30min
+          end: (end > start) ? end : new Date(start.getTime() + 30 * 60 * 1000),
           allDay: false,
           type: 'meeting',
         };
@@ -540,11 +521,10 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
         
         return {
           id: d.id,
-          // --- MODIFIED ---
           title: `${t('calendar.note')} ${data.title || 'Note'}`,
           description: data.description || '',
           start: start,
-          end: start, // All-day notes just need a start date
+          end: start,
           allDay: true,
           type: 'manual',
         };
@@ -556,11 +536,10 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
     } finally {
       setLoading(false);
     }
-  }, [teamId, t]); // --- ADDED t ---
+  }, [teamId, t]);
 
   useEffect(() => { fetchCalendarData(); }, [fetchCalendarData, refreshTrigger]);
 
-  // handlers: (No changes)
   const handleSelectSlot = useCallback(({ start, end }) => {
     setModalData({ type: 'new', start, end });
     if (isAdmin) setIsNoteModalOpen(true);
@@ -694,7 +673,7 @@ export default function MasterAdminDashboard() {
   const closeEditModal = () => { setEditTarget(null); setIsEditModalOpen(false); };
   const onInviteCompleteRefresh = () => { if (selectedTeam) fetchTeamDetails(selectedTeam.id); };
 
-  // --------- Teams: paginated fetch (cursor-based) ---------- (No changes)
+  // --------- Teams: paginated fetch (cursor-based) ----------
   const fetchTeamsPage = useCallback(async ({ reset = false, pageSize = TEAMS_PAGE_SIZE } = {}) => {
     setTeamsLoading(true);
     setTeamsError('');
@@ -723,7 +702,7 @@ export default function MasterAdminDashboard() {
     }
   }, [teamsLastDoc, t]); // --- ADDED t ---
 
-  // --------- Users: paginated fetch ---------- (No changes)
+  // --------- Users: paginated fetch ----------
   const fetchUsersPage = useCallback(async ({ reset = false, pageSize = USERS_PAGE_SIZE } = {}) => {
     setUsersLoading(true);
     setUsersError('');
@@ -748,7 +727,7 @@ export default function MasterAdminDashboard() {
     }
   }, [usersLastDoc, t]); // --- ADDED t ---
 
-  // --------- Team details & members fetch ---------- (No changes)
+  // --------- Team details & members fetch ----------
   const fetchTeamDetails = useCallback(async (teamId) => {
     if (!teamId) return;
     setIsLoadingDetails(true);
@@ -786,7 +765,7 @@ export default function MasterAdminDashboard() {
     }
   }, [t]); // --- ADDED t ---
 
-  // --------- Role change ---------- (No changes)
+  // --------- Role change ----------
   const changeRole = async (memberUid, newRole) => {
     if (!teamData || teamData.createdBy === memberUid) return;
     try {
@@ -800,7 +779,7 @@ export default function MasterAdminDashboard() {
     }
   };
 
-  // --------- Delete team ---------- (No changes)
+  // --------- Delete team ----------
   const handleDeleteTeam = async (teamId) => {
     if (!window.confirm(t('common.confirmDeleteTeam'))) return; // --- MODIFIED ---
     try {
@@ -813,20 +792,20 @@ export default function MasterAdminDashboard() {
     }
   };
 
-  // --------- Handlers for selecting and viewing a team ---------- (No changes)
+  // --------- Handlers for selecting and viewing a team ----------
   const handleViewTeam = (team) => { setSelectedTeam(team); setActiveTab('projects'); };
   useEffect(() => {
     if (selectedTeam) fetchTeamDetails(selectedTeam.id);
     else { setTeamData(null); setMembersDetails([]); }
   }, [selectedTeam, fetchTeamDetails]);
 
-  // --------- Initial load ---------- (No changes)
+  // --------- Initial load ----------
   useEffect(() => {
     fetchTeamsPage({ reset: true });
     fetchUsersPage({ reset: true });
   }, []); // eslint-disable-line
 
-  // --------- Search debounce for teams (client-side search on fetched pages) ---------- (No changes)
+  // --------- Search debounce for teams (client-side search on fetched pages) ----------
   const handleTeamsSearchChange = (v) => {
     setTeamsSearch(v);
     if (teamsDebounceRef.current) clearTimeout(teamsDebounceRef.current);
@@ -843,7 +822,7 @@ export default function MasterAdminDashboard() {
     }, DEBOUNCE_MS);
   };
 
-  // Apply simple client-side filtering for list render (based on what we fetched) (No changes)
+  // Apply simple client-side filtering for list render (based on what we fetched)
   const filteredTeams = teamsSearch.trim() === '' ? teams : teams.filter(t => {
     const q = teamsSearch.toLowerCase();
     return (t.teamName || '').toLowerCase().includes(q) || (t.description || '').toLowerCase().includes(q) || (t.id || '').toLowerCase().includes(q);
@@ -854,13 +833,13 @@ export default function MasterAdminDashboard() {
     return (u.displayName || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q) || (u.uid || '').toLowerCase().includes(q);
   });
 
-  // Tab classes (No changes)
+  // Tab classes
   const tabClass = (tabName) => {
     const base = "inline-flex items-center pb-3 px-1 border-b-2 font-medium text-sm";
     return activeTab === tabName ? `${base} border-blue-500 text-blue-600` : `${base} border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300`;
   };
 
-  // Simple UI controls (No changes)
+  // Simple UI controls
   const isInitialLoading = teamsLoading || usersLoading;
 
   return (
@@ -869,7 +848,6 @@ export default function MasterAdminDashboard() {
         <main className="flex-1 w-full py-6">
           <div className="flex justify-between items-center mb-6 px-4 sm:px-6 lg:px-8">
             <div>
-              {/* --- MODIFIED --- */}
               <h2 className="text-2xl font-semibold text-gray-800">{t('admin.title')}</h2>
               <p className="text-sm text-gray-500 mt-1">{t('admin.subtitle')}</p>
             </div>
@@ -889,7 +867,6 @@ export default function MasterAdminDashboard() {
                 className="text-sm px-3 py-2 rounded border border-gray-300 bg-white"
               />
               <button onClick={() => setIsMultiAnnounceModalOpen(true)} disabled={teams.length === 0} className="inline-flex items-center bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold py-2 px-3 rounded-md shadow-sm transition-colors disabled:opacity-50">
-                {/* --- MODIFIED --- */}
                 <MegaphoneIcon /> {t('admin.sendGlobalAnnouncement')}
               </button>
             </div>
@@ -911,10 +888,8 @@ export default function MasterAdminDashboard() {
                 {/* 1) Teams list (paginated + compact toggle) */}
                 <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
                   <div className="flex items-center justify-between mb-4">
-                    {/* --- MODIFIED --- */}
                     <h3 className="text-lg font-semibold">{t('admin.allTeams')} ({filteredTeams.length})</h3>
                     <div className="flex items-center gap-2">
-                       {/* --- MODIFIED --- */}
                       <button onClick={() => { setTeamsViewCompact(v => !v); }} className="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded">{teamsViewCompact ? t('common.gridView') : t('common.compactView')}</button>
                       <button onClick={() => fetchTeamsPage({ reset: true })} className="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded">{t('common.refresh')}</button>
                     </div>
@@ -923,17 +898,14 @@ export default function MasterAdminDashboard() {
                   {filteredTeams.length === 0 ? (
                     <p className="text-gray-500">{t('admin.noTeamsFound')}</p>
                   ) : teamsViewCompact ? (
-                    // Compact list for many items
                     <div className="max-h-[52vh] overflow-y-auto pr-2 space-y-2">
                       {filteredTeams.map(team => (
                         <div key={team.id} className="flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-100">
                           <div className="min-w-0">
                             <div className="text-sm font-medium text-gray-800 truncate">{team.teamName} <span className="text-xs text-gray-500 ml-2">({team.members?.length || 0})</span></div>
-                             {/* --- MODIFIED --- */}
                             <div className="text-xs text-gray-400 truncate">{team.description || t('admin.noDescription')}</div>
                           </div>
                           <div className="flex gap-2">
-                             {/* --- MODIFIED --- */}
                             <button onClick={() => handleDeleteTeam(team.id)} className="text-xs px-2 py-1 rounded bg-red-100 text-red-700">{t('common.delete')}</button>
                             <button onClick={() => handleViewTeam(team)} className={`text-xs px-2 py-1 rounded ${selectedTeam?.id === team.id ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'}`}>{selectedTeam?.id === team.id ? t('common.selected') : t('common.view')}</button>
                           </div>
@@ -941,13 +913,11 @@ export default function MasterAdminDashboard() {
                       ))}
                       {teamsHasMore && (
                         <div className="flex justify-center">
-                           {/* --- MODIFIED --- */}
                           <button onClick={() => fetchTeamsPage({ reset: false })} className="px-3 py-1.5 bg-white border border-gray-300 rounded-md text-sm hover:bg-gray-50">{t('common.loadMoreTeams')}</button>
                         </div>
                       )}
                     </div>
                   ) : (
-                    // Card grid view (better for small numbers)
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {filteredTeams.map(team => (
                         <div key={team.id} className={`bg-white rounded-lg shadow-sm border flex flex-col justify-between transition-shadow hover:shadow-md ${ selectedTeam?.id === team.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200' }`}>
@@ -956,12 +926,10 @@ export default function MasterAdminDashboard() {
                               <span className="font-semibold text-gray-900 truncate pr-2">{team.teamName}</span>
                               <span className="flex-shrink-0 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800"><UsersIcon /> {team.members?.length || 0}</span>
                             </div>
-                             {/* --- MODIFIED --- */}
                             <p className="text-xs text-gray-600 line-clamp-2 min-h-[32px]">{team.description || t('admin.noDescription')}</p>
                             <p className="text-xs text-gray-400 mt-3 font-mono truncate">ID: {team.id}</p>
                           </div>
                           <div className="flex items-center justify-end gap-2 p-3 bg-gray-50 border-t border-gray-100 rounded-b-lg">
-                             {/* --- MODIFIED --- */}
                             <button onClick={() => handleDeleteTeam(team.id)} className="text-xs px-3 py-1.5 rounded-md bg-red-100 text-red-700 hover:bg-red-200 transition-colors">{t('common.delete')}</button>
                             <button onClick={() => handleViewTeam(team)} className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${ selectedTeam?.id === team.id ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100' }`}>{selectedTeam?.id === team.id ? t('common.selected') : t('common.view')}</button>
                           </div>
@@ -991,30 +959,27 @@ export default function MasterAdminDashboard() {
                 <div className="bg-white rounded-t-lg shadow-md border border-gray-200 mx-4 sm:mx-6 lg:mx-8">
                   <div className="p-6 flex justify-between items-center px-4 sm:px-6 lg:px-8">
                     <div>
-                       {/* --- MODIFIED --- */}
                       <h3 className="text-xl font-semibold text-gray-800">{t('admin.managingTeam')} <span className="text-blue-600">{selectedTeam.teamName}</span></h3>
                       <p className="text-sm text-gray-500">{selectedTeam.description || t('admin.noDescription')}</p>
                     </div>
                     <div className="flex items-center gap-3">
-                       {/* --- MODIFIED --- */}
                       <button onClick={() => setSelectedTeam(null)} className="text-sm font-medium text-gray-600 hover:text-red-500">&times; {t('common.close')}</button>
                     </div>
                   </div>
 
-                  <div className="px-4 sm:px-6 lg:px-8 pb-4 border-b border-gray-200 flex gap-2">
-                     {/* --- MODIFIED --- */}
+                  <div className="px-4 sm:px-6 lg:px-8 border-b border-gray-200 flex gap-2">
                     <button onClick={() => setIsAnnounceModalOpen(true)} className="bg-green-500 hover:bg-green-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md shadow-sm">{t('admin.announceTeam')}</button>
                     <button onClick={() => setIsScheduleModalOpen(true)} className="bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md shadow-sm">{t('admin.scheduleMeeting')}</button>
                   </div>
 
-                  {/* --- MODIFIED: Added Calendar Tab --- */}
+                  {/* --- Tabs (Added Handovers tab) --- */}
                   <div className="px-4 sm:px-6 lg:px-8 border-b border-gray-200">
                     <nav className="flex space-x-6" aria-label="Tabs">
-                       {/* --- MODIFIED --- */}
                       <button onClick={() => setActiveTab('projects')} className={tabClass('projects')}><TableIcon /> {t('admin.tabProjects')}</button>
                       <button onClick={() => setActiveTab('calendar')} className={tabClass('calendar')}><CalendarIcon /> {t('admin.tabCalendar')}</button>
                       <button onClick={() => setActiveTab('members')} className={tabClass('members')}><UsersIcon /> {t('admin.tabMembers')}</button>
                       <button onClick={() => setActiveTab('updates')} className={tabClass('updates')}><MegaphoneIcon /> {t('admin.tabUpdates')}</button>
+                      <button onClick={() => setActiveTab('handovers')} className={tabClass('handovers')}><HandoversIcon /> {t('admin.tabHandovers', 'Handovers')}</button>
                     </nav>
                   </div>
 
@@ -1036,6 +1001,13 @@ export default function MasterAdminDashboard() {
                         
                         {activeTab === 'members' && ( <div className="p-4 sm:p-6 lg:p-8"><MembersSection membersDetails={membersDetails} teamData={teamData} canManageMembers={true} onChangeRole={changeRole} onInviteClick={() => setIsInviteModalOpen(true)} /></div> )}
                         {activeTab === 'updates' && ( <div className="p-4 sm:p-6 lg:p-8"><AnnouncementsSection teamId={selectedTeam.id} refreshTrigger={announcementRefreshKey} isAdmin={true} onEdit={openEditModal}/></div> )}
+
+                        {/* --- NEW: Handovers tab content (uses imported HandoversSection component) --- */}
+                        {activeTab === 'handovers' && (
+                          <div className="p-4 sm:p-6 lg:p-8">
+                            <HandoversSection teamId={selectedTeam.id} />
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
@@ -1046,7 +1018,7 @@ export default function MasterAdminDashboard() {
         </main>
       </div>
 
-      {/* --- Modals --- (Note: These modals will need 't' passed as a prop or use context themselves) */}
+      {/* --- Modals --- */}
       {selectedTeam && (
         <>
           <InviteMemberModal isOpen={isInviteModalOpen} onClose={() => setIsInviteModalOpen(false)} teamId={selectedTeam.id} onInvited={onInviteCompleteRefresh} />

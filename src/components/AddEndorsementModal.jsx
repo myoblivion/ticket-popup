@@ -1,165 +1,192 @@
-// src/components/AddEndorsementModal.js
-import React, { useState } from 'react';
+// src/components/AddEndorsementModal.jsx
+import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebaseConfig';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { useAuthState } from 'react-firebase-hooks/auth';
 
-const AddEndorsementModal = ({ isOpen, onClose, teamId, onEndorsementAdded }) => {
-  const [writerName, setWriterName] = useState('');
-  const [content, setContent] = useState('');
-  const [details, setDetails] = useState('');
-  const [status, setStatus] = useState('Pending'); // Default status
+// Note: The prop is still onEndorsementAdded, let's keep it for consistency
+const AddEndorsementModal = ({ isOpen, onClose, teamId, onEndorsementAdded, t }) => {
+  const [user] = useAuthState(auth);
+  
+  // --- NEW STATE for Handover fields ---
+  const [categories, setCategories] = useState('');
+  const [handoverContents, setHandoverContents] = useState('');
+  const [remarks, setRemarks] = useState('');
+  const [postedBy, setPostedBy] = useState('');
+  const [status, setStatus] = useState('Pending');
+
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Get current user's display name or email as default writer
-  useState(() => {
-      const currentUser = auth.currentUser;
-      if (currentUser) {
-          setWriterName(currentUser.displayName || currentUser.email || '');
+  // Status options (data, not translated)
+  const statusOptions = ['Pending', 'In Progress', 'Approved', 'Rejected'];
+
+  useEffect(() => {
+    if (isOpen) {
+      // Reset form on open
+      setCategories('');
+      setHandoverContents('');
+      setRemarks('');
+      setStatus('Pending');
+      setError('');
+      setIsSaving(false);
+      // Pre-fill "Posted by" name from logged-in user
+      if (user) {
+        setPostedBy(user.displayName || user.email || '');
       }
-  }, []);
+    }
+  }, [isOpen, user]);
 
-
-  const resetForm = () => {
-    // Keep writer name? Or reset? Let's keep it.
-    // setWriterName('');
-    setContent('');
-    setDetails('');
-    setStatus('Pending');
-    setIsSaving(false);
-    setError('');
-  };
-
-  const handleSave = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!writerName.trim() || !content.trim()) {
-      setError('Writer Name and Content are required.');
+    if (!handoverContents || !postedBy) {
+      setError(t('handovers.addErrorRequired', 'Posted by and Handover Contents are required.'));
       return;
     }
     setIsSaving(true);
     setError('');
-
     try {
-      const endorsementsRef = collection(db, `teams/${teamId}/endorsements`);
-      await addDoc(endorsementsRef, {
-        writerName: writerName.trim(),
-        content: content.trim(),
-        details: details.trim(),
+      // Still saving to 'endorsements' collection as per your original file structure
+      const handoversRef = collection(db, `teams/${teamId}/endorsements`); 
+      
+      await addDoc(handoversRef, {
+        // --- NEW DATA STRUCTURE ---
+        categories: categories,
+        content: handoverContents, // Matching 'content' key from your modal
+        remarks: remarks,         // Matching 'details' key from your modal
+        postedBy: postedBy,       // Matching 'writerName' key
         status: status,
         createdAt: serverTimestamp(),
-        // Approvals default to false
-        teamLeadApproved: false,
-        managerApproved: false,
-        qaManagerApproved: false,
-        devLeadApproved: false,
-        // Add creator info if needed
-        creatorUid: auth.currentUser?.uid || null,
+        
+        // Default all new checkers to false
+        checkerCS: false,
+        checkerPark: false,
+        checkerSeo: false,
+        checkerDev: false,
+        checkerYoo: false,
+        checkerKim: false,
       });
-
-      resetForm();
-      onEndorsementAdded(); // Notify parent to refresh
-      onClose(); // Close this modal
-
+      
+      onEndorsementAdded(); // Call parent to refresh
+      onClose(); // Close self
     } catch (err) {
-      console.error("Error adding endorsement:", err);
-      setError("Failed to save endorsement. Please try again.");
+      console.error("Error adding handover:", err);
+      setError(t('handovers.addErrorFailed', 'Failed to save handover.'));
+    } finally {
       setIsSaving(false);
     }
   };
 
-  const handleClose = () => {
-      if (isSaving) return; // Prevent closing while saving
-      resetForm();
-      onClose();
-  };
-
-
   if (!isOpen) return null;
 
-  // Status options for the dropdown
-  const statusOptions = ['Pending', 'Approved', 'Rejected', 'In Progress'];
-
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black bg-opacity-50"> {/* Higher z-index */}
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6 relative">
-        <button
-          onClick={handleClose}
-          className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 text-2xl focus:outline-none"
-          aria-label="Close modal"
-          disabled={isSaving}
-        >
-          &times;
-        </button>
-        <h2 className="text-xl font-semibold text-gray-800 mb-4">Add New Endorsement</h2>
-
-        {error && <p className="text-red-600 text-sm mb-3 p-2 bg-red-50 rounded border border-red-200">{error}</p>}
-
-        <form onSubmit={handleSave} className="space-y-4">
-          <div>
-            <label htmlFor="writerName" className="block text-sm font-medium text-gray-700 mb-1">Writer Name</label>
-            <input
-              type="text"
-              id="writerName"
-              value={writerName}
-              onChange={(e) => setWriterName(e.target.value)}
-              className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-              disabled={isSaving}
-              required
-            />
-          </div>
-          <div>
-            <label htmlFor="content" className="block text-sm font-medium text-gray-700 mb-1">Content</label>
-            <textarea
-              id="content"
-              rows="3"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-              disabled={isSaving}
-              required
-            ></textarea>
-          </div>
-           <div>
-            <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-             <select
-                id="status"
-                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                disabled={isSaving}
-             >
-                 {statusOptions.map(opt => (
-                    <option key={opt} value={opt}>{opt}</option>
-                 ))}
-             </select>
-          </div>
-          <div>
-            <label htmlFor="details" className="block text-sm font-medium text-gray-700 mb-1">Details (Optional)</label>
-            <textarea
-              id="details"
-              rows="2"
-              value={details}
-              onChange={(e) => setDetails(e.target.value)}
-              className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-              disabled={isSaving}
-            ></textarea>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-4 border-t">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black bg-opacity-50">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+        <form onSubmit={handleSubmit}>
+          {/* Header */}
+          <div className="flex justify-between items-center p-4 border-b">
+            <h3 className="text-lg font-semibold text-gray-800">
+              {t('handovers.addTitle', 'Add New Handover')}
+            </h3>
             <button
               type="button"
-              onClick={handleClose}
-              className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md text-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 text-2xl focus:outline-none"
+              aria-label={t('common.close', 'Close')}
               disabled={isSaving}
             >
-              Cancel
+              &times;
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="p-6 space-y-4">
+            <div>
+              <label htmlFor="categories" className="block text-sm font-medium text-gray-700 mb-1">
+                {t('handovers.categories', 'Categories')}
+              </label>
+              <input
+                id="categories"
+                type="text"
+                value={categories}
+                onChange={(e) => setCategories(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+             <div>
+              <label htmlFor="postedBy" className="block text-sm font-medium text-gray-700 mb-1">
+                {t('handovers.postedBy', 'Posted by')} <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="postedBy"
+                type="text"
+                value={postedBy}
+                onChange={(e) => setPostedBy(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="content" className="block text-sm font-medium text-gray-700 mb-1">
+                {t('handovers.content', 'Handover Contents')} <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                id="content"
+                rows="4"
+                value={handoverContents}
+                onChange={(e) => setHandoverContents(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-1">
+                {t('handovers.status', 'Status')}
+              </label>
+              <select
+                id="status"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white"
+              >
+                {statusOptions.map(opt => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="remarks" className="block text-sm font-medium text-gray-700 mb-1">
+                {t('handovers.remarks', 'Remarks (Optional)')}
+              </label>
+              <input
+                id="remarks"
+                type="text"
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            {error && (
+              <p className="text-red-600 text-sm">{error}</p>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex justify-end items-center gap-3 p-4 border-t bg-gray-50">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSaving}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+            >
+              {t('common.cancel', 'Cancel')}
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50"
               disabled={isSaving}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-wait"
             >
-              {isSaving ? 'Saving...' : 'Save Endorsement'}
+              {isSaving ? t('common.saving', 'Saving...') : t('handovers.saveButton', 'Save Handover')}
             </button>
           </div>
         </form>

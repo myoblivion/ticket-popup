@@ -45,7 +45,7 @@ export const translations = {
       addNew: 'Add new…',
       clearFilters: 'Clear Filters',
       add: 'Add',
-      editNote: 'Edit Note', // --- NEW ---
+      editNote: 'Edit Note',
     },
     header: {
       dashboard: 'Dashboard',
@@ -90,6 +90,7 @@ export const translations = {
       tabCalendar: 'Calendar',
       tabMembers: 'Members',
       tabUpdates: 'Updates',
+      tabHandovers: 'Handovers',
       meeting: 'Meeting:',
       announcement: 'Announcement:',
       by: 'By:',
@@ -136,9 +137,9 @@ export const translations = {
       emailPlaceholder: 'e.g., teammate@example.com',
       inviting: 'Sending...',
       sendInvite: 'Send Invite',
-      viewEndorsements: 'View Endorsements',
+      viewEndorsements: 'View Handovers', // --- RENAMED ---
       created: 'Created',
-      // --- NEWLY ADDED ---
+      // --- Dropdown Options ---
       editDropdownOptions: 'Edit Dropdown Options',
       categories: 'Categories',
       types: 'Types',
@@ -157,7 +158,38 @@ export const translations = {
       confirmDeleteFinalStatus: 'Are you sure you want to remove the final status? This is usually the "Complete" status.',
       uidLabel: 'UID',
       memberPlaceholder: 'uid|label (or uid)',
-      cannotChangeMasterAdmin: 'You cannot change the team role of a Master Admin.', // --- NEW ---
+      cannotChangeMasterAdmin: 'You cannot change the team role of a Master Admin.',
+      // --- Handovers Section (RENAMED) ---
+      viewHandovers: 'View Handovers',
+      addHandover: '+ Add Handover',
+      noHandovers: 'No handovers found for this team.',
+      addFirstHandover: 'Add First Handover',
+      loadEndorsementsError: 'Failed to load handover data. Please try again.', // Kept old key for compatibility
+      // --- Schedule Meeting Modal ---
+      scheduleMeetingTitle: "Schedule Meeting",
+      meetingTitleLabel: "Meeting Title",
+      meetingTitlePlaceholder: "e.g., Weekly Sync, Project Brainstorm",
+      meetingDescLabel: "Description",
+      meetingDescPlaceholder: "Brief agenda or purpose of the meeting...",
+      meetingStartLabel: "Start",
+      meetingEndLabel: "End (Optional)",
+      meetingLinkLabel: "Meeting Link (Optional)",
+      meetingLinkPlaceholder: "e.g., https://meet.google.com/abc-xyz",
+      scheduleButton: "Schedule Meeting",
+      schedulingButton: "Scheduling...",
+      scheduleErrorRequired: "Meeting title, start date, and start time are required.",
+      scheduleErrorAuth: "You must be logged in to schedule a meeting.",
+      scheduleErrorEndTime: "End time cannot be before or the same as start time.",
+      scheduleErrorTeamNotFound: "Team not found",
+      scheduleErrorGeneral: "Failed to schedule meeting. Please try again.",
+      // --- Announce Modal ---
+      announceTitle: "New Announcement",
+      announcePlaceholder: "Write your announcement...",
+      announceButton: "Post Announcement",
+      announcePosting: "Posting...",
+      announceErrorEmpty: "Announcement cannot be empty.",
+      announceErrorAuth: "You must be logged in to post an announcement.",
+      announceErrorGeneral: "Failed to post announcement. Please try again.",
     },
     tickets: {
       title: 'Ticket',
@@ -210,8 +242,34 @@ export const translations = {
       week: 'Week',
       day: 'Day',
       agenda: 'Agenda',
-      editNoteTitle: 'Edit Note', // --- NEW ---
-    }
+      editNoteTitle: 'Edit Note',
+    },
+    // --- REPLACED 'endorsements' with 'handovers' ---
+    handovers: {
+      id: '번호',
+      date: 'date',
+      categories: 'categories',
+      content: 'handover contents',
+      details: 'handover details',
+      postedBy: 'Posted by',
+      checker: 'Checker',
+      status: 'status',
+      remarks: 'Remarks',
+      checkerCS: 'CS팀장',
+      checkerPark: '박팀장',
+      checkerSeo: '서실장',
+      checkerDev: '개발실장',
+      checkerYoo: '유실장',
+      checkerKim: '김실장',
+      addTitle: 'Add New Handover',
+      saveButton: 'Save Handover',
+      addErrorRequired: 'Posted by and Handover Contents are required.',
+      addErrorFailed: 'Failed to save handover.',
+      // --- NEW for Delete ---
+      actions: 'Actions',
+      confirmDelete: 'Are you sure you want to delete this handover?',
+      deleteError: 'Failed to delete handover. Please try again.'
+    },
   },
   // ===================================================================
   // == KOREAN
@@ -257,7 +315,7 @@ export const translations = {
       addNew: '새로 추가…',
       clearFilters: '필터 지우기',
       add: '추가',
-      editNote: '메모 수정', // --- NEW ---
+      editNote: '메모 수정',
     },
     header: {
       dashboard: '대시보드',
@@ -302,6 +360,7 @@ export const translations = {
       tabCalendar: '캘린더',
       tabMembers: '맴버',
       tabUpdates: '공지사항',
+      tabHandovers: '인수인계',
       meeting: '회의:',
       announcement: '공지:',
       by: '작성자:',
@@ -348,9 +407,9 @@ export const translations = {
       emailPlaceholder: '예: teammate@example.com',
       inviting: '전송 중...',
       sendInvite: '초대 보내기',
-      viewEndorsements: '추천 보기',
+      viewEndorsements: '인수인계 보기', // --- RENAMED & TRANSLATED ---
       created: '생성일',
-      // --- NEWLY ADDED ---
+      // --- Dropdown Options ---
       editDropdownOptions: '드롭다운 옵션 편집',
       categories: '카테고리',
       types: '유형',
@@ -369,7 +428,38 @@ export const translations = {
       confirmDeleteFinalStatus: '마지막 상태를 삭제하시겠습니까? 이것은 보통 "완료" 상태입니다.',
       uidLabel: 'UID',
       memberPlaceholder: 'uid|라벨 (또는 uid)',
-      cannotChangeMasterAdmin: '마스터 관리자의 팀 역할을 변경할 수 없습니다.', // --- NEW ---
+      cannotChangeMasterAdmin: '마스터 관리자의 팀 역할을 변경할 수 없습니다.',
+      // --- Handovers Section (RENAMED) ---
+      viewHandovers: '인수인계 보기',
+      addHandover: '+ 인수인계 추가',
+      noHandovers: '이 팀에 대한 인수인계가 없습니다.',
+      addFirstHandover: '첫 인수인계 추가',
+      loadEndorsementsError: '인수인계 데이터를 불러오지 못했습니다. 다시 시도하세요.', // Kept old key
+      // --- Schedule Meeting Modal ---
+      scheduleMeetingTitle: "회의 일정 잡기",
+      meetingTitleLabel: "회의 제목",
+      meetingTitlePlaceholder: "예: 주간 동기화, 프로젝트 브레인스토밍",
+      meetingDescLabel: "설명",
+      meetingDescPlaceholder: "간단한 안건 또는 회의 목적...",
+      meetingStartLabel: "시작",
+      meetingEndLabel: "종료 (선택)",
+      meetingLinkLabel: "회의 링크 (선택)",
+      meetingLinkPlaceholder: "예: https://meet.google.com/abc-xyz",
+      scheduleButton: "일정 잡기",
+      schedulingButton: "예약 중...",
+      scheduleErrorRequired: "회의 제목, 시작 날짜, 시작 시간은 필수입니다.",
+      scheduleErrorAuth: "회의 일정을 잡으려면 로그인해야 합니다.",
+      scheduleErrorEndTime: "종료 시간은 시작 시간보다 빠르거나 같을 수 없습니다.",
+      scheduleErrorTeamNotFound: "팀을 찾을 수 없습니다",
+      scheduleErrorGeneral: "회의 일정을 잡지 못했습니다. 다시 시도하세요.",
+      // --- Announce Modal ---
+      announceTitle: "새 공지",
+      announcePlaceholder: "공지 내용 입력...",
+      announceButton: "공지 게시",
+      announcePosting: "게시 중...",
+      announceErrorEmpty: "공지 내용을 입력하세요.",
+      announceErrorAuth: "공지를 게시하려면 로그인해야 합니다.",
+      announceErrorGeneral: "공지를 게시하지 못했습니다. 다시 시도하세요.",
     },
     tickets: {
       title: '티켓',
@@ -422,7 +512,33 @@ export const translations = {
       week: '주',
       day: '일',
       agenda: '일정',
-      editNoteTitle: '메모 수정', // --- NEW ---
-    }
+      editNoteTitle: '메모 수정',
+    },
+    // --- REPLACED 'endorsements' with 'handovers' ---
+    handovers: {
+      id: '번호',
+      date: '날짜',
+      categories: '카테고리',
+      content: '인수인계 내용',
+      details: '세부사항',
+      postedBy: '게시자',
+      checker: '확인자',
+      status: '상태',
+      remarks: '비고',
+      checkerCS: 'CS팀장',
+      checkerPark: '박팀장',
+      checkerSeo: '서실장',
+      checkerDev: '개발실장',
+      checkerYoo: '유실장',
+      checkerKim: '김실장',
+      addTitle: '새 인수인계 추가',
+      saveButton: '인수인계 저장',
+      addErrorRequired: '게시자 및 인수인계 내용은 필수입니다.',
+      addErrorFailed: '인수인계를 저장하지 못했습니다.',
+      // --- NEW for Delete ---
+      actions: '작업',
+      confirmDelete: '이 인수인계 항목을 삭제하시겠습니까?',
+      deleteError: '인수인계를 삭제하지 못했습니다. 다시 시도하세요.'
+    },
   }
 };

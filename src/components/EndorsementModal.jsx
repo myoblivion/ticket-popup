@@ -1,8 +1,10 @@
-// src/components/EndorsementModal.js
-import React, { useState, useEffect, useCallback } from 'react';
+// src/components/EndorsementModal.jsx
+import React, { useState, useEffect, useCallback, useContext, useMemo } from 'react';
 import { db } from '../firebaseConfig';
-import { collection, query, orderBy, getDocs, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore'; // Import addDoc, serverTimestamp
-import AddEndorsementModal from './AddEndorsementModal'; // *** IMPORT THE NEW MODAL ***
+import { collection, query, orderBy, getDocs, doc, updateDoc, addDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
+import AddEndorsementModal from './AddEndorsementModal';
+import HandoverPopup from './HandoverPopup'; // <-- 1. IMPORT THE NEW POPUP
+import { LanguageContext } from '../contexts/LanguageContext';
 
 // --- Spinner component ---
 const Spinner = () => (
@@ -13,7 +15,6 @@ const Spinner = () => (
 
 // --- formatDate utility ---
 const formatDate = (value, { fallback = '' } = {}) => {
-    // ... (keep formatDate function as before)
     if (!value) return fallback;
     try {
         let d;
@@ -24,93 +25,150 @@ const formatDate = (value, { fallback = '' } = {}) => {
         } else if (typeof value === 'string') {
         const parsed = new Date(value);
         if (!isNaN(parsed)) d = parsed;
-        else return value; // Return original string if parsing fails
+        else return value;
         } else {
-        return String(value); // Fallback for other types
+        return String(value);
         }
-        // Simple YYYY-MM-DD format
-        return d.toISOString().split('T')[0];
+        return d.toISOString().split('T')[0]; // YYYY-MM-DD format
     } catch (err) {
         console.error('formatDate error', err, value);
         return String(value);
     }
 };
 
-const EndorsementModal = ({ isOpen, onClose, teamId }) => {
-    const [endorsements, setEndorsements] = useState([]);
+// --- THIS IS THE HANDOVER SECTION COMPONENT ---
+// (It is not a modal itself)
+const HandoversSection = ({ teamId }) => {
+    const { t } = useContext(LanguageContext);
+    const [handovers, setHandovers] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
-    // *** NEW STATE for Add Modal ***
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
-    // --- Column Headers ---
-    const headers = [
-        { key: 'id', label: 'ID' },
-        { key: 'writerName', label: 'Writer' },
-        { key: 'createdAt', label: 'Date' },
-        { key: 'content', label: 'Content' },
-        { key: 'teamLeadApproved', label: 'Team Lead' },
-        { key: 'managerApproved', label: 'Manager' },
-        { key: 'qaManagerApproved', label: 'QA Manager' },
-        { key: 'devLeadApproved', label: 'Dev Lead' },
-        { key: 'status', label: 'Status' },
-        { key: 'details', label: 'Details' },
-    ];
+    // --- 2. ADD STATE FOR THE DETAILS POPUP ---
+    const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+    const [selectedHandover, setSelectedHandover] = useState(null);
 
-    // --- Fetch Endorsements ---
-    const fetchEndorsements = useCallback(async () => {
+    // --- NEW HANDLER: Update checkbox field in Firestore ---
+    const handleCheckboxChange = async (docId, field, currentValue) => {
+        const docRef = doc(db, `teams/${teamId}/endorsements`, docId);
+        try {
+            setHandovers(prev => 
+                prev.map(item => 
+                    item.id === docId ? { ...item, [field]: !currentValue } : item
+                )
+            );
+            await updateDoc(docRef, { [field]: !currentValue });
+        } catch (err) {
+            console.error("Error updating checkbox:", err);
+            setHandovers(prev => 
+                prev.map(item => 
+                    item.id === docId ? { ...item, [field]: currentValue } : item
+                )
+            );
+        }
+    };
+
+    // --- NEW HANDLER: Update status field in Firestore ---
+    const handleStatusChange = async (docId, newStatus) => {
+        const docRef = doc(db, `teams/${teamId}/endorsements`, docId);
+        const oldStatus = handovers.find(h => h.id === docId)?.status;
+        try {
+            setHandovers(prev =>
+                prev.map(item =>
+                    item.id === docId ? { ...item, status: newStatus } : item
+                )
+            );
+            await updateDoc(docRef, { status: newStatus });
+        } catch (err) {
+            console.error("Error updating status:", err);
+            setHandovers(prev =>
+                prev.map(item =>
+                    item.id === docId ? { ...item, status: oldStatus } : item
+                )
+            );
+        }
+    };
+
+    // --- NEW: Delete Handover Function ---
+    const handleDelete = async (docId) => {
+        if (!window.confirm(t('handovers.confirmDelete', 'Are you sure you want to delete this item?'))) {
+            return;
+        }
+        
+        const docRef = doc(db, `teams/${teamId}/endorsements`, docId);
+        try {
+            await deleteDoc(docRef);
+            setHandovers(prev => prev.filter(item => item.id !== docId));
+        } catch (err) {
+            console.error("Error deleting handover:", err);
+            setError(t('handovers.deleteError', 'Failed to delete handover. Please try again.'));
+        }
+    };
+
+    // --- NEW Column Headers (from screenshot) ---
+    const mainHeaders = useMemo(() => [
+        { key: 'id', label: t('handovers.id', '번호') },
+        { key: 'date', label: t('handovers.date', 'date') },
+        { key: 'categories', label: t('handovers.categories', 'categories') },
+        { key: 'content', label: t('handovers.content', 'handover contents') },
+        { key: 'details', label: t('handovers.details', 'handover details') },
+        { key: 'postedBy', label: t('handovers.postedBy', 'Posted by') },
+    ], [t]);
+
+    const checkerHeaders = useMemo(() => [
+        { key: 'checkerCS', label: t('handovers.checkerCS', 'CS팀장') },
+        { key: 'checkerPark', label: t('handovers.checkerPark', '박팀장') },
+        { key: 'checkerSeo', label: t('handovers.checkerSeo', '서실장') },
+        { key: 'checkerDev', label: t('handovers.checkerDev', '개발실장') },
+        { key: 'checkerYoo', label: t('handovers.checkerYoo', '유실장') },
+        { key: 'checkerKim', label: t('handovers.checkerKim', '김실장') },
+    ], [t]);
+
+    // --- Fetch Handovers ---
+    const fetchHandovers = useCallback(async () => {
         if (!teamId) return;
         setIsLoading(true);
         setError(null);
         try {
-            const endorsementsRef = collection(db, `teams/${teamId}/endorsements`);
-            const q = query(endorsementsRef, orderBy('createdAt', 'desc'));
+            const handoversRef = collection(db, `teams/${teamId}/endorsements`);
+            const q = query(handoversRef, orderBy('createdAt', 'desc'));
             const querySnapshot = await getDocs(q);
             const fetchedData = querySnapshot.docs.map(docSnap => ({
                 id: docSnap.id,
                 ...docSnap.data()
             }));
-            setEndorsements(fetchedData);
+            setHandovers(fetchedData);
         } catch (err) {
-            console.error("Error fetching endorsements:", err);
-            setError("Failed to load endorsement data. Please try again.");
+            console.error("Error fetching handovers:", err);
+            setError(t('admin.loadEndorsementsError', "Failed to load handover data. Please try again."));
         } finally {
             setIsLoading(false);
         }
-    }, [teamId]);
+    }, [teamId, t]);
 
-    // Fetch data when modal opens or teamId changes
     useEffect(() => {
-        if (isOpen && teamId) {
-            fetchEndorsements();
-        } else {
-            setEndorsements([]);
-            setError(null);
-        }
-    }, [isOpen, teamId, fetchEndorsements]);
+        fetchHandovers();
+    }, [fetchHandovers]);
 
+    // --- UPDATED: Render EDITABLE Checkbox Cell ---
+    const renderCheckbox = (item, fieldKey) => (
+        <input
+            type="checkbox"
+            checked={item[fieldKey] === true}
+            onChange={() => handleCheckboxChange(item.id, fieldKey, item[fieldKey])}
+            className="form-checkbox h-4 w-4 text-blue-600 transition duration-150 ease-in-out cursor-pointer"
+        />
+    );
 
-    // --- Render Checkbox Cell ---
-    const renderCheckbox = (item, fieldKey) => {
-        const isChecked = item[fieldKey] === true;
-        return (
-            <input
-                type="checkbox"
-                checked={isChecked}
-                readOnly
-                className="form-checkbox h-4 w-4 text-blue-600 transition duration-150 ease-in-out cursor-not-allowed"
-            />
-        );
-    };
-
-    // --- Render Status Cell ---
+    // --- UPDATED: Render EDITABLE Status Cell ---
     const renderStatus = (item) => {
-        const statusOptions = ['Pending', 'Approved', 'Rejected', 'In Progress'];
+        const statusOptions = ['Pending', 'In Progress', 'Approved', 'Rejected'];
         return (
             <select
                 value={item.status || 'Pending'}
-                readOnly
-                className="text-xs border rounded px-2 py-1 w-full bg-gray-100 cursor-not-allowed appearance-none"
+                onChange={(e) => handleStatusChange(item.id, e.target.value)}
+                className="text-xs border rounded px-2 py-1 w-full bg-white cursor-pointer"
             >
                 {statusOptions.map(opt => (
                     <option key={opt} value={opt}>{opt}</option>
@@ -122,117 +180,161 @@ const EndorsementModal = ({ isOpen, onClose, teamId }) => {
         );
     };
 
-    // *** Function to open the Add modal ***
     const openAddModal = () => {
         setIsAddModalOpen(true);
     };
 
-     // *** Function to handle refresh after adding ***
-     const handleEndorsementAdded = () => {
-        fetchEndorsements(); // Refetch the list
-     };
+    const handleHandoverAdded = () => {
+        fetchHandovers(); // Refetch the list
+    };
 
-    if (!isOpen) return null;
+    // --- 3. *** THIS IS THE FIX *** ---
+    // This function now correctly sets the state to open the popup
+    const openDetailsModal = (item) => {
+        setSelectedHandover(item);
+        setIsDetailsModalOpen(true);
+    };
+
+    const closeDetailsModal = () => {
+        setIsDetailsModalOpen(false);
+        setSelectedHandover(null);
+    };
 
     return (
-        <> {/* Use Fragment to wrap multiple root elements */}
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-70">
-                <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden">
-                    {/* Header */}
-                    <div className="flex justify-between items-center p-4 border-b">
-                        <h2 className="text-xl font-semibold text-gray-800">Endorsements</h2>
-                        {/* *** ADD ENDORSEMENT BUTTON IN HEADER *** */}
-                        <div className="flex items-center gap-4">
+        <>
+            <div>
+                {/* --- Section Header --- */}
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-2xl font-semibold text-gray-800">{t('admin.viewHandovers', 'View Handovers')}</h2>
+                    <button
+                        onClick={openAddModal}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm shadow-sm"
+                    >
+                        {t('admin.addHandover', '+ Add Handover')}
+                    </button>
+                </div>
+
+                {/* --- Content Box --- */}
+                <div className="bg-white rounded-lg shadow border overflow-hidden">
+                    {isLoading && <Spinner />}
+                    {error && <p className="text-red-600 text-center p-4">{error}</p>}
+                    
+                    {!isLoading && !error && handovers.length === 0 && (
+                        <div className="text-center p-6">
+                            <p className="text-gray-500 italic mb-4">{t('admin.noHandovers', 'No handovers found for this team.')}</p>
                             <button
                                 onClick={openAddModal}
-                                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded text-sm shadow-sm"
+                                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm shadow-sm"
                             >
-                                + Add Endorsement
-                            </button>
-                            <button
-                                onClick={onClose}
-                                className="text-gray-400 hover:text-gray-600 text-2xl focus:outline-none"
-                                aria-label="Close modal"
-                            >
-                                &times;
+                                {t('admin.addFirstHandover', 'Add First Handover')}
                             </button>
                         </div>
-                    </div>
+                    )}
 
-                    {/* Content & Table */}
-                    <div className="flex-1 overflow-auto p-4">
-                        {isLoading && <Spinner />}
-                        {error && <p className="text-red-600 text-center p-4">{error}</p>}
-                        {!isLoading && !error && endorsements.length === 0 && (
-                            // *** UPDATED EMPTY STATE WITH BUTTON ***
-                            <div className="text-center p-6">
-                                <p className="text-gray-500 italic mb-4">No endorsements found for this team.</p>
-                                <button
-                                    onClick={openAddModal}
-                                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm shadow-sm"
-                                >
-                                    Add First Endorsement
-                                </button>
-                            </div>
-                        )}
-                        {!isLoading && !error && endorsements.length > 0 && (
-                            <div className="overflow-x-auto">
-                                <table className="min-w-full divide-y divide-gray-200 border border-gray-200">
-                                    <thead className="bg-gray-50 sticky top-0 z-10">
-                                        <tr>
-                                            {headers.map((header) => (
-                                                <th
-                                                    key={header.key}
-                                                    scope="col"
-                                                    className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap border-r last:border-r-0"
-                                                >
-                                                    {header.label}
-                                                </th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody className="bg-white divide-y divide-gray-200">
-                                        {endorsements.map((item) => (
-                                            <tr key={item.id} className="hover:bg-gray-50 text-sm">
-                                                <td className="px-3 py-2 whitespace-nowrap border-r">{item.id.substring(0, 6)}...</td>
-                                                <td className="px-3 py-2 whitespace-nowrap border-r">{item.writerName || 'N/A'}</td>
-                                                <td className="px-3 py-2 whitespace-nowrap border-r">{formatDate(item.createdAt)}</td>
-                                                <td className="px-3 py-2 whitespace-normal break-words max-w-xs border-r">{item.content || '-'}</td>
-                                                <td className="px-3 py-2 text-center border-r">{renderCheckbox(item, 'teamLeadApproved')}</td>
-                                                <td className="px-3 py-2 text-center border-r">{renderCheckbox(item, 'managerApproved')}</td>
-                                                <td className="px-3 py-2 text-center border-r">{renderCheckbox(item, 'qaManagerApproved')}</td>
-                                                <td className="px-3 py-2 text-center border-r">{renderCheckbox(item, 'devLeadApproved')}</td>
-                                                <td className="px-3 py-2 border-r min-w-[120px]">{renderStatus(item)}</td>
-                                                <td className="px-3 py-2 whitespace-normal break-words max-w-xs">{item.details || '-'}</td>
-                                            </tr>
+                    {!isLoading && !error && handovers.length > 0 && (
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full divide-y divide-gray-200 border border-gray-200">
+                                <thead className="bg-gray-50 sticky top-0 z-10 text-xs text-gray-500 uppercase tracking-wider">
+                                    <tr>
+                                        {mainHeaders.map((header) => (
+                                            <th
+                                                key={header.key}
+                                                scope="col"
+                                                rowSpan={2}
+                                                className="p-3 text-left font-medium border-b border-r"
+                                            >
+                                                {header.label}
+                                            </th>
                                         ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
-                    </div>
+                                        <th
+                                            scope="col"
+                                            colSpan={checkerHeaders.length}
+                                            className="p-3 text-center font-medium border-b border-r"
+                                        >
+                                            {t('handovers.checker', 'Checker')}
+                                        </th>
+                                        <th scope="col" rowSpan={2} className="p-3 text-left font-medium border-b border-r">
+                                            {t('handovers.status', 'Status')}
+                                        </th>
+                                        <th scope="col" rowSpan={2} className="p-3 text-left font-medium border-b border-r">
+                                            {t('handovers.remarks', 'Remarks')}
+                                        </th>
+                                        <th scope="col" rowSpan={2} className="p-3 text-left font-medium border-b">
+                                            {t('handovers.actions', 'Actions')}
+                                        </th>
+                                    </tr>
+                                    <tr>
+                                        {checkerHeaders.map((header) => (
+                                            <th
+                                                key={header.key}
+                                                scope="col"
+                                                className="p-3 text-center font-medium border-r"
+                                            >
+                                                {header.label}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200 text-sm">
+                                    {handovers.map((item, index) => (
+                                        <tr key={item.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                            <td className="p-2 whitespace-nowrap border-r">{item.id.substring(0, 6)}...</td>
+                                            <td className="p-2 whitespace-nowrap border-r">{formatDate(item.createdAt)}</td>
+                                            <td className="p-2 break-words max-w-xs border-r">{item.categories || '-'}</td>
+                                            <td className="p-2 break-words max-w-md border-r">{item.content || '-'}</td>
+                                            <td className="p-2 text-center border-r">
+                                                <button onClick={() => openDetailsModal(item)} className="text-blue-600 hover:underline text-xs font-medium">
+                                                    {t('common.view', 'View')}
+                                                </button>
+                                            </td>
+                                            <td className="p-2 whitespace-nowrap border-r">{item.postedBy || item.writerName || 'N/A'}</td>
+                                            
+                                            {checkerHeaders.map((h) => (
+                                                <td key={h.key} className="p-2 text-center border-r">
+                                                    {renderCheckbox(item, h.key)}
+                                                </td>
+                                            ))}
 
-                    {/* Footer */}
-                    <div className="flex justify-end p-4 border-t bg-gray-50">
-                        <button
-                            onClick={onClose}
-                            className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md text-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
-                        >
-                            Close
-                        </button>
-                    </div>
+                                            <td className="p-2 border-r min-w-[120px]">{renderStatus(item)}</td>
+                                            <td className="p-2 break-words max-w-xs border-r">{item.remarks || item.details || '-'}</td>
+                                            
+                                            <td className="p-2 text-center">
+                                                <button 
+                                                    onClick={() => handleDelete(item.id)}
+                                                    className="text-red-600 hover:text-red-800 hover:underline text-xs font-medium"
+                                                >
+                                                    {t('common.delete', 'Delete')}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {/* *** RENDER THE ADD MODAL *** */}
+            {/* --- RENDER THE POPUPS --- */}
+
             <AddEndorsementModal
                 isOpen={isAddModalOpen}
                 onClose={() => setIsAddModalOpen(false)}
                 teamId={teamId}
-                onEndorsementAdded={handleEndorsementAdded}
+                onEndorsementAdded={handleHandoverAdded}
+                t={t}
             />
+
+            {isDetailsModalOpen && selectedHandover && (
+                <HandoverPopup
+                    teamId={teamId}
+                    handoverId={selectedHandover.id}
+                    columnKey="details" // This is the field to edit
+                    onClose={closeDetailsModal}
+                />
+            )}
         </>
     );
 };
 
-export default EndorsementModal;
+export default HandoversSection;
