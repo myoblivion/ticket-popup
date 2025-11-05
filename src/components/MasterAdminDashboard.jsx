@@ -40,7 +40,7 @@ import { LanguageContext } from '../contexts/LanguageContext.jsx';
 // --- Setup Calendar Localizer ---
 const localizer = momentLocalizer(moment);
 
-// --- Icons --- (No changes)
+// --- Icons ---
 const UsersIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -66,14 +66,13 @@ const CalendarIcon = () => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
   </svg>
 );
-// --- New Handovers icon ---
 const HandoversIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6M9 16h6M12 4v4m-7 8a2 2 0 012-2h10a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2z" />
   </svg>
 );
 
-// --- Utility: formatDate --- (No changes)
+// --- Utility: formatDate ---
 const formatDate = (value, { dateOnly = false, fallback = '' } = {}) => {
   if (!value) return fallback;
   try {
@@ -86,7 +85,7 @@ const formatDate = (value, { dateOnly = false, fallback = '' } = {}) => {
   } catch (err) { console.error('formatDate error', err, value); return String(value); }
 };
 
-// --- NEW CALENDAR HELPER FUNCTIONS --- (No changes)
+// --- NEW CALENDAR HELPER FUNCTIONS ---
 const normalizeValueToDate = (val) => {
   if (!val) return null;
   if (typeof val === 'object' && typeof val.toDate === 'function') return val.toDate();
@@ -435,10 +434,11 @@ const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin
   );
 };
 
-// ---------- NEW: TeamCalendar (ADDED LANGUAGE HOOK) ----------
+// ---------- NEW: TeamCalendar (ADDED LANGUAGE HOOK & Completed tab) ----------
 const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
   const { t } = useContext(LanguageContext); // --- ADDED ---
-  const [events, setEvents] = useState([]);
+  const [events, setEvents] = useState([]); // active events: meetings + notes + non-completed tasks
+  const [completedEvents, setCompletedEvents] = useState([]); // completed tickets shown separately
   const [loading, setLoading] = useState(true);
 
   // Modal state
@@ -449,6 +449,9 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentView, setCurrentView] = useState('month');
 
+  // mode toggle
+  const [calendarMode, setCalendarMode] = useState('calendar'); // 'calendar' | 'completed'
+
   // --- NEW: Create memoized messages object for calendar toolbar ---
   const messages = useMemo(() => ({
     today: t('calendar.today'),
@@ -458,6 +461,12 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
     week: t('calendar.week'),
     day: t('calendar.day'),
     agenda: t('calendar.agenda'),
+    allDay: t('calendar.allDay', 'All Day'),
+    date: t('calendar.date', 'Date'),
+    time: t('calendar.time', 'Time'),
+    event: t('calendar.event', 'Event'),
+    showMore: total => t('calendar.showMore', `+ ${total} more`),
+    noEventsInRange: t('calendar.noEventsInRange', 'There are no events in this range.'),
   }), [t]);
 
   const fetchCalendarData = useCallback(async () => {
@@ -474,36 +483,62 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
         getDocs(notesQuery),
       ]);
 
-      // --- Task events ---
-      const taskEvents = taskDocs.docs
-        .filter(d => d.data().startDate && d.data().endDate) // Ensure both dates exist
-        .map(d => {
-          const data = d.data();
-          const startDate = normalizeValueToDate(data.startDate);
-          const endDate = normalizeValueToDate(data.endDate);
+      const activeTaskEvents = [];
+      const completedTaskEvents = [];
 
-          if (!startDate || !endDate) return null;
+      taskDocs.docs.forEach(d => {
+        const data = d.data();
+        const startDate = normalizeValueToDate(data.startDate);
+        const endDate = normalizeValueToDate(data.endDate);
+        const status = (data.status || '').toString().toLowerCase();
+        const title = `${t('calendar.ticket')} ${data.ticketNo || data.title || d.id}`;
 
-          const title = `${t('calendar.ticket')} ${data.ticketNo || data.title || d.id}`;
-          const safeEndDate = (endDate < startDate) ? startDate : endDate;
+        const isCompleted = status === 'completed' || !!endDate;
 
-          return {
-            id: d.id,
-            title: title,
-            start: startDate,
-            end: safeEndDate,
-            allDay: true,
-            type: 'ticket',
-          };
-        })
-        .filter(Boolean);
+        // Completed timestamp fallback: prefer endDate, then completedAt, updatedAt, createdAt
+        const completedAt =
+          endDate ||
+          normalizeValueToDate(data.completedAt) ||
+          normalizeValueToDate(data.updatedAt) ||
+          normalizeValueToDate(data.createdAt) ||
+          null;
 
-      // --- Meeting events ---
+        if (isCompleted) {
+          if (completedAt) {
+            completedTaskEvents.push({
+              id: d.id,
+              title,
+              start: completedAt,
+              end: completedAt,
+              allDay: true,
+              type: 'completed-ticket',
+              raw: data,
+              status,
+            });
+          }
+        } else {
+          // For active tasks, prefer endDate (due) or startDate to display on calendar
+          const eventDate = endDate || startDate || normalizeValueToDate(data.dueDate) || null;
+          if (eventDate) {
+            activeTaskEvents.push({
+              id: d.id,
+              title,
+              start: eventDate,
+              end: eventDate,
+              allDay: true,
+              type: 'ticket',
+              raw: data,
+              status,
+            });
+          }
+        }
+      });
+
+      // Meeting events
       const meetingEvents = meetingDocs.docs.map(d => {
         const data = d.data();
         const start = normalizeValueToDate(data.startDateTime) || new Date();
         const end = normalizeValueToDate(data.endDateTime) || start;
-        
         return {
           id: d.id,
           title: `${t('calendar.meeting')} ${data.title || t('calendar.untitled')}`,
@@ -511,26 +546,30 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
           end: (end > start) ? end : new Date(start.getTime() + 30 * 60 * 1000),
           allDay: false,
           type: 'meeting',
+          raw: data,
         };
       });
 
-      // --- Note events ---
+      // Note events
       const noteEvents = noteDocs.docs.map(d => {
         const data = d.data();
         const start = normalizeValueToDate(data.start) || new Date();
-        
         return {
           id: d.id,
           title: `${t('calendar.note')} ${data.title || 'Note'}`,
           description: data.description || '',
-          start: start,
+          start,
           end: start,
           allDay: true,
           type: 'manual',
+          raw: data,
         };
       });
 
-      setEvents([...taskEvents, ...meetingEvents, ...noteEvents]);
+      const calendarEvents = [...activeTaskEvents, ...meetingEvents, ...noteEvents];
+
+      setEvents(calendarEvents);
+      setCompletedEvents(completedTaskEvents);
     } catch (err) {
       console.error("Error fetching calendar data:", err);
     } finally {
@@ -540,6 +579,7 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
 
   useEffect(() => { fetchCalendarData(); }, [fetchCalendarData, refreshTrigger]);
 
+  // handlers:
   const handleSelectSlot = useCallback(({ start, end }) => {
     setModalData({ type: 'new', start, end });
     if (isAdmin) setIsNoteModalOpen(true);
@@ -583,34 +623,90 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
     }
   }, [teamId, fetchCalendarData]);
 
-  const eventPropGetter = useCallback((event) => ({
-    style: { cursor: 'pointer' },
-    'data-type': event.type,
-  }), []);
+  const eventPropGetter = useCallback((event) => {
+    if (event.type === 'meeting') {
+      return { style: { cursor: 'pointer', backgroundColor: '#dbebff', borderLeft: '4px solid #3b82f6', color: '#0f172a' } };
+    }
+    if (event.type === 'completed-ticket') {
+      return { style: { cursor: 'pointer', backgroundColor: '#f3f4f6', borderLeft: '4px solid #9ca3af', color: '#374151', textDecoration: 'line-through' } };
+    }
+    if (event.type === 'ticket') {
+      return { style: { cursor: 'pointer', backgroundColor: '#ecfdf5', borderLeft: '4px solid #10b981', color: '#064e3b' } };
+    }
+    if (event.type === 'manual') {
+      return { style: { cursor: 'pointer', backgroundColor: '#fff7ed', borderLeft: '4px solid #f59e0b', color: '#7c2d12' } };
+    }
+    return { style: { cursor: 'pointer' } };
+  }, []);
 
   if (loading) return <Spinner />;
 
   return (
-    <div style={{ height: 600, padding: '1rem' }}>
-      <Calendar
-        localizer={localizer}
-        events={events}
-        startAccessor="start"
-        endAccessor="end"
-        date={currentDate}
-        view={currentView}
-        onNavigate={(date) => setCurrentDate(date)}
-        onView={(view) => setCurrentView(view)}
-        style={{ height: '100%' }}
-        selectable={true}
-        onSelectSlot={handleSelectSlot}
-        onSelectEvent={handleSelectEvent}
-        onDoubleClickEvent={handleDoubleClickEvent}
-        eventPropGetter={eventPropGetter}
-        popup={true}
-        showMultiDayTimes={true}
-        messages={messages} // --- THIS IS THE FIX for the toolbar ---
-      />
+    <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
+      <div className="flex items-center justify-between p-4 border-b">
+        <h3 className="text-lg font-semibold">{t('admin.tabCalendar')}</h3>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCalendarMode('calendar')}
+            className={`text-sm px-3 py-1 rounded ${calendarMode === 'calendar' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'}`}
+          >
+            {t('admin.tabCalendar')}
+          </button>
+          <button
+            onClick={() => setCalendarMode('completed')}
+            className={`text-sm px-3 py-1 rounded ${calendarMode === 'completed' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'}`}
+          >
+            {t('common.completed')}
+          </button>
+        </div>
+      </div>
+
+      {calendarMode === 'calendar' && (
+        <div style={{ height: 520, padding: '1rem' }}>
+          <Calendar
+            localizer={localizer}
+            events={events}
+            startAccessor="start"
+            endAccessor="end"
+            date={currentDate}
+            view={currentView}
+            onNavigate={(date) => setCurrentDate(date)}
+            onView={(view) => setCurrentView(view)}
+            style={{ height: '100%' }}
+            selectable={true}
+            onSelectSlot={handleSelectSlot}
+            onSelectEvent={handleSelectEvent}
+            onDoubleClickEvent={handleDoubleClickEvent}
+            eventPropGetter={eventPropGetter}
+            popup={true}
+            showMultiDayTimes={true}
+            messages={messages}
+          />
+        </div>
+      )}
+
+      {calendarMode === 'completed' && (
+        <div style={{ height: 520, padding: '1rem' }}>
+          <Calendar
+            localizer={localizer}
+            events={completedEvents}
+            startAccessor="start"
+            endAccessor="end"
+            date={currentDate}
+            view={currentView}
+            onNavigate={(date) => setCurrentDate(date)}
+            onView={(view) => setCurrentView(view)}
+            style={{ height: '100%' }}
+            selectable={false}
+            onSelectEvent={handleSelectEvent}
+            onDoubleClickEvent={handleDoubleClickEvent}
+            eventPropGetter={eventPropGetter}
+            popup={true}
+            showMultiDayTimes={true}
+            messages={messages}
+          />
+        </div>
+      )}
 
       <ManualNoteModal
         isOpen={isNoteModalOpen}
@@ -990,7 +1086,7 @@ export default function MasterAdminDashboard() {
                         {activeTab === 'projects' && ( <TeamProjectTable teamId={selectedTeam.id} onTaskChange={refreshAnnouncements} /> )}
                         
                         {activeTab === 'calendar' && (
-                          <div className="bg-white rounded-lg shadow-sm border-t-0 overflow-hidden">
+                          <div className="bg-white rounded-lg shadow-sm border-t-0 overflow-hidden p-4">
                             <TeamCalendar 
                               teamId={selectedTeam.id} 
                               isAdmin={true} // Master Admin is always admin

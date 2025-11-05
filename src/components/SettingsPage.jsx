@@ -170,8 +170,11 @@ const SettingsPage = () => {
   return (
     <>
       <div className="px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-2xl font-semibold text-gray-800 mb-6">{t('settings.title')}</h1>
+          <div className="max-w-xl mx-auto">
 
+          <h1 className="text-2xl font-semibold text-gray-800 mb-6 text-center sm:text-left">
+      {t('settings.title')}
+    </h1>
         <div className="max-w-xl mx-auto bg-white p-6 rounded-lg shadow-md border border-gray-200">
             {isLoading ? (
                 <div className="text-center text-gray-500">{t('settings.loading')}</div>
@@ -269,6 +272,7 @@ const SettingsPage = () => {
                 {t('common.backToDashboard')}
             </Link>
         </div>
+      </div>
       </div>
     </>
   );

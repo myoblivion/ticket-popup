@@ -13,7 +13,7 @@ import {
   serverTimestamp,
   where,
   addDoc
-} from "firebase/firestore"; // <-- Firestore functions are all here
+} from "firebase/firestore";
 import { db, auth } from '../firebaseConfig';
 import { onAuthStateChanged } from "firebase/auth";
 import InviteMemberModal from './InviteMemberModal';
@@ -21,7 +21,6 @@ import AnnounceModal from './AnnounceModal';
 import ScheduleMeetingModal from './ScheduleMeetingModal';
 import TeamProjectTable from './TeamProjectTable';
 import EditUpdateModal from './EditUpdateModal';
-// Import the HandoversSection implemented in EndorsementModal.jsx (do not hardcode it here)
 import HandoversSection from './EndorsementModal';
 
 // --- Context Import ---
@@ -30,14 +29,14 @@ import { LanguageContext } from '../contexts/LanguageContext.jsx';
 // --- Calendar Imports ---
 import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
-import 'moment/locale/ko'; // Korean locale
+import 'moment/locale/ko';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
 // --- Setup Localizer ---
 const localizer = momentLocalizer(moment);
 
 // --- Spinner component ---
-const Spinner = ({ large = false }) => ( // Added 'large' prop for flexibility
+const Spinner = ({ large = false }) => (
   <div className="flex justify-center items-center py-10">
     <div className={`border-4 border-blue-500 border-t-transparent rounded-full animate-spin ${large ? 'w-8 h-8' : 'w-6 h-6'}`}></div>
   </div>
@@ -89,18 +88,15 @@ const formatDateForHandover = (value, { fallback = '' } = {}) => {
   }
 };
 
-
-// --- *** NEW: URL Linkify Utility *** ---
+// --- URL Linkify Utility ---
 const linkify = (text) => {
   if (!text) return '';
   const urlRegex = /(https?:\/\/[^\s]+)/g;
-  // Use replace with a function to safely handle HTML escaping
   const parts = text.split(urlRegex);
   return parts.map((part, i) => {
     if (part.match(urlRegex)) {
       return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{part}</a>;
     }
-    // Need to handle newlines
     const lines = part.split('\n');
     return lines.map((line, j) => (
       <React.Fragment key={`${i}-${j}`}>
@@ -110,7 +106,6 @@ const linkify = (text) => {
     ));
   });
 };
-
 
 // ---------- Helper utilities (FOR CALENDAR) ----------
 const normalizeValueToDate = (val) => {
@@ -131,7 +126,7 @@ const hasTimeComponent = (d) => {
 const msInDay = 24 * 60 * 60 * 1000;
 
 
-// --- AnnouncementsSection (Translated) ---
+// --- AnnouncementsSection ---
 const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
   const { t } = useContext(LanguageContext);
   const [updates, setUpdates] = useState([]);
@@ -222,7 +217,7 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
   );
 };
 
-// --- MembersSection (Translated) ---
+// --- MembersSection ---
 const MembersSection = ({ membersDetails, teamData, currentUserUid, canManageMembers, onChangeRole, onInviteClick }) => {
   const { t } = useContext(LanguageContext);
 
@@ -301,25 +296,23 @@ const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin
   const { t } = useContext(LanguageContext);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [isEditing, setIsEditing] = useState(false); // <-- NEW STATE
+  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
     if (!isOpen) {
-      setIsEditing(false); // Reset editing state on close
+      setIsEditing(false);
       return;
     }
     if (modalData?.type === 'new') {
       setTitle('');
       setDescription('');
-      setIsEditing(false); // Not editing
+      setIsEditing(false);
     }
     if (modalData?.type === 'view') {
-      // Pre-fill fields for viewing (and for editing if "Edit" is clicked)
       setTitle(modalData?.event?.title?.replace(/^Note:\s*/i, '') || '');
       setDescription(modalData?.event?.description || '');
-      // Don't reset isEditing here, allow it to persist if user clicks "Edit"
     }
-  }, [isOpen, modalData]); // Only re-run when modal opens or data changes
+  }, [isOpen, modalData]);
 
   if (!isOpen) return null;
 
@@ -330,16 +323,14 @@ const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin
   const handleSave = async () => {
     if (!title) return;
 
-    // If it's new, eventId is null. If editing, get ID from event.
     const eventId = (isView && event?.id) ? event.id : null;
     const start = isNew ? (modalData.start instanceof Date ? modalData.start : new Date(modalData.start)) : event.start;
     const end = isNew ? (modalData.end instanceof Date ? modalData.end : new Date(modalData.end)) : event.end;
 
-    // onSave now handles both create and update
     await onSave(title, description, start, end, eventId);
-    
-    setIsEditing(false); // Reset state
-    onClose(); // Close on save
+
+    setIsEditing(false);
+    onClose();
   };
 
   const handleDelete = async () => {
@@ -350,32 +341,29 @@ const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin
   
   const handleCancel = () => {
     if (isEditing) {
-      setIsEditing(false); // Go back to view mode
-      // Reset fields to original values
+      setIsEditing(false);
       setTitle(modalData?.event?.title?.replace(/^Note:\s*/i, '') || '');
       setDescription(modalData?.event?.description || '');
     } else {
-      onClose(); // Close the modal
+      onClose();
     }
   };
 
-  // --- UPDATED Modal Title Logic ---
   let modalTitle = t('calendar.modalTitle');
   if (isNew) {
     modalTitle = `${t('calendar.addNoteTitle')} ${moment(modalData.start).format('MMM D, YYYY')}`;
   } else if (isView && isEditing) {
-    modalTitle = t('calendar.editNoteTitle', 'Edit Note'); // <-- NEW
+    modalTitle = t('calendar.editNoteTitle', 'Edit Note');
   } else if (isView && !isEditing && event) {
     modalTitle = event.title;
   }
 
   return (
     <div aria-modal="true" role="dialog" className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/50" onClick={handleCancel} /> {/* Use handleCancel */}
+      <div className="fixed inset-0 bg-black/50" onClick={handleCancel} />
       <div className="relative z-10 w-full max-w-lg bg-white rounded-lg shadow-lg p-6">
         <h3 className="text-lg font-semibold text-gray-800 mb-4">{modalTitle}</h3>
 
-        {/* --- UPDATED: Show form if New OR Editing --- */}
         {(isNew || (isView && isEditing)) && (
           <div className="space-y-4">
             <div>
@@ -396,7 +384,6 @@ const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin
           </div>
         )}
 
-        {/* --- UPDATED: Show static text if View AND Not Editing --- */}
         {isView && !isEditing && event && (
           <div className="space-y-2">
             <p className="text-sm text-gray-600"><strong>{t('calendar.event')}</strong> {event.title}</p>
@@ -410,10 +397,7 @@ const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin
           </div>
         )}
 
-        {/* --- UPDATED Footer Buttons --- */}
         <div className="flex justify-end items-center gap-3 mt-6">
-          
-          {/* Show Delete button only in view mode */}
           {isView && !isEditing && event?.type === 'manual' && isAdmin && (
             <button 
               type="button" 
@@ -424,7 +408,6 @@ const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin
             </button>
           )}
           
-          {/* Cancel button is always visible, but behavior changes */}
           <button 
             type="button" 
             onClick={handleCancel} 
@@ -433,7 +416,6 @@ const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin
             {t('common.cancel')}
           </button>
 
-          {/* Show Edit button only in view mode */}
           {isView && !isEditing && event?.type === 'manual' && isAdmin && (
             <button 
               type="button" 
@@ -444,7 +426,6 @@ const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin
             </button>
           )}
 
-          {/* Show Save button if New OR Editing */}
           {(isNew || (isView && isEditing)) && (
             <button 
               type="button" 
@@ -461,11 +442,11 @@ const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin
   );
 };
 
-
-// --- TeamCalendar (Translated AND UPDATED) ---
-const TeamCalendar = ({ teamId, isAdmin, refreshTrigger, messages }) => { // Receive messages
+// --- TeamCalendar (now supports separate Completed calendar) ---
+const TeamCalendar = ({ teamId, isAdmin, refreshTrigger, messages }) => {
   const { t } = useContext(LanguageContext);
-  const [events, setEvents] = useState([]);
+  const [events, setEvents] = useState([]); // active calendar events (no completed tasks)
+  const [completedEvents, setCompletedEvents] = useState([]); // completed tickets as calendar events
   const [loading, setLoading] = useState(true);
 
   // Modal state
@@ -475,6 +456,9 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger, messages }) => { // Rec
   // date/view state so toolbar navigation works reliably
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentView, setCurrentView] = useState('month');
+
+  // mode toggle
+  const [calendarMode, setCalendarMode] = useState('calendar'); // 'calendar' | 'completed'
 
   const fetchCalendarData = useCallback(async () => {
     if (!teamId) return;
@@ -490,34 +474,66 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger, messages }) => { // Rec
         getDocs(notesQuery),
       ]);
 
-      // --- Task events (MODIFIED per user request) ---
-      const taskEvents = taskDocs.docs
-        .filter(d => d.data().endDate) // require an endDate
-        .map(d => {
-          const data = d.data();
-          const endDate = normalizeValueToDate(data.endDate);
+      const activeTaskEvents = [];
+      const completedTaskEvents = [];
 
-          if (!endDate) return null;
+      taskDocs.docs.forEach(d => {
+        const data = d.data();
+        const startDate = normalizeValueToDate(data.startDate);
+        const endDate = normalizeValueToDate(data.endDate);
+        const status = (data.status || '').toString().toLowerCase();
+        const title = `${t('calendar.ticket')} ${data.ticketNo || data.title || d.id}`;
 
-          const title = `${t('calendar.ticket')} ${data.ticketNo || data.title || d.id}`;
+        const isCompleted = status === 'completed' || !!endDate;
 
-          return {
-            id: d.id,
-            title: title,
-            start: endDate,
-            end: endDate,
-            allDay: true,
-            type: 'ticket',
-          };
-        })
-        .filter(Boolean);
+        // Determine event date for active tasks (prefer start or due)
+        const activeEventDate = startDate || null;
 
-      // --- Meeting events ---
+        // For completed tasks, prefer endDate/completedAt, then fallback to createdAt
+        const completedAt =
+          endDate ||
+          normalizeValueToDate(data.completedAt) ||
+          normalizeValueToDate(data.updatedAt) ||
+          normalizeValueToDate(data.createdAt) ||
+          null;
+
+        if (isCompleted) {
+          // only add to completedEvents if we have a date to show, fallback to createdAt above
+          if (completedAt) {
+            completedTaskEvents.push({
+              id: d.id,
+              title,
+              start: completedAt,
+              end: completedAt,
+              allDay: true,
+              type: 'completed-ticket',
+              raw: data,
+              status,
+            });
+          }
+        } else {
+          // Active tasks: only add if there's at least a start/due date to show on calendar
+          const eventDate = endDate || startDate || normalizeValueToDate(data.dueDate) || null;
+          if (eventDate) {
+            activeTaskEvents.push({
+              id: d.id,
+              title,
+              start: eventDate,
+              end: eventDate,
+              allDay: true,
+              type: 'ticket',
+              raw: data,
+              status,
+            });
+          }
+        }
+      });
+
+      // Meeting events
       const meetingEvents = meetingDocs.docs.map(d => {
         const data = d.data();
         const start = normalizeValueToDate(data.startDateTime) || new Date();
         const end = normalizeValueToDate(data.endDateTime) || start;
-
         return {
           id: d.id,
           title: `${t('calendar.meeting')} ${data.title || t('calendar.untitled')}`,
@@ -525,33 +541,38 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger, messages }) => { // Rec
           end: (end > start) ? end : new Date(start.getTime() + 30 * 60 * 1000),
           allDay: false,
           type: 'meeting',
+          raw: data,
         };
       });
 
-      // --- Note events ---
+      // Note events
       const noteEvents = noteDocs.docs.map(d => {
         const data = d.data();
         const start = normalizeValueToDate(data.start) || new Date();
-
         return {
           id: d.id,
           title: `${t('calendar.note')} ${data.title || 'Note'}`,
           description: data.description || '',
-          start: start,
+          start,
           end: start,
           allDay: true,
           type: 'manual',
+          raw: data,
         };
       });
 
-      setEvents([...taskEvents, ...meetingEvents, ...noteEvents]);
+      // Active calendar shows meetings + notes + active tasks (non-completed)
+      const calendarEvents = [...activeTaskEvents, ...meetingEvents, ...noteEvents];
+
+      // Completed calendar shows only completedTaskEvents
+      setEvents(calendarEvents);
+      setCompletedEvents(completedTaskEvents);
     } catch (err) {
       console.error("Error fetching calendar data:", err);
     } finally {
       setLoading(false);
     }
   }, [teamId, t]);
-
 
   useEffect(() => { fetchCalendarData(); }, [fetchCalendarData, refreshTrigger]);
 
@@ -562,6 +583,7 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger, messages }) => { // Rec
   }, [isAdmin]);
 
   const handleSelectEvent = useCallback((event) => {
+    // pass event through - ManualNoteModal expects event.title, event.description, event.start
     setModalData({ type: 'view', event });
     setIsNoteModalOpen(true);
   }, []);
@@ -571,21 +593,13 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger, messages }) => { // Rec
     setIsNoteModalOpen(true);
   }, []);
 
-  // --- UPDATED: Now handles Save OR Update ---
   const handleSaveOrUpdateNote = useCallback(async (title, description, start, end, eventId) => {
     if (!title || !teamId) return;
-    
     try {
       if (eventId) {
-        // This is an UPDATE
         const noteRef = doc(db, 'teams', teamId, 'calendarNotes', eventId);
-        await updateDoc(noteRef, {
-          title,
-          description
-          // We don't update start/end for simplicity, title/desc is enough for an edit.
-        });
+        await updateDoc(noteRef, { title, description });
       } else {
-        // This is a NEW note
         const newNote = {
           title,
           description,
@@ -596,16 +610,15 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger, messages }) => { // Rec
         };
         await addDoc(collection(db, 'teams', teamId, 'calendarNotes'), newNote);
       }
-      await fetchCalendarData(); // Refresh data in both cases
+      await fetchCalendarData();
     } catch (err) {
       console.error("Error saving/updating note:", err);
-      // You could add a user-facing error toast here
     }
   }, [teamId, fetchCalendarData]);
 
   const handleDeleteNote = useCallback(async (eventId) => {
     if (!teamId || !eventId) return;
-    if (!window.confirm(t('common.confirmDelete', 'Delete this item?'))) return; // Add confirm
+    if (!window.confirm(t('common.confirmDelete', 'Delete this item?'))) return;
     try {
       await deleteDoc(doc(db, 'teams', teamId, 'calendarNotes', eventId));
       await fetchCalendarData();
@@ -614,46 +627,100 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger, messages }) => { // Rec
     }
   }, [teamId, fetchCalendarData, t]);
 
-  const eventPropGetter = useCallback((event) => ({
-    style: { cursor: 'pointer' },
-    'data-type': event.type,
-  }), []);
+  const eventPropGetter = useCallback((event) => {
+    // Differentiate styles for meetings, completed tickets, and others
+    if (event.type === 'meeting') {
+      return { style: { cursor: 'pointer', backgroundColor: '#dbebff', borderLeft: '4px solid #3b82f6', color: '#0f172a' } };
+    }
+    if (event.type === 'completed-ticket') {
+      return { style: { cursor: 'pointer', backgroundColor: '#f3f4f6', borderLeft: '4px solid #9ca3af', color: '#374151', textDecoration: 'line-through' } };
+    }
+    if (event.type === 'ticket') {
+      return { style: { cursor: 'pointer', backgroundColor: '#ecfdf5', borderLeft: '4px solid #10b981', color: '#064e3b' } };
+    }
+    if (event.type === 'manual') {
+      return { style: { cursor: 'pointer', backgroundColor: '#fff7ed', borderLeft: '4px solid #f59e0b', color: '#7c2d12' } };
+    }
+    return { style: { cursor: 'pointer' } };
+  }, []);
 
   if (loading) return <Spinner large />;
 
   return (
-    // --- *** LAYOUT FIX *** ---
     <div className="bg-white rounded-lg shadow border flex flex-col overflow-hidden">
-      <h2 className="text-2xl font-semibold text-gray-800 p-4 border-b">{t('admin.tabCalendar')}</h2>
-      
-      <div className="p-4" style={{ height: '600px' }}>
-        <Calendar
-          localizer={localizer}
-          events={events}
-          startAccessor="start"
-          endAccessor="end"
-          date={currentDate}
-          view={currentView}
-          onNavigate={(date) => setCurrentDate(date)}
-          onView={(view) => setCurrentView(view)}
-          style={{ height: '100%' }} // Calendar fills its 600px parent
-          selectable={true}
-          onSelectSlot={handleSelectSlot}
-          onSelectEvent={handleSelectEvent}
-          onDoubleClickEvent={handleDoubleClickEvent}
-          eventPropGetter={eventPropGetter}
-          popup={true}
-          showMultiDayTimes={true}
-          messages={messages}   // Use translated messages
-          // formats prop removed to allow moment locale to control formatting
-        />
+      <div className="flex items-center justify-between p-4 border-b">
+        <h2 className="text-2xl font-semibold text-gray-800">{t('admin.tabCalendar')}</h2>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCalendarMode('calendar')}
+            className={`text-sm px-3 py-1 rounded ${calendarMode === 'calendar' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'}`}
+          >
+            {t('admin.tabCalendar')}
+          </button>
+          <button
+            onClick={() => setCalendarMode('completed')}
+            className={`text-sm px-3 py-1 rounded ${calendarMode === 'completed' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'}`}
+          >
+            {t('common.completed')}
+          </button>
+        </div>
       </div>
+
+      {/* Calendar (active events) */}
+      {calendarMode === 'calendar' && (
+        <div className="p-4" style={{ height: '600px' }}>
+          <Calendar
+            localizer={localizer}
+            events={events}
+            startAccessor="start"
+            endAccessor="end"
+            date={currentDate}
+            view={currentView}
+            onNavigate={(date) => setCurrentDate(date)}
+            onView={(view) => setCurrentView(view)}
+            style={{ height: '100%' }}
+            selectable={true}
+            onSelectSlot={handleSelectSlot}
+            onSelectEvent={handleSelectEvent}
+            onDoubleClickEvent={handleDoubleClickEvent}
+            eventPropGetter={eventPropGetter}
+            popup={true}
+            showMultiDayTimes={true}
+            messages={messages}
+          />
+        </div>
+      )}
+
+      {/* Completed tickets calendar */}
+      {calendarMode === 'completed' && (
+        <div className="p-4" style={{ height: '600px' }}>
+          <Calendar
+            localizer={localizer}
+            events={completedEvents}
+            startAccessor="start"
+            endAccessor="end"
+            date={currentDate}
+            view={currentView}
+            onNavigate={(date) => setCurrentDate(date)}
+            onView={(view) => setCurrentView(view)}
+            style={{ height: '100%' }}
+            selectable={false}
+            onSelectEvent={handleSelectEvent}
+            onDoubleClickEvent={handleDoubleClickEvent}
+            eventPropGetter={eventPropGetter}
+            popup={true}
+            showMultiDayTimes={true}
+            messages={messages}
+          />
+        </div>
+      )}
 
       <ManualNoteModal
         isOpen={isNoteModalOpen}
         onClose={() => setIsNoteModalOpen(false)}
         modalData={modalData}
-        onSave={handleSaveOrUpdateNote} // <-- UPDATED prop
+        onSave={handleSaveOrUpdateNote}
         onDelete={handleDeleteNote}
         isAdmin={isAdmin}
       />
@@ -668,7 +735,7 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger, messages }) => { // Rec
 const TeamView = () => {
   const { teamId } = useParams();
   const navigate = useNavigate();
-  const { t, language } = useContext(LanguageContext); // --- ADDED CONTEXT ---
+  const { t, language } = useContext(LanguageContext);
   const [currentUser, setCurrentUser] = useState(auth.currentUser);
   const [teamData, setTeamData] = useState(null);
   const [membersDetails, setMembersDetails] = useState([]);
@@ -821,7 +888,6 @@ const TeamView = () => {
               </div>
 
               <div className="flex-shrink-0 flex gap-2 flex-wrap justify-end">
-                {/* --- REMOVED "View Endorsements" Button --- */}
                 {isAdmin && (
                   <>
                     <button onClick={() => setIsAnnounceModalOpen(true)} className="bg-green-500 hover:bg-green-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md">{t('admin.announceTeam')}</button>
@@ -831,10 +897,7 @@ const TeamView = () => {
               </div>
             </div>
 
-            {/* --- REDESIGNED LAYOUT --- */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              
-              {/* --- Left Column (Lists) --- */}
               <div className="lg:col-span-1 space-y-6">
                 <AnnouncementsSection 
                   teamId={teamId} 
@@ -852,7 +915,6 @@ const TeamView = () => {
                 />
               </div>
 
-              {/* --- Right Column (Calendar) --- */}
               <div className="lg:col-span-2">
                 <TeamCalendar
                   teamId={teamId}
@@ -863,9 +925,7 @@ const TeamView = () => {
               </div>
             </div>
             
-            {/* --- Full-width sections below --- */}
             <div>
-              <h2 className="text-2xl font-semibold text-gray-800 mb-4">{t('admin.tabProjects')}</h2>
               <div className="bg-white rounded-lg shadow border overflow-hidden">
                 <div className="overflow-x-auto">
                   <TeamProjectTable
@@ -876,7 +936,6 @@ const TeamView = () => {
               </div>
             </div>
 
-            {/* --- ADDED HANDOVER SECTION (imported, do not hardcode) --- */}
             <HandoversSection teamId={teamId} />
             
           </div>
