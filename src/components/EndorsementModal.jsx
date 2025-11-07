@@ -34,7 +34,7 @@ const DEFAULT_STATUS_OPTIONS = ['Pending', 'In Progress', 'Approved', 'Rejected'
 
 // --- NEW: Editable Columns Config ---
 const INLINE_EDITABLE_COLUMNS = [
-  'categories', 'content', 'postedBy', 'status', 'remarks'
+  'number', 'categories', 'content', 'postedBy', 'status', 'remarks'
 ];
 // These columns will use a <textarea> for editing
 const TEXTAREA_COLUMNS = ['content', 'remarks'];
@@ -227,6 +227,7 @@ const HandoversSection = ({ teamId }) => {
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const fetchedData = querySnapshot.docs.map(docSnap => ({
         id: docSnap.id,
+        number: docSnap.data().number || '', // <-- ADDED EDITABLE NUMBER FIELD
         // Ensure all potentially editable fields exist
         categories: docSnap.data().categories || '',
         content: docSnap.data().content || '',
@@ -315,7 +316,7 @@ const HandoversSection = ({ teamId }) => {
   };
 
   const handleDelete = async (docId) => {
-    if (!window.confirm(t('handovers.confirmDelete', 'Are you sure you want to delete this item?'))) {
+    if (!window.confirm(t('handovers.confirmDelete', 'Are you sure you want to delete this handover?'))) {
       return;
     }
     
@@ -372,7 +373,9 @@ const HandoversSection = ({ teamId }) => {
     try {
       setSavingState(saveKey, 'saving');
       const docRef = doc(db, `teams/${teamId}/endorsements`, docId);
-      await updateDoc(docRef, { [columnKey]: value });
+      // Handle 'number' field saving
+      const valueToSave = columnKey === 'number' ? (Number(value) || 0) : value;
+      await updateDoc(docRef, { [columnKey]: valueToSave });
       setSavingState(saveKey, 'saved');
     } catch (err) {
       console.error("Error auto-saving:", err);
@@ -394,7 +397,9 @@ const HandoversSection = ({ teamId }) => {
     try {
       setSavingState(saveKey, 'saving');
       const docRef = doc(db, `teams/${teamId}/endorsements`, docId);
-      await updateDoc(docRef, { [columnKey]: value });
+      // Handle 'number' field saving
+      const valueToSave = columnKey === 'number' ? (Number(value) || 0) : value;
+      await updateDoc(docRef, { [columnKey]: valueToSave });
       setSavingState(saveKey, 'saved');
     } catch (err) {
       console.error("Error saving:", err);
@@ -451,8 +456,13 @@ const HandoversSection = ({ teamId }) => {
   // Auto-focus logic for inputs/selects when editing starts
   useEffect(() => {
     if (editingCell) {
-      const isSelect = !TEXTAREA_COLUMNS.includes(editingCell.columnKey);
-      const ref = isSelect ? selectRef : inputRef;
+      // Check if it's a select or textarea
+      const isSelect = ['categories', 'status', 'postedBy'].includes(editingCell.columnKey);
+      const isTextarea = TEXTAREA_COLUMNS.includes(editingCell.columnKey);
+      
+      let ref = inputRef; // Default to text input
+      if (isSelect) ref = selectRef;
+      else if (isTextarea) ref = inputRef; // 'inputRef' is used for textarea too
 
       if (ref.current) {
         setTimeout(() => {
@@ -651,23 +661,23 @@ const HandoversSection = ({ teamId }) => {
   };
 
 
-  // --- Headers (Original) ---
+  // --- Headers (FIXED KOREAN DEFAULTS) ---
   const mainHeaders = useMemo(() => [
-    { key: 'id', label: t('handovers.id', '번호') },
-    { key: 'date', label: t('handovers.date', 'date') },
-    { key: 'categories', label: t('handovers.categories', 'categories') },
-    { key: 'content', label: t('handovers.content', 'handover contents') },
-    { key: 'details', label: t('handovers.details', 'handover details') },
+    { key: 'number', label: t('handovers.id', 'No.') }, // <-- CHANGED
+    { key: 'date', label: t('handovers.date', 'Date') },
+    { key: 'categories', label: t('handovers.categories', 'Categories') },
+    { key: 'content', label: t('handovers.content', 'Handover Contents') },
+    { key: 'details', label: t('handovers.details', 'Details') },
     { key: 'postedBy', label: t('handovers.postedBy', 'Posted by') },
   ], [t]);
 
   const checkerHeaders = useMemo(() => [
-    { key: 'checkerCS', label: t('handovers.checkerCS', 'CS팀장') },
-    { key: 'checkerPark', label: t('handovers.checkerPark', '박팀장') },
-    { key: 'checkerSeo', label: t('handovers.checkerSeo', '서실장') },
-    { key: 'checkerDev', label: t('handovers.checkerDev', '개발실장') },
-    { key: 'checkerYoo', label: t('handovers.checkerYoo', '유실장') },
-    { key: 'checkerKim', label: t('handovers.checkerKim', '김실장') },
+    { key: 'checkerCS', label: t('handovers.checkerCS', 'CS Lead') },
+    { key: 'checkerPark', label: t('handovers.checkerPark', 'Park Lead') },
+    { key: 'checkerSeo', label: t('handovers.checkerSeo', 'Seo Director') },
+    { key: 'checkerDev', label: t('handovers.checkerDev', 'Dev Director') },
+    { key: 'checkerYoo', label: t('handovers.checkerYoo', 'Yoo Director') },
+    { key: 'checkerKim', label: t('handovers.checkerKim', 'Kim Director') },
   ], [t]);
 
   // --- NEW: Cell Renderer (Fully refactored) ---
@@ -741,14 +751,26 @@ const HandoversSection = ({ teamId }) => {
           />
         );
       }
+
+      // --- NEW: Default Input (for 'number', etc.) ---
+      return (
+        <input
+          ref={inputRef}
+          type={headerKey === 'number' ? 'number' : 'text'}
+          value={editingValue}
+          onChange={(e) => setEditingValue(e.target.value)}
+          onBlur={(e) => handleBlurSave(item.id, headerKey, e.target.value)}
+          onKeyDown={handleInputKeyDown}
+          className="absolute inset-0 w-full h-full p-2 border-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm z-10"
+        />
+      );
     }
 
     // --- 2. STATIC DISPLAY UI ---
 
     // Special non-editable columns
     switch(headerKey) {
-      case 'id':
-        return <div className="truncate" title={item.id}>{item.id.substring(0, 6)}...</div>;
+      // 'id' case is removed, 'number' will be handled by default
       case 'date':
         return <div className="truncate">{formatDate(item.createdAt)}</div>;
       case 'details':
@@ -789,7 +811,7 @@ const HandoversSection = ({ teamId }) => {
         break; // Continue to default text rendering
     }
 
-    // Default static display for other columns (content, remarks, status, postedBy)
+    // Default static display for other columns (content, remarks, status, postedBy, number)
     let textToShow = displayValue || '-';
     
     // For member columns, show label instead of UID
@@ -831,7 +853,7 @@ const HandoversSection = ({ teamId }) => {
             </button>
             <button
               onClick={() => setIsOptionsModalOpen(true)}
-              title={t('admin.editOptions', 'Edit dropdown options')}
+              title={t('admin.editOptions', 'Edit Options')}
               className="text-sm py-1.5 px-3 rounded border bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {t('admin.editOptions', 'Edit Options')}
@@ -987,7 +1009,7 @@ const HandoversSection = ({ teamId }) => {
                       rowSpan={2}
                       className="p-3 text-left font-medium border-b border-r"
                       style={{ 
-                        width: isAllExpanded ? 'auto' : (header.key === 'content' ? '300px' : '120px'),
+                        width: isAllExpanded ? 'auto' : (header.key === 'content' ? '300px' : (header.key === 'number' ? '80px' : '120px')), // <-- Sized 'number'
                         whiteSpace: isAllExpanded ? 'normal' : 'nowrap'
                       }}
                     >
@@ -1058,7 +1080,8 @@ const HandoversSection = ({ teamId }) => {
                               !isAllExpanded && header.key === 'status' ? 'w-[130px]' : '',
                               !isAllExpanded && header.key === 'actions' ? 'w-[80px]' : '',
                               !isAllExpanded && header.key.startsWith('checker') ? 'w-[80px]' : '',
-                              !isAllExpanded && !header.key.startsWith('checker') && !['content', 'remarks', 'status', 'actions'].includes(header.key) ? 'w-[120px]' : '',
+                              !isAllExpanded && header.key === 'number' ? 'w-[80px]' : '', // <-- Sized 'number'
+                              !isAllExpanded && !header.key.startsWith('checker') && !['number', 'content', 'remarks', 'status', 'actions'].includes(header.key) ? 'w-[120px]' : '',
                               // Padding reset for editing
                               isEditingThisCell ? 'p-0' : ''
                             ].filter(Boolean).join(' ')}
@@ -1068,7 +1091,8 @@ const HandoversSection = ({ teamId }) => {
                                 (header.key === 'remarks' ? '200px' : 
                                 (header.key === 'status' ? '130px' : 
                                 (header.key.startsWith('checker') ? '80px' : 
-                                (header.key === 'actions' ? '80px' : '120px'))))) : undefined,
+                                (header.key === 'actions' ? '80px' : 
+                                (header.key === 'number' ? '80px' : '120px')))))) : undefined, // <-- Sized 'number'
                               height: (isEditingThisCell && TEXTAREA_COLUMNS.includes(header.key)) ? 'auto' : undefined,
                             }}
                             onDoubleClick={(e) => !isEditingThisCell && handleCellDoubleClick(e, item.id, header.key)}

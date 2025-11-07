@@ -137,7 +137,8 @@ export const translations = {
       emailPlaceholder: 'e.g., teammate@example.com',
       inviting: 'Sending...',
       sendInvite: 'Send Invite',
-      viewEndorsements: 'View Handovers', // --- RENAMED ---
+      inviteSubtext: 'Enter the email address of the user you want to invite.',
+      viewEndorsements: 'View Handovers',
       created: 'Created',
       // --- Dropdown Options ---
       editDropdownOptions: 'Edit Dropdown Options',
@@ -163,8 +164,9 @@ export const translations = {
       viewHandovers: 'View Handovers',
       addHandover: '+ Add Handover',
       noHandovers: 'No handovers found for this team.',
+      noApprovedHandovers: 'No approved handovers found.',
       addFirstHandover: 'Add First Handover',
-      loadEndorsementsError: 'Failed to load handover data. Please try again.', // Kept old key for compatibility
+      loadEndorsementsError: 'Failed to load handover data. Please try again.',
       // --- Schedule Meeting Modal ---
       scheduleMeetingTitle: "Schedule Meeting",
       meetingTitleLabel: "Meeting Title",
@@ -198,7 +200,7 @@ export const translations = {
       companyName: 'company name',
       filterByDeveloper: 'Filter by Developer:',
       filterByCategory: 'Filter by Category:',
-      allDevelopers: 'all developers',
+      allDevelopers: 'All Members',
       allCategories: 'all categories',
       techIssue: 'tech issue',
       featureRequest: 'feature request',
@@ -244,31 +246,32 @@ export const translations = {
       agenda: 'Agenda',
       editNoteTitle: 'Edit Note',
     },
-    // --- REPLACED 'endorsements' with 'handovers' ---
+    // --- THIS SECTION IS NOW FIXED ---
     handovers: {
-      id: '번호',
-      date: 'date',
-      categories: 'categories',
-      content: 'handover contents',
-      details: 'handover details',
+      id: 'No.',
+      date: 'Date',
+      categories: 'Categories',
+      content: 'Handover Contents',
+      details: 'Details',
       postedBy: 'Posted by',
       checker: 'Checker',
-      status: 'status',
+      status: 'Status',
       remarks: 'Remarks',
-      checkerCS: 'CS팀장',
-      checkerPark: '박팀장',
-      checkerSeo: '서실장',
-      checkerDev: '개발실장',
-      checkerYoo: '유실장',
-      checkerKim: '김실장',
+      checkerCS: 'CS Lead',
+      checkerPark: 'Park Lead',
+      checkerSeo: 'Seo Director',
+      checkerDev: 'Dev Director',
+      checkerYoo: 'Yoo Director',
+      checkerKim: 'Kim Director',
       addTitle: 'Add New Handover',
       saveButton: 'Save Handover',
       addErrorRequired: 'Posted by and Handover Contents are required.',
       addErrorFailed: 'Failed to save handover.',
-      // --- NEW for Delete ---
       actions: 'Actions',
       confirmDelete: 'Are you sure you want to delete this handover?',
-      deleteError: 'Failed to delete handover. Please try again.'
+      deleteError: 'Failed to delete handover. Please try again.',
+      allStatuses: 'All Statuses',
+      approved: 'Approved',
     },
   },
   // ===================================================================
@@ -407,7 +410,8 @@ export const translations = {
       emailPlaceholder: '예: teammate@example.com',
       inviting: '전송 중...',
       sendInvite: '초대 보내기',
-      viewEndorsements: '인수인계 보기', // --- RENAMED & TRANSLATED ---
+      inviteSubtext: '초대하려는 사용자의 이메일 주소를 입력하세요.',
+      viewEndorsements: '인수인계 보기',
       created: '생성일',
       // --- Dropdown Options ---
       editDropdownOptions: '드롭다운 옵션 편집',
@@ -433,8 +437,9 @@ export const translations = {
       viewHandovers: '인수인계 보기',
       addHandover: '+ 인수인계 추가',
       noHandovers: '이 팀에 대한 인수인계가 없습니다.',
+      noApprovedHandovers: '승인된 인수인계가 없습니다.',
       addFirstHandover: '첫 인수인계 추가',
-      loadEndorsementsError: '인수인계 데이터를 불러오지 못했습니다. 다시 시도하세요.', // Kept old key
+      loadEndorsementsError: '인수인계 데이터를 불러오지 못했습니다. 다시 시도하세요.',
       // --- Schedule Meeting Modal ---
       scheduleMeetingTitle: "회의 일정 잡기",
       meetingTitleLabel: "회의 제목",
@@ -468,7 +473,7 @@ export const translations = {
       companyName: '회사 이름',
       filterByDeveloper: '개발자별 필터:',
       filterByCategory: '카테고리별 필터:',
-      allDevelopers: '전체 개발자',
+      allDevelopers: '모든 멤버',
       allCategories: '전체 카테고리',
       techIssue: '기술 문제',
       featureRequest: '기능 요청',
@@ -514,7 +519,6 @@ export const translations = {
       agenda: '일정',
       editNoteTitle: '메모 수정',
     },
-    // --- REPLACED 'endorsements' with 'handovers' ---
     handovers: {
       id: '번호',
       date: '날짜',
@@ -535,10 +539,11 @@ export const translations = {
       saveButton: '인수인계 저장',
       addErrorRequired: '게시자 및 인수인계 내용은 필수입니다.',
       addErrorFailed: '인수인계를 저장하지 못했습니다.',
-      // --- NEW for Delete ---
       actions: '작업',
       confirmDelete: '이 인수인계 항목을 삭제하시겠습니까?',
-      deleteError: '인수인계를 삭제하지 못했습니다. 다시 시도하세요.'
+      deleteError: '인수인계를 삭제하지 못했습니다. 다시 시도하세요.',
+      allStatuses: '모든 상태',
+      approved: '승인됨',
     },
   }
 };
