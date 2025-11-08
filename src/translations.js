@@ -158,8 +158,17 @@ export const translations = {
       memberLabelEmptyError: 'Member label cannot be empty.',
       confirmDeleteFinalStatus: 'Are you sure you want to remove the final status? This is usually the "Complete" status.',
       uidLabel: 'UID',
+      keyLabel: 'Key', // <-- NEW
       memberPlaceholder: 'uid|label (or uid)',
       cannotChangeMasterAdmin: 'You cannot change the team role of a Master Admin.',
+      // --- NEW: Checker Options ---
+      checkers: 'Checkers',
+      checkerPlaceholder: 'key|Label',
+      checkerFormatError: 'Format must be "key|Label". Example: "checkerOps|Operations"',
+      checkerKeyRequired: 'A "key" is required. Format: "key|Label"',
+      checkerKeyInvalid: 'Key must be one word (no spaces, letters/numbers/_,.- only).',
+      checkerKeyExists: 'A checker with this key already exists.',
+      checkerLabelEmpty: 'Checker label cannot be empty.',
       // --- Handovers Section (RENAMED) ---
       viewHandovers: 'View Handovers',
       addHandover: '+ Add Handover',
@@ -431,8 +440,17 @@ export const translations = {
       memberLabelEmptyError: '멤버 라벨은 비워둘 수 없습니다.',
       confirmDeleteFinalStatus: '마지막 상태를 삭제하시겠습니까? 이것은 보통 "완료" 상태입니다.',
       uidLabel: 'UID',
+      keyLabel: '키', // <-- NEW
       memberPlaceholder: 'uid|라벨 (또는 uid)',
       cannotChangeMasterAdmin: '마스터 관리자의 팀 역할을 변경할 수 없습니다.',
+      // --- NEW: Checker Options ---
+      checkers: '확인자',
+      checkerPlaceholder: '키|라벨',
+      checkerFormatError: '형식은 "키|라벨"이어야 합니다. 예: "checkerOps|운영"',
+      checkerKeyRequired: '"키"가 필요합니다. 형식: "키|라벨"',
+      checkerKeyInvalid: '키는 공백 없는 한 단어여야 합니다 (문자/숫자/_,.-만 허용).',
+      checkerKeyExists: '이 키를 가진 확인자가 이미 존재합니다.',
+      checkerLabelEmpty: '확인자 라벨은 비워둘 수 없습니다.',
       // --- Handovers Section (RENAMED) ---
       viewHandovers: '인수인계 보기',
       addHandover: '+ 인수인계 추가',

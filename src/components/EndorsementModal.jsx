@@ -1,6 +1,9 @@
 // src/components/EndorsementModal.jsx
+
 import React, { useState, useEffect, useCallback, useContext, useMemo, useRef } from 'react';
+
 import { db, auth } from '../firebaseConfig'; // <-- Added auth
+
 import {
   collection,
   query,
@@ -19,9 +22,12 @@ import {
   where, // <-- Added
   deleteField // <-- Added
 } from 'firebase/firestore';
+
 import AddEndorsementModal from './AddEndorsementModal';
 import HandoverPopup from './HandoverPopup';
 import { LanguageContext } from '../contexts/LanguageContext';
+
+
 
 // --- Placeholders ---
 const DEFAULT_PLACEHOLDERS = {
@@ -31,6 +37,16 @@ const DEFAULT_PLACEHOLDERS = {
   priorities: [],
 };
 const DEFAULT_STATUS_OPTIONS = ['Pending', 'In Progress', 'Approved', 'Rejected'];
+// --- NEW: Default Checkers (as a fallback) ---
+const DEFAULT_CHECKERS = [
+  { key: 'checkerCS', label: 'CS Lead' },
+  { key: 'checkerPark', label: 'Park Lead' },
+  { key: 'checkerSeo', label: 'Seo Director' },
+  { key: 'checkerDev', label: 'Dev Director' },
+  { key: 'checkerYoo', label: 'Yoo Director' },
+  { key: 'checkerKim', label: 'Kim Director' },
+];
+
 
 // --- NEW: Editable Columns Config ---
 const INLINE_EDITABLE_COLUMNS = [
@@ -48,6 +64,8 @@ const Spinner = () => (
     <div className="w-6 h-6 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
   </div>
 );
+
+
 
 // --- formatDate utility ---
 const formatDate = (value, { fallback = '' } = {}) => {
@@ -72,6 +90,8 @@ const formatDate = (value, { fallback = '' } = {}) => {
     return String(value);
   }
 };
+
+
 
 // --- THIS IS THE HANDOVER SECTION COMPONENT ---
 const HandoversSection = ({ teamId }) => {
@@ -105,6 +125,7 @@ const HandoversSection = ({ teamId }) => {
   const [typesList, setTypesList] = useState(DEFAULT_PLACEHOLDERS.types);
   const [priorityOptions, setPriorityOptions] = useState(DEFAULT_PLACEHOLDERS.priorities);
   const [statusOptions, setStatusOptions] = useState(DEFAULT_STATUS_OPTIONS);
+  const [checkerList, setCheckerList] = useState(DEFAULT_CHECKERS); // <-- NEW: State for dynamic checkers
 
   // --- NEW: Inline Editing State ---
   // editingCell: { docId, columnKey }
@@ -135,6 +156,7 @@ const HandoversSection = ({ teamId }) => {
           setTypesList(DEFAULT_PLACEHOLDERS.types);
           setPriorityOptions(DEFAULT_PLACEHOLDERS.priorities);
           setStatusOptions(DEFAULT_STATUS_OPTIONS);
+          setCheckerList(DEFAULT_CHECKERS); // <-- NEW
           return;
         }
         const data = snap.data();
@@ -152,6 +174,13 @@ const HandoversSection = ({ teamId }) => {
           setStatusOptions(data.handoverStatusOptions);
         } else {
           setStatusOptions(DEFAULT_STATUS_OPTIONS);
+        }
+
+        // --- NEW: Load Handover Checkers ---
+        if (data.handoverCheckers && Array.isArray(data.handoverCheckers) && data.handoverCheckers.length > 0) {
+          setCheckerList(data.handoverCheckers);
+        } else {
+          setCheckerList(DEFAULT_CHECKERS);
         }
 
         // --- Load other options for the OptionsEditorModal ---
@@ -201,6 +230,7 @@ const HandoversSection = ({ teamId }) => {
         setTypesList(DEFAULT_PLACEHOLDERS.types);
         setPriorityOptions(DEFAULT_PLACEHOLDERS.priorities);
         setStatusOptions(DEFAULT_STATUS_OPTIONS);
+        setCheckerList(DEFAULT_CHECKERS); // <-- NEW
       });
     } catch (e) {
       console.error('Failed to initialize team meta snapshot:', e);
@@ -264,10 +294,14 @@ const HandoversSection = ({ teamId }) => {
     return { activeHandovers: active, approvedHandovers: approved };
   }, [handovers]);
 
+
+
   // --- Select handovers based on the active tab ---
   const handoversToDisplay = useMemo(() => {
     return activeTab === 'active' ? activeHandovers : approvedHandovers;
   }, [activeTab, activeHandovers, approvedHandovers]);
+
+
 
   // --- Apply Filters ---
   const filteredHandoversToDisplay = useMemo(() => {
@@ -329,6 +363,8 @@ const HandoversSection = ({ teamId }) => {
       setError(t('handovers.deleteError', 'Failed to delete handover. Please try again.'));
     }
   };
+
+
 
   // --- NEW: Inline Editing Functions (from TeamProjectTable) ---
 
@@ -563,6 +599,7 @@ const HandoversSection = ({ teamId }) => {
     if (fieldName === 'statusOptions') actualFieldName = 'handoverStatusOptions';
     if (fieldName === 'types') actualFieldName = 'handoverTypes';
     if (fieldName === 'priorities') actualFieldName = 'handoverPriorities';
+    if (fieldName === 'checkers') actualFieldName = 'handoverCheckers'; // <-- NEW
     
     const teamRef = doc(db, 'teams', teamId);
     try {
@@ -671,17 +708,24 @@ const HandoversSection = ({ teamId }) => {
     { key: 'postedBy', label: t('handovers.postedBy', 'Posted by') },
   ], [t]);
 
-  const checkerHeaders = useMemo(() => [
-    { key: 'checkerCS', label: t('handovers.checkerCS', 'CS Lead') },
-    { key: 'checkerPark', label: t('handovers.checkerPark', 'Park Lead') },
-    { key: 'checkerSeo', label: t('handovers.checkerSeo', 'Seo Director') },
-    { key: 'checkerDev', label: t('handovers.checkerDev', 'Dev Director') },
-    { key: 'checkerYoo', label: t('handovers.checkerYoo', 'Yoo Director') },
-    { key: 'checkerKim', label: t('handovers.checkerKim', 'Kim Director') },
-  ], [t]);
+  // --- MODIFIED: Checker headers are now dynamic ---
+  const checkerHeaders = useMemo(() => {
+    if (!checkerList || checkerList.length === 0) {
+      return [];
+    }
+    // Try to translate, but fall back to the label from the DB
+    return checkerList.map(checker => ({
+      key: checker.key,
+      label: t(`handovers.${checker.key}`, checker.label)
+    }));
+  }, [checkerList, t]);
+
+  // --- NEW: Memoized list of checker keys for renderCellContent ---
+  const checkerKeys = useMemo(() => checkerList.map(c => c.key), [checkerList]);
+
 
   // --- NEW: Cell Renderer (Fully refactored) ---
-  const renderCellContent = (item, headerKey) => {
+  const renderCellContent = (item, headerKey, meta = {}) => {
     const isEditingThisCell = editingCell?.docId === item.id && editingCell?.columnKey === headerKey;
     const rawValue = item[headerKey];
     const displayValue = rawValue !== undefined && rawValue !== null ? String(rawValue) : '';
@@ -770,7 +814,37 @@ const HandoversSection = ({ teamId }) => {
 
     // Special non-editable columns
     switch(headerKey) {
-      // 'id' case is removed, 'number' will be handled by default
+      // --- FIX: START ---
+      // Handle 'number' column display logic
+      case 'number': {
+        const manualNumber = item.number; // Value from Firestore
+        const { index, total } = meta;
+        let textToShow;
+        
+        // If user manually entered a number (or it's 0), show it.
+        if (manualNumber || manualNumber === 0) {
+          textToShow = String(manualNumber);
+        } 
+        // Otherwise, if it's empty, use the calculated index.
+        else if (index !== undefined && total !== undefined) {
+          textToShow = total - index;
+        } 
+        // Fallback
+        else {
+          textToShow = '-';
+        }
+        
+        return (
+          <div
+            className={isAllExpanded ? 'whitespace-pre-wrap break-words' : 'truncate'}
+            title={textToShow}
+          >
+            {textToShow}
+          </div>
+        );
+      }
+      // --- FIX: END ---
+
       case 'date':
         return <div className="truncate">{formatDate(item.createdAt)}</div>;
       case 'details':
@@ -790,28 +864,29 @@ const HandoversSection = ({ teamId }) => {
             </button>
           </div>
         );
-      // Checkers (direct manipulation, not "editing mode")
-      case 'checkerCS':
-      case 'checkerPark':
-      case 'checkerSeo':
-      case 'checkerDev':
-      case 'checkerYoo':
-      case 'checkerKim':
-        return (
-          <div className="text-center">
-            <input
-              type="checkbox"
-              checked={item[headerKey] === true}
-              onChange={() => handleCheckboxChange(item.id, headerKey, item[headerKey])}
-              className="form-checkbox h-4 w-4 text-blue-600 transition duration-150 ease-in-out cursor-pointer"
-            />
-          </div>
-        );
+      
+      // --- REMOVED: Hardcoded checker cases ---
+      // case 'checkerCS': ...
+      
       default:
         break; // Continue to default text rendering
     }
 
-    // Default static display for other columns (content, remarks, status, postedBy, number)
+    // --- NEW: Dynamic Checker Rendering ---
+    if (checkerKeys.includes(headerKey)) {
+      return (
+        <div className="text-center">
+          <input
+            type="checkbox"
+            checked={item[headerKey] === true}
+            onChange={() => handleCheckboxChange(item.id, headerKey, item[headerKey])}
+            className="form-checkbox h-4 w-4 text-blue-600 transition duration-150 ease-in-out cursor-pointer"
+          />
+        </div>
+      );
+    }
+
+    // Default static display for other columns (content, remarks, status, postedBy)
     let textToShow = displayValue || '-';
     
     // For member columns, show label instead of UID
@@ -1016,9 +1091,10 @@ const HandoversSection = ({ teamId }) => {
                       {header.label}
                     </th>
                   ))}
+                  {/* --- MODIFIED: Dynamic ColSpan for Checkers --- */}
                   <th
                     scope="col"
-                    colSpan={checkerHeaders.length}
+                    colSpan={checkerHeaders.length > 0 ? checkerHeaders.length : 1}
                     className="p-3 text-center font-medium border-b border-r"
                     style={{ whiteSpace: isAllExpanded ? 'normal' : 'nowrap' }}
                   >
@@ -1035,6 +1111,7 @@ const HandoversSection = ({ teamId }) => {
                   </th>
                 </tr>
                 <tr>
+                  {/* --- MODIFIED: Dynamic Checker Headers --- */}
                   {checkerHeaders.map((header) => (
                     <th
                       key={header.key}
@@ -1048,13 +1125,17 @@ const HandoversSection = ({ teamId }) => {
                       {header.label}
                     </th>
                   ))}
+                  {/* Handle case with zero checkers */}
+                  {checkerHeaders.length === 0 && (
+                     <th scope="col" className="p-3 text-center font-medium border-r" style={{ width: '80px' }}>-</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-100 text-sm">
-                {filteredHandoversToDisplay.map((item) => {
+                {filteredHandoversToDisplay.map((item, index) => { {/* <-- FIX: Added index */}
                   const allHeaders = [
                     ...mainHeaders,
-                    ...checkerHeaders,
+                    ...checkerHeaders, // <-- MODIFIED: Now dynamic
                     { key: 'status' },
                     { key: 'remarks' },
                     { key: 'actions' }
@@ -1079,9 +1160,10 @@ const HandoversSection = ({ teamId }) => {
                               !isAllExpanded && header.key === 'remarks' ? 'w-[200px]' : '',
                               !isAllExpanded && header.key === 'status' ? 'w-[130px]' : '',
                               !isAllExpanded && header.key === 'actions' ? 'w-[80px]' : '',
-                              !isAllExpanded && header.key.startsWith('checker') ? 'w-[80px]' : '',
+                              // --- MODIFIED: Dynamic checker width ---
+                              !isAllExpanded && checkerKeys.includes(header.key) ? 'w-[80px]' : '',
                               !isAllExpanded && header.key === 'number' ? 'w-[80px]' : '', // <-- Sized 'number'
-                              !isAllExpanded && !header.key.startsWith('checker') && !['number', 'content', 'remarks', 'status', 'actions'].includes(header.key) ? 'w-[120px]' : '',
+                              !isAllExpanded && !checkerKeys.includes(header.key) && !['number', 'content', 'remarks', 'status', 'actions'].includes(header.key) ? 'w-[120px]' : '',
                               // Padding reset for editing
                               isEditingThisCell ? 'p-0' : ''
                             ].filter(Boolean).join(' ')}
@@ -1090,14 +1172,16 @@ const HandoversSection = ({ teamId }) => {
                                 (header.key === 'content' ? '300px' : 
                                 (header.key === 'remarks' ? '200px' : 
                                 (header.key === 'status' ? '130px' : 
-                                (header.key.startsWith('checker') ? '80px' : 
+                                // --- MODIFIED: Dynamic checker width ---
+                                (checkerKeys.includes(header.key) ? '80px' : 
                                 (header.key === 'actions' ? '80px' : 
                                 (header.key === 'number' ? '80px' : '120px')))))) : undefined, // <-- Sized 'number'
                               height: (isEditingThisCell && TEXTAREA_COLUMNS.includes(header.key)) ? 'auto' : undefined,
                             }}
                             onDoubleClick={(e) => !isEditingThisCell && handleCellDoubleClick(e, item.id, header.key)}
                           >
-                            {renderCellContent(item, header.key)}
+                            {/* --- FIX: Pass index and total count --- */}
+                            {renderCellContent(item, header.key, { index, total: filteredHandoversToDisplay.length })}
 
                             {/* Saving Indicators */}
                             {savingStatus[cellKey] === 'saving' && (
@@ -1152,6 +1236,7 @@ const HandoversSection = ({ teamId }) => {
           membersList={membersList}
           priorityOptions={priorityOptions}
           statusOptions={statusOptions}
+          checkerList={checkerList} // <-- NEW PROP
           // Pass down persistence functions
           persistTeamArrayField={persistTeamArrayField}
           saveMemberLabel={saveMemberLabel}
@@ -1163,6 +1248,7 @@ const HandoversSection = ({ teamId }) => {
           onMembersChange={() => {}}
           onPrioritiesChange={() => {}}
           onStatusOptionsChange={() => {}}
+          onCheckersChange={() => {}} // <-- NEW PROP
         />
       )}
 
@@ -1189,7 +1275,7 @@ export default HandoversSection;
 
 /* ------------------------------------------------------------------
   OptionsEditorModal
-  - Manages editing Categories, Types, Priorities, Statuses, Members
+  - Manages editing Categories, Types, Priorities, Statuses, Members, Checkers
 -------------------------------------------------------------------*/
 function OptionsEditorModal({
   isOpen,
@@ -1201,14 +1287,15 @@ function OptionsEditorModal({
   membersList, // Array of {uid, label}
   priorityOptions,
   statusOptions,
+  checkerList, // <-- NEW: Array of {key, label}
   persistTeamArrayField, // (fieldName, array) => Promise<void>
   saveMemberLabel,       // (uid, newLabel) => Promise<void>
   removeMember,          // (uid) => Promise<void>
   addMemberObject,       // (uid, label) => Promise<void>
 }) {
-  const [tab, setTab] = useState('categories'); // 'categories' | 'types' | 'priorities' | 'statuses' | 'members'
-  const [items, setItems] = useState([]);      // Current list being edited (strings or member objects)
-  const [newValue, setNewValue] = useState('');      // Input for adding new items
+  const [tab, setTab] = useState('categories'); // 'categories' | 'types' | 'priorities' | 'statuses' | 'members' | 'checkers'
+  const [items, setItems] = useState([]);       // Current list being edited (strings or member/checker objects)
+  const [newValue, setNewValue] = useState('');       // Input for adding new items
   const [editingIndex, setEditingIndex] = useState(null); // Index of item being edited
   const [editingValueLocal, setEditingValueLocal] = useState(''); // Local state for the item being edited
   const [modalError, setModalError] = useState(''); // Error specific to this modal
@@ -1235,6 +1322,7 @@ function OptionsEditorModal({
       case 'priorities': currentItems = priorityOptions; break;
       case 'statuses': currentItems = statusOptions; break;
       case 'members': currentItems = membersList.map(m => ({ uid: m.uid, label: m.label })); break; // Use a copy
+      case 'checkers': currentItems = checkerList.map(c => ({ key: c.key, label: c.label })); break; // <-- NEW
       default: currentItems = [];
     }
     setItems(currentItems || []); // Ensure items is always an array
@@ -1242,7 +1330,7 @@ function OptionsEditorModal({
     setEditingValueLocal('');
     setNewValue('');
     setModalError('');
-  }, [tab, categoriesList, typesList, priorityOptions, statusOptions, membersList, isOpen]);
+  }, [tab, categoriesList, typesList, priorityOptions, statusOptions, membersList, checkerList, isOpen]); // <-- NEW dependency
 
   if (!isOpen) return null;
 
@@ -1325,6 +1413,41 @@ function OptionsEditorModal({
       return;
     }
 
+    // --- NEW: Add Checker ---
+    if (tab === 'checkers') {
+      let key, label;
+      if (v.includes('|')) {
+        const parts = v.split('|');
+        key = parts[0].trim();
+        label = parts.slice(1).join('|').trim() || key;
+      } else {
+        setModalError(t('admin.checkerFormatError', 'Format must be "key|Label". Example: "checkerOps|Operations"'));
+        return;
+      }
+      
+      if (!key) {
+        setModalError(t('admin.checkerKeyRequired', 'A "key" is required. Format: "key|Label"'));
+        return;
+      }
+      if (/\s/.test(key) || !/^[a-zA-Z0-9_.-]+$/.test(key)) {
+         setModalError(t('admin.checkerKeyInvalid', 'Key must be one word (no spaces, letters/numbers/_,.- only).'));
+         return;
+      }
+      
+      if (currentItems.some(item => item.key === key)) {
+        setModalError(t('admin.checkerKeyExists', 'A checker with this key already exists.'));
+        return;
+      }
+      
+      const newItem = { key, label };
+      const next = [...currentItems, newItem];
+      
+      setItems(next); // Optimistic update
+      setNewValue(''); // Clear input
+      await handlePersistArray('checkers', next); // Persist
+      return; // Stop execution
+    }
+
     // For string-based lists
     if (currentItems.includes(v)) {
       setModalError(t('admin.itemExistsError', "This item already exists."));
@@ -1357,7 +1480,12 @@ function OptionsEditorModal({
     setModalError('');
     setEditingIndex(idx);
     const itemToEdit = items[idx];
-    setEditingValueLocal(typeof itemToEdit === 'object' && itemToEdit !== null ? itemToEdit.label : itemToEdit);
+    // Handle object or string
+    if (typeof itemToEdit === 'object' && itemToEdit !== null) {
+      setEditingValueLocal(itemToEdit.label); // Works for both members and checkers
+    } else {
+      setEditingValueLocal(itemToEdit); // For string lists
+    }
   };
 
   const saveEdit = async () => {
@@ -1367,6 +1495,8 @@ function OptionsEditorModal({
     const currentItems = items || []; 
 
     const itemToEdit = currentItems[editingIndex];
+
+    // --- Member Edit ---
     if (typeof itemToEdit === 'object' && itemToEdit !== null && 'uid' in itemToEdit) {
       const uid = itemToEdit.uid;
       if (!v) {
@@ -1375,6 +1505,23 @@ function OptionsEditorModal({
       }
       await handleSaveMemberLabel(uid, v);
       return;
+    }
+
+    // --- NEW: Checker Edit ---
+    if (typeof itemToEdit === 'object' && itemToEdit !== null && 'key' in itemToEdit) {
+      const key = itemToEdit.key;
+      if (!v) {
+        setModalError(t('admin.checkerLabelEmpty', "Checker label cannot be empty."));
+        return;
+      }
+      
+      const next = currentItems.map((it, i) => (i === editingIndex ? { key: key, label: v } : it));
+      
+      setItems(next); // Optimistic update
+      setEditingIndex(null); 
+      setEditingValueLocal('');
+      await handlePersistArray('checkers', next);
+      return; // Stop execution
     }
 
     // For string-based lists
@@ -1413,10 +1560,21 @@ function OptionsEditorModal({
     const currentItems = items || []; 
     const itemToRemove = currentItems[idx];
 
+    // --- Member Remove ---
     if (typeof itemToRemove === 'object' && itemToRemove !== null && 'uid' in itemToRemove) {
       const uid = itemToRemove.uid;
       await handleRemoveMember(uid);
       return;
+    }
+
+    // --- NEW: Checker Remove ---
+    if (typeof itemToRemove === 'object' && itemToRemove !== null && 'key' in itemToRemove) {
+      if (!window.confirm(t('common.confirmDelete'))) return;
+      
+      const next = currentItems.filter((_, i) => i !== idx);
+      setItems(next); // Optimistic update
+      await handlePersistArray('checkers', next);
+      return; // Stop execution
     }
 
     // For string-based lists
@@ -1490,6 +1648,44 @@ function OptionsEditorModal({
       );
     }
 
+    // --- NEW: Checker List Item ---
+    if (typeof it === 'object' && it !== null && 'key' in it) {
+      return (
+        <li key={it.key} className="flex items-center justify-between gap-2 bg-gray-50 p-2 rounded text-sm">
+          <div className="min-w-0 flex-1">
+            {isEditingThisItem ? (
+              <input
+                className="border rounded px-2 py-1 text-sm w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+                value={editingValueLocal}
+                onChange={(e) => setEditingValueLocal(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveEdit();
+                  if (e.key === 'Escape') cancelEdit();
+                }}
+                autoFocus
+              />
+            ) : (
+              <div className="font-medium text-gray-800 truncate" title={it.label}>{it.label}</div>
+            )}
+            <div className="text-xs text-gray-500 truncate" title={it.key}>{t('admin.keyLabel', 'Key')}: {it.key}</div>
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {isEditingThisItem ? (
+              <>
+                <button className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50" onClick={saveEdit} disabled={isSaving}>{t('common.save')}</button>
+                <button className="px-2 py-1 bg-gray-200 rounded text-xs hover:bg-gray-300 disabled:opacity-50" onClick={cancelEdit} disabled={isSaving}>{t('common.cancel')}</button>
+              </>
+            ) : (
+              <>
+                <button className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-xs hover:bg-yellow-200 disabled:opacity-50" onClick={() => startEdit(idx)} disabled={isSaving}>{t('common.edit')}</button>
+                <button className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200 disabled:opacity-50" onClick={() => handleRemove(idx)} disabled={isSaving}>{t('common.remove')}</button>
+              </>
+            )}
+          </div>
+        </li>
+      );
+    }
+
     // --- Regular String List Item ---
     return (
       <li key={String(it) + idx} className="flex items-center justify-between gap-2 bg-gray-50 p-2 rounded text-sm">
@@ -1534,6 +1730,7 @@ function OptionsEditorModal({
       case 'priorities': return t('admin.priorities');
       case 'statuses': return t('admin.statuses');
       case 'members': return t('admin.tabMembers');
+      case 'checkers': return t('admin.checkers', 'Checkers'); // <-- NEW
       default: return tabKey;
     }
   }
@@ -1555,6 +1752,7 @@ function OptionsEditorModal({
             <nav className="flex flex-col gap-1">
               <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'categories' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('categories')}>{t('admin.categories')} (Handovers)</button>
               <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'statuses' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('statuses')}>{t('admin.statuses')} (Handovers)</button>
+              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'checkers' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('checkers')}>{t('admin.checkers', 'Checkers')}</button> {/* <-- NEW */}
               <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'types' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('types')}>{t('admin.types')}</button>
               <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'priorities' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('priorities')}>{t('admin.priorities')}</button>
               <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'members' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('members')}>{t('admin.tabMembers')}</button>
@@ -1570,10 +1768,15 @@ function OptionsEditorModal({
                 className="flex items-center gap-2"
                 onSubmit={(e) => { e.preventDefault(); handleAdd(); }}
               >
+                {/* --- NEW: Dynamic Placeholder --- */}
                 <input
                   value={newValue}
                   onChange={(e) => setNewValue(e.target.value)}
-                  placeholder={tab === 'members' ? t('admin.memberPlaceholder', 'uid|label (or uid)') : t('admin.newOptionValue', 'New value')}
+                  placeholder={
+                    tab === 'members' ? t('admin.memberPlaceholder', 'uid|label (or uid)') :
+                    tab === 'checkers' ? t('admin.checkerPlaceholder', 'key|Label') :
+                    t('admin.newOptionValue', 'New value')
+                  }
                   className="border px-2 py-1 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 flex-grow"
                   disabled={isSaving}
                 />
