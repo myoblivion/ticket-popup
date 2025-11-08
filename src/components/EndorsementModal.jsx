@@ -709,16 +709,18 @@ const HandoversSection = ({ teamId }) => {
   ], [t]);
 
   // --- MODIFIED: Checker headers are now dynamic ---
+  // --- FIX: This block is now corrected ---
   const checkerHeaders = useMemo(() => {
     if (!checkerList || checkerList.length === 0) {
       return [];
     }
-    // Try to translate, but fall back to the label from the DB
+    // --- FIX: Use the label directly from the checkerList state.
+    // The label is now user-editable and should not be translated.
     return checkerList.map(checker => ({
       key: checker.key,
-      label: t(`handovers.${checker.key}`, checker.label)
+      label: checker.label // <-- This was the bug. It now correctly uses the label from state.
     }));
-  }, [checkerList, t]);
+  }, [checkerList]); // <-- Removed 't' from dependency array, as it's no longer needed here.
 
   // --- NEW: Memoized list of checker keys for renderCellContent ---
   const checkerKeys = useMemo(() => checkerList.map(c => c.key), [checkerList]);
