@@ -72,6 +72,14 @@ const HandoversIcon = () => (
   </svg>
 );
 
+// --- NEW: Trash Icon ---
+const TrashIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+  </svg>
+);
+
+
 // --- Utility: formatDate ---
 const formatDate = (value, { dateOnly = false, fallback = '' } = {}) => {
   if (!value) return fallback;
@@ -187,8 +195,8 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
   );
 };
 
-// ---------- MembersSection (ADDED LANGUAGE HOOK) ----------
-const MembersSection = ({ membersDetails, teamData, canManageMembers, onChangeRole, onInviteClick }) => {
+// ---------- MembersSection (MODIFIED: Added onRemoveMember prop and button) ----------
+const MembersSection = ({ membersDetails, teamData, canManageMembers, onChangeRole, onInviteClick, onRemoveMember }) => {
   const { t } = useContext(LanguageContext); // --- ADDED ---
 
   return (
@@ -217,10 +225,22 @@ const MembersSection = ({ membersDetails, teamData, canManageMembers, onChangeRo
                 {canManageMembers ? (
                   <div className="flex items-center gap-2">
                     {isCreator ? ( <div className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded border border-yellow-200">{t('admin.creator')}</div> ) : (
-                      <select value={roleRaw} onChange={(e) => onChangeRole(uid, e.target.value)} className="text-xs border border-gray-300 rounded px-2 py-1 bg-white hover:border-gray-400" title={t('admin.changeRole')}>
-                        <option value="admin">{t('admin.admin')}</option>
-                        <option value="member">{t('common.member')}</option>
-                      </select>
+                      // --- MODIFIED: Wrapped select and button in fragment ---
+                      <>
+                        <select value={roleRaw} onChange={(e) => onChangeRole(uid, e.target.value)} className="text-xs border border-gray-300 rounded px-2 py-1 bg-white hover:border-gray-400" title={t('admin.changeRole')}>
+                          <option value="admin">{t('admin.admin')}</option>
+                          <option value="member">{t('common.member')}</option>
+                        </select>
+                        {/* --- NEW: Remove Member Button --- */}
+                        <button
+                          onClick={() => onRemoveMember(uid)}
+                          className="p-1.5 text-red-600 hover:bg-red-100 rounded-md"
+                          title={t('common.remove')}
+                        >
+                          <TrashIcon />
+                        </button>
+                      </>
+                      // --- END MODIFICATION ---
                     )}
                   </div>
                 ) : null}
@@ -233,13 +253,14 @@ const MembersSection = ({ membersDetails, teamData, canManageMembers, onChangeRo
   );
 };
 
+
 // ---------- UserManagementSection (ADDED LANGUAGE HOOK) ----------
 const UserManagementSection = ({ allUsers, allTeams, loadingUsers, errorUsers, onLoadMoreUsers, hasMoreUsers, onToggleCompact, usersViewCompact }) => {
   const { t } = useContext(LanguageContext); // --- ADDED ---
 
   const findTeamsForUser = useCallback((userId) => {
     return allTeams.filter(team => team.members?.includes(userId))
-            .map(team => ({ id: team.id, teamName: team.teamName || `Team ${team.id}` }));
+      .map(team => ({ id: team.id, teamName: team.teamName || `Team ${team.id}` }));
   }, [allTeams]);
 
   return (
@@ -888,6 +909,55 @@ export default function MasterAdminDashboard() {
     }
   };
 
+  // --------- NEW: Remove member from team ----------
+  const handleRemoveMember = async (memberUid) => {
+    if (!teamData || !teamData.id || !memberUid) return;
+
+    if (teamData.createdBy === memberUid) {
+      alert(t('admin.cannotRemoveCreator', 'Cannot remove the team creator.')); // Added fallback
+      return;
+    }
+
+    // Using existing confirmation key
+    if (!window.confirm(t('common.confirmDelete', 'Are you sure you want to delete this?'))) {
+      return;
+    }
+
+    try {
+      const teamDocRef = doc(db, 'teams', teamData.id);
+
+      // Create new arrays/objects by filtering/deleting
+      const newMembers = (teamData.members || []).filter(uid => uid !== memberUid);
+      
+      const newRoles = { ...(teamData.roles || {}) };
+      delete newRoles[memberUid];
+      
+      const newPermissions = { ...(teamData.permissions || {}) };
+      delete newPermissions[memberUid];
+
+      // Update Firestore
+      await updateDoc(teamDocRef, {
+        members: newMembers,
+        roles: newRoles,
+        permissions: newPermissions
+      });
+
+      // Update local state immediately for UI responsiveness
+      setTeamData(prev => ({
+        ...prev,
+        members: newMembers,
+        roles: newRoles,
+        permissions: newPermissions
+      }));
+      setMembersDetails(prev => prev.filter(m => m.uid !== memberUid));
+
+    } catch (err) {
+      console.error('Failed to remove member:', err);
+      alert(t('admin.removeMemberError', 'Failed to remove member. Please try again.')); // Added fallback
+    }
+  };
+
+
   // --------- Handlers for selecting and viewing a team ----------
   const handleViewTeam = (team) => { setSelectedTeam(team); setActiveTab('projects'); };
   useEffect(() => {
@@ -1095,7 +1165,9 @@ export default function MasterAdminDashboard() {
                           </div>
                         )}
                         
-                        {activeTab === 'members' && ( <div className="p-4 sm:p-6 lg:p-8"><MembersSection membersDetails={membersDetails} teamData={teamData} canManageMembers={true} onChangeRole={changeRole} onInviteClick={() => setIsInviteModalOpen(true)} /></div> )}
+                        {/* --- MODIFIED: Passed onRemoveMember prop --- */}
+                        {activeTab === 'members' && ( <div className="p-4 sm:p-6 lg:p-8"><MembersSection membersDetails={membersDetails} teamData={teamData} canManageMembers={true} onChangeRole={changeRole} onInviteClick={() => setIsInviteModalOpen(true)} onRemoveMember={handleRemoveMember} /></div> )}
+                        
                         {activeTab === 'updates' && ( <div className="p-4 sm:p-6 lg:p-8"><AnnouncementsSection teamId={selectedTeam.id} refreshTrigger={announcementRefreshKey} isAdmin={true} onEdit={openEditModal}/></div> )}
 
                         {/* --- NEW: Handovers tab content (uses imported HandoversSection component) --- */}

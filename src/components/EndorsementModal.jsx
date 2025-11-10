@@ -1086,7 +1086,8 @@ const HandoversSection = ({ teamId }) => {
                       rowSpan={2}
                       className="p-3 text-left font-medium border-b border-r"
                       style={{ 
-                        width: isAllExpanded ? 'auto' : (header.key === 'content' ? '300px' : (header.key === 'number' ? '80px' : '120px')), // <-- Sized 'number'
+                        // --- MODIFICATION: Increased content width ---
+                        width: isAllExpanded ? 'auto' : (header.key === 'content' ? '450px' : (header.key === 'number' ? '80px' : '120px')), 
                         whiteSpace: isAllExpanded ? 'normal' : 'nowrap'
                       }}
                     >
@@ -1158,7 +1159,8 @@ const HandoversSection = ({ teamId }) => {
                               // Cursors
                               !isEditingThisCell && isEditable ? 'cursor-text' : '',
                               // Widths
-                              !isAllExpanded && header.key === 'content' ? 'w-[300px]' : '',
+                              // --- MODIFICATION: Increased content width ---
+                              !isAllExpanded && header.key === 'content' ? 'w-[450px]' : '',
                               !isAllExpanded && header.key === 'remarks' ? 'w-[200px]' : '',
                               !isAllExpanded && header.key === 'status' ? 'w-[130px]' : '',
                               !isAllExpanded && header.key === 'actions' ? 'w-[80px]' : '',
@@ -1170,8 +1172,9 @@ const HandoversSection = ({ teamId }) => {
                               isEditingThisCell ? 'p-0' : ''
                             ].filter(Boolean).join(' ')}
                             style={{
+                              // --- MODIFICATION: Increased content width ---
                               maxWidth: !isAllExpanded ? 
-                                (header.key === 'content' ? '300px' : 
+                                (header.key === 'content' ? '450px' : 
                                 (header.key === 'remarks' ? '200px' : 
                                 (header.key === 'status' ? '130px' : 
                                 // --- MODIFIED: Dynamic checker width ---
@@ -1752,8 +1755,8 @@ function OptionsEditorModal({
           {/* Sidebar Navigation */}
           <div className="w-44 bg-gray-50 p-3 rounded flex-shrink-0 overflow-y-auto">
             <nav className="flex flex-col gap-1">
-              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'categories' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('categories')}>{t('admin.categories')} (Handovers)</button>
-              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'statuses' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('statuses')}>{t('admin.statuses')} (Handovers)</button>
+              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'categories' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('categories')}>{t('admin.categories')} (Endorsement)</button>
+              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'statuses' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('statuses')}>{t('admin.statuses')} (Endorsement)</button>
               <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'checkers' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('checkers')}>{t('admin.checkers', 'Checkers')}</button> {/* <-- NEW */}
               <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'types' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('types')}>{t('admin.types')}</button>
               <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'priorities' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('priorities')}>{t('admin.priorities')}</button>
