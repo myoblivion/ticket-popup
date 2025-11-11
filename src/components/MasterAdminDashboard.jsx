@@ -254,13 +254,20 @@ const MembersSection = ({ membersDetails, teamData, canManageMembers, onChangeRo
 };
 
 
-// ---------- UserManagementSection (ADDED LANGUAGE HOOK) ----------
-const UserManagementSection = ({ allUsers, allTeams, loadingUsers, errorUsers, onLoadMoreUsers, hasMoreUsers, onToggleCompact, usersViewCompact }) => {
+// ---------- UserManagementSection (MODIFIED: Added onDeleteUser prop and button) ----------
+const UserManagementSection = ({ allUsers, allTeams, loadingUsers, errorUsers, onLoadMoreUsers, hasMoreUsers, onToggleCompact, usersViewCompact, onDeleteUser }) => {
   const { t } = useContext(LanguageContext); // --- ADDED ---
 
   const findTeamsForUser = useCallback((userId) => {
-    return allTeams.filter(team => team.members?.includes(userId))
-      .map(team => ({ id: team.id, teamName: team.teamName || `Team ${team.id}` }));
+    return allTeams.filter(team => {
+      // Handle both string array and object array for members
+      return team.members?.some(member => {
+        if (typeof member === 'string') return member === userId;
+        if (typeof member === 'object' && member.uid) return member.uid === userId;
+        return false;
+      });
+    })
+    .map(team => ({ id: team.id, teamName: team.teamName || `Team ${team.id}` }));
   }, [allTeams]);
 
   return (
@@ -315,6 +322,18 @@ const UserManagementSection = ({ allUsers, allTeams, loadingUsers, errorUsers, o
                             <span key={t.id} className="inline-block text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">{t.teamName}</span>
                           )) : (<span className="text-xs italic text-gray-500">{t('admin.noTeams')}</span>)}
                         </div>
+                        
+                        {/* --- NEW DELETE USER BUTTON (COMPACT) --- */}
+                        {!isAdmin && (
+                          <button
+                            onClick={() => onDeleteUser(user.uid, user.email)}
+                            className="p-1.5 text-red-600 hover:bg-red-100 rounded-md"
+                            title={t('common.delete')}
+                          >
+                            <TrashIcon />
+                          </button>
+                        )}
+                        {/* --- END NEW BUTTON --- */}
                       </div>
                     </div>
                   );
@@ -342,6 +361,18 @@ const UserManagementSection = ({ allUsers, allTeams, loadingUsers, errorUsers, o
                           {userTeams.map(team => ( <span key={team.id} className="inline-block bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs font-medium" title={team.teamName}>{team.teamName}</span> ))}
                         </div>
                       ) : ( <p className="italic text-gray-500">{t('admin.notInTeams')}</p> )}
+                      
+                      {/* --- NEW DELETE USER BUTTON (GRID) --- */}
+                      {!isAdmin && (
+                        <button
+                          onClick={() => onDeleteUser(user.uid, user.email)}
+                          className="inline-flex items-center gap-1 mt-3 text-xs px-2 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200"
+                          title={t('common.delete')}
+                        >
+                          <TrashIcon /> {t('common.delete')}
+                        </button>
+                      )}
+                      {/* --- END NEW BUTTON --- */}
                     </div>
                   </div>
                 );
@@ -957,6 +988,44 @@ export default function MasterAdminDashboard() {
     }
   };
 
+  // --------- NEW: Delete User (from /users collection) ----------
+  const handleDeleteUser = async (userId, userEmail) => {
+    if (!userId) return;
+
+    // Stronger confirmation for a destructive action
+    const confirmMsg = t(
+      'admin.confirmDeleteUser', 
+      `Are you sure you want to permanently delete the user document for "${userEmail || userId}"? This action CANNOT be undone and only deletes their database record, not their login account.`,
+      { email: userEmail || userId } // Pass email for interpolation
+    );
+
+    if (!window.confirm(confirmMsg)) {
+      return;
+    }
+
+    try {
+      const userDocRef = doc(db, 'users', userId);
+      await deleteDoc(userDocRef);
+
+      // Update local state immediately
+      setAllUsers(prev => prev.filter(u => u.uid !== userId));
+      
+      // Also, if this user was in the currently viewed team, refresh that list
+      if (selectedTeam && membersDetails.some(m => m.uid === userId)) {
+        setMembersDetails(prev => prev.filter(m => m.uid !== userId));
+        // Note: This only updates the local view. The user might still be in the
+        // team's 'members' array in Firestore. A full solution would
+        // require a Cloud Function to remove them from all teams.
+      }
+      
+      alert(t('admin.deleteUserSuccess', 'User document deleted successfully. Note: Their Auth account (login) may still exist.'));
+
+    } catch (err) {
+      console.error('Failed to delete user document:', err);
+      alert(t('admin.deleteUserError', 'Failed to delete user document. Please try again.'));
+    }
+  };
+
 
   // --------- Handlers for selecting and viewing a team ----------
   const handleViewTeam = (team) => { setSelectedTeam(team); setActiveTab('projects'); };
@@ -1116,6 +1185,7 @@ export default function MasterAdminDashboard() {
                     hasMoreUsers={usersHasMore}
                     onToggleCompact={() => setUsersViewCompact(v => !v)}
                     usersViewCompact={usersViewCompact}
+                    onDeleteUser={handleDeleteUser}
                   />
                 </div>
               </div>
