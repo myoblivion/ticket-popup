@@ -61,11 +61,18 @@ function App() {
             {/* Routes rendered INSIDE MainLayout via <Outlet /> */}
             <Route path="/home" element={<HomePage />} />
             <Route path="/admin-dashboard" element={<MasterAdminDashboard />} />
+            
+            {/* --- MODIFIED ROUTES --- */}
+            <Route path="/team/:teamId/task/:taskId" element={<TeamView />} />
+            {/* --- NEW HANDOVER ROUTE --- */}
+            <Route path="/team/:teamId/handover/:handoverId" element={<TeamView />} />
             <Route path="/team/:teamId" element={<TeamView />} />
+            {/* --- END MODIFICATION --- */}
+            
             <Route path="/settings" element={<SettingsPage />} />
 
             {/* Default route for logged-in users */}
-            <Route path="/" element={<Navigate to="/home" replace />} />
+            <Route path="/" element={<Navigate to="/" replace />} />
 
           </Route> {/* End of Protected Routes group */}
 

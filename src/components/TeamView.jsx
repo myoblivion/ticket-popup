@@ -751,6 +751,9 @@ const TeamView = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
 
+  // --- NEW: State for Master Admin status ---
+  const [isMasterAdmin, setIsMasterAdmin] = useState(false);
+
   // --- DYNAMICALLY SET MOMENT LOCALE ---
   useEffect(() => {
     moment.locale(language);
@@ -773,9 +776,10 @@ const TeamView = () => {
     noEventsInRange: t('calendar.noEventsInRange', 'There are no events in this range.'),
   }), [t]);
 
+  // --- MODIFIED: isAdmin check now includes isMasterAdmin ---
   const isTeamCreator = teamData?.createdBy === currentUser?.uid;
   const currentUserRole = teamData?.roles?.[currentUser?.uid] || 'member';
-  const isAdmin = currentUserRole === 'admin' || isTeamCreator;
+  const isAdmin = isTeamCreator || currentUserRole === 'admin' || isMasterAdmin;
 
   const refreshAnnouncements = useCallback(() => { setAnnouncementRefreshKey(k => k + 1); }, []);
 
@@ -787,35 +791,57 @@ const TeamView = () => {
     return unsub;
   }, [navigate, teamId]);
 
+  // --- MODIFIED: fetchTeamAndMembers now checks user role ---
   const fetchTeamAndMembers = useCallback(async () => {
     if (!teamId) { setError("No team ID provided."); setIsLoading(false); return; }
     if (!currentUser) { console.log("User not available yet, waiting..."); return; }
 
     setIsLoading(true); setError(null); setTeamData(null); setMembersDetails([]); setIsAuthorized(false);
+    setIsMasterAdmin(false); // Reset master admin state on each fetch
 
     try {
+      // Fetch team and user data in parallel
       const teamDocRef = doc(db, "teams", teamId);
-      const teamDocSnap = await getDoc(teamDocRef);
+      const userDocRef = doc(db, "users", currentUser.uid); // Get current user's doc
 
-      if (!teamDocSnap.exists()) { setError("Team not found."); setIsLoading(false); return; }
+      const [teamDocSnap, userDocSnap] = await Promise.all([
+        getDoc(teamDocRef),
+        getDoc(userDocRef)
+      ]);
+
+      if (!teamDocSnap.exists()) { 
+        setError(t('team.notFound', 'Team not found.')); // Use translation
+        setIsLoading(false); 
+        return; 
+      }
+
+      // Check if user is Master Admin
+      const masterAdminCheck = userDocSnap.exists() && userDocSnap.data().role === 'Master Admin';
+      if (masterAdminCheck) {
+        setIsMasterAdmin(true); // Set state for 'isAdmin' check
+      }
 
       const fetchedTeamData = teamDocSnap.data();
       const memberUIDs = fetchedTeamData.members || [];
       const isMember = memberUIDs.some(member =>
         (typeof member === 'object' && member.uid === currentUser.uid) ||
-        (typeof member ==='string' && member === currentUser.uid)
+        (typeof member === 'string' && member === currentUser.uid)
       );
 
-      if (!isMember) {
-        console.warn("Access Denied: User not a member.");
-        navigate('/home', { replace: true });
+      // Allow access if user is a member OR a Master Admin
+      if (!isMember && !masterAdminCheck) { 
+        console.warn("Access Denied: User not a member."); 
+        setError(t('team.accessDenied', 'Access Denied: You are not a member of this team.'));
         setIsLoading(false);
+        // We no longer navigate away, just show the error
         return;
       }
 
+      // If we are here, user is authorized
       setIsAuthorized(true);
       setTeamData({ id: teamDocSnap.id, ...fetchedTeamData });
 
+      // Proceed to fetch member details for the member list
       const allMemberUIDs = memberUIDs.map(m => typeof m === 'object' ? m.uid : m);
       const uniqueMemberUIDs = [...new Set(allMemberUIDs)];
 
@@ -835,11 +861,11 @@ const TeamView = () => {
       }
     } catch (err) {
       console.error("Error fetching team/members:", err);
-      setError("Failed to load team data. Please check permissions or network.");
+      setError(t('team.loadError', 'Failed to load team data. Please check permissions or network.'));
     } finally {
       setIsLoading(false);
     }
-  }, [teamId, currentUser, navigate, t]);
+  }, [teamId, currentUser, t]); // Removed 'navigate' from deps as it's not used for redirect here
 
   useEffect(() => { fetchTeamAndMembers(); }, [fetchTeamAndMembers, announcementRefreshKey]);
 
@@ -931,6 +957,7 @@ const TeamView = () => {
                   <TeamProjectTable
                     teamId={teamId}
                     onTaskChange={refreshAnnouncements}
+                    isMasterAdminView={isMasterAdmin} 
                   />
                 </div>
               </div>

@@ -1223,7 +1223,14 @@ export default function MasterAdminDashboard() {
                     {isLoadingDetails && ( <div className="p-6 flex justify-center"><Spinner /></div> )}
                     {!isLoadingDetails && teamData && (
                       <>
-                        {activeTab === 'projects' && ( <TeamProjectTable teamId={selectedTeam.id} onTaskChange={refreshAnnouncements} /> )}
+                        {/* --- MODIFICATION: Added isMasterAdminView prop --- */}
+                        {activeTab === 'projects' && ( 
+                          <TeamProjectTable 
+                            teamId={selectedTeam.id} 
+                            onTaskChange={refreshAnnouncements} 
+                            isMasterAdminView={true} 
+                          /> 
+                        )}
                         
                         {activeTab === 'calendar' && (
                           <div className="bg-white rounded-lg shadow-sm border-t-0 overflow-hidden p-4">
@@ -1235,7 +1242,6 @@ export default function MasterAdminDashboard() {
                           </div>
                         )}
                         
-                        {/* --- MODIFIED: Passed onRemoveMember prop --- */}
                         {activeTab === 'members' && ( <div className="p-4 sm:p-6 lg:p-8"><MembersSection membersDetails={membersDetails} teamData={teamData} canManageMembers={true} onChangeRole={changeRole} onInviteClick={() => setIsInviteModalOpen(true)} onRemoveMember={handleRemoveMember} /></div> )}
                         
                         {activeTab === 'updates' && ( <div className="p-4 sm:p-6 lg:p-8"><AnnouncementsSection teamId={selectedTeam.id} refreshTrigger={announcementRefreshKey} isAdmin={true} onEdit={openEditModal}/></div> )}

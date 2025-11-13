@@ -1,7 +1,7 @@
 // src/components/EndorsementModal.jsx
 
 import React, { useState, useEffect, useCallback, useContext, useMemo, useRef } from 'react';
-
+import { useParams, useNavigate } from 'react-router-dom'; // <-- NEW IMPORTS
 import { db, auth } from '../firebaseConfig'; // <-- Added auth
 
 import {
@@ -96,6 +96,12 @@ const formatDate = (value, { fallback = '' } = {}) => {
 // --- THIS IS THE HANDOVER SECTION COMPONENT ---
 const HandoversSection = ({ teamId }) => {
   const { t } = useContext(LanguageContext);
+  
+  // --- NEW: React Router Hooks ---
+  const { handoverId } = useParams(); // <-- NEW: Gets :handoverId from the URL
+  const navigate = useNavigate(); // <-- NEW: Gets the navigate function
+  const baseTitleRef = useRef(document.title); // <-- NEW: Add this ref
+
   const [handovers, setHandovers] = useState([]);
   const [isLoading, setIsLoading] = useState(true); // Start as true
   const [error, setError] = useState(null);
@@ -276,6 +282,29 @@ const HandoversSection = ({ teamId }) => {
 
     return () => unsubscribe(); // Unsubscribe on unmount
   }, [teamId, t]);
+
+  // --- NEW: This effect opens the popup if a handoverId is present in the URL ---
+  useEffect(() => {
+    // Also wait for handovers to load before trying to find one
+    if (handoverId && handovers.length > 0) { 
+      const handoverToOpen = handovers.find(h => h.id === handoverId);
+      if (handoverToOpen) {
+        // We assume the popup is always for the 'details' column
+        setSelectedHandover(handoverToOpen);
+        setIsDetailsModalOpen(true);
+        document.title = `Handover ${handoverId}`;
+      } else {
+        // Handover ID in URL doesn't exist, clear it
+        console.warn(`Handover with ID ${handoverId} not found.`);
+        navigate(`/team/${teamId}`, { replace: true });
+      }
+    } else if (!handoverId) {
+      // If no handoverId, ensure popup is closed
+      setIsDetailsModalOpen(false);
+      setSelectedHandover(null);
+      document.title = baseTitleRef.current; // Restore original title
+    }
+  }, [handoverId, handovers, teamId, navigate]); // Run when ID or data changes
 
 
   // --- Split handovers into Active and Approved ---
@@ -580,14 +609,29 @@ const HandoversSection = ({ teamId }) => {
     setIsAddModalOpen(false); // onSnapshot handles the data refresh
   };
 
+  // --- MODIFIED: openDetailsModal ---
   const openDetailsModal = (item) => {
+    // --- NEW: Use React Router's navigate ---
+    const modalUrl = `/team/${teamId}/handover/${item.id}`; // <-- NEW URL
+    const modalTitle = `Handover ${item.id} - details`;
+
+    // Use navigate to change URL
+    navigate(modalUrl); 
+    document.title = modalTitle;
+
+    // Set React state to show the modal
     setSelectedHandover(item);
     setIsDetailsModalOpen(true);
   };
 
+  // --- MODIFIED: closeDetailsModal ---
   const closeDetailsModal = () => {
     setIsDetailsModalOpen(false);
     setSelectedHandover(null);
+    document.title = baseTitleRef.current;
+  
+    // Navigate to the base team URL, replacing the history entry
+    navigate(`/team/${teamId}`, { replace: true }); 
   };
   
   // --- Persistence functions for OptionsEditorModal (Original) ---
