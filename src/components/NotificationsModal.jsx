@@ -27,10 +27,28 @@ const NotificationsModal = ({ isOpen, onClose }) => {
   const [notifications, setNotifications] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState(auth.currentUser);
+  const [userTeams, setUserTeams] = useState([]);
 
   useEffect(() => {
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
+      if (user) {
+        try {
+          const userDocRef = doc(db, 'users', user.uid);
+          const userDocSnap = await getDoc(userDocRef);
+          if (userDocSnap.exists()) {
+            setUserTeams(userDocSnap.data().teams || []);
+          } else {
+            console.warn("User document not found, cannot filter team notifications.");
+            setUserTeams([]);
+          }
+        } catch (error) {
+          console.error("Error fetching user's team data:", error);
+          setUserTeams([]);
+        }
+      } else {
+        setUserTeams([]);
+      }
     });
     return () => unsubAuth();
   }, []);
@@ -52,10 +70,18 @@ const NotificationsModal = ({ isOpen, onClose }) => {
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const notifs = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
+        const notifs = snapshot.docs
+          .map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          }))
+          .filter(notif => {
+            if (notif.type === 'INVITATION') {
+              return true; 
+            }
+            return userTeams.includes(notif.teamId);
+          });
+          
         setNotifications(notifs);
         setIsLoading(false);
       },
@@ -66,24 +92,21 @@ const NotificationsModal = ({ isOpen, onClose }) => {
     );
 
     return () => unsubscribe();
-  }, [isOpen, currentUser]);
+  }, [isOpen, currentUser, userTeams]);
 
   const handleAcceptInvite = async (notification) => {
     if (!currentUser) return;
     try {
-      // 1. Add user to the team's members array
       const teamRef = doc(db, 'teams', notification.teamId);
       await updateDoc(teamRef, {
         members: arrayUnion(currentUser.uid),
       });
 
-      // 2. (Optional but good) Add team to user's profile
       const userRef = doc(db, 'users', currentUser.uid);
       await updateDoc(userRef, {
         teams: arrayUnion(notification.teamId),
       });
       
-      // 3. Delete the notification
       await deleteDoc(doc(db, 'notifications', notification.id));
 
     } catch (error) {
@@ -109,6 +132,12 @@ const NotificationsModal = ({ isOpen, onClose }) => {
     }
   };
 
+  const handleMarkAsReadOnHover = (notification) => {
+    if (!notification.isRead) {
+      markAsRead(notification.id);
+    }
+  };
+
   const markAllAsRead = async () => {
     if (!currentUser) return;
     const batch = writeBatch(db);
@@ -128,24 +157,36 @@ const NotificationsModal = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-start justify-end z-50 p-4 pt-20">
+    // --- FIX: Backdrop for clicking outside ---
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-60 z-50"
+      onClick={onClose}
+    >
       <div
-        className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[80vh] flex flex-col"
+        // --- FIX: Absolute positioning below header ---
+        className="absolute top-20 right-8 bg-white rounded-lg shadow-xl w-full max-w-md max-h-[calc(100vh-120px)] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-between items-center p-4 border-b">
+        {/* --- Header (sticky) --- */}
+        <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
           <h3 className="text-xl font-semibold text-gray-800">Notifications</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-3xl">&times;</button>
         </div>
-        {isLoading ? (
-          <Spinner />
-        ) : notifications.length === 0 ? (
-          <p className="text-gray-500 text-center p-10">You have no notifications.</p>
-        ) : (
-          <div className="flex-1 overflow-y-auto">
+
+        {/* --- FIX: Content wrapper that scrolls --- */}
+        <div className="flex-1 overflow-y-auto">
+          {isLoading ? (
+            <Spinner />
+          ) : notifications.length === 0 ? (
+            <p className="text-gray-500 text-center p-10">You have no notifications.</p>
+          ) : (
             <ul className="divide-y divide-gray-200">
               {notifications.map((notif) => (
-                <li key={notif.id} className={`p-4 ${!notif.isRead ? 'bg-blue-50' : 'bg-white'}`}>
+                <li 
+                  key={notif.id} 
+                  className={`p-4 ${!notif.isRead ? 'bg-blue-50' : 'bg-white'}`}
+                  onMouseEnter={() => handleMarkAsReadOnHover(notif)}
+                >
                   {notif.type === 'INVITATION' && (
                     <>
                       <p className="text-sm">
@@ -189,10 +230,12 @@ const NotificationsModal = ({ isOpen, onClose }) => {
                 </li>
               ))}
             </ul>
-          </div>
-        )}
+          )}
+        </div>
+
+        {/* --- Footer (sticky) --- */}
         {notifications.length > 0 && (
-            <div className="p-2 border-t text-center">
+            <div className="p-2 border-t text-center flex-shrink-0">
                 <button 
                     onClick={markAllAsRead} 
                     className="text-sm text-blue-600 hover:underline"
