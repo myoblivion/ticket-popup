@@ -1,16 +1,60 @@
 // NotePopup.jsx
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { db, storage } from '../firebaseConfig';
-import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import React, { useState, useEffect, useRef, useCallback, useContext } from 'react';
+import { db, storage, auth } from '../firebaseConfig';
+import {
+  doc,
+  getDoc,
+  updateDoc,
+  arrayUnion,
+  collection,
+  query,
+  orderBy,
+  onSnapshot,
+  addDoc,
+  serverTimestamp
+} from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import './NotePopup.css';
+import { LanguageContext } from '../contexts/LanguageContext';
+
+/* ---------- Icons ---------- */
+const PaperClipIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.414a4 4 0 00-5.656-5.656l-6.415 6.415a6 6 0 108.486 8.486L20.5 13" />
+  </svg>
+);
+const ChatBubbleIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+  </svg>
+);
+const XIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+  </svg>
+);
+const DownloadIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+  </svg>
+);
+const TrashIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+  </svg>
+);
 
 /* ---------- Small spinners ---------- */
 const Spinner = () => <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>;
 const MiniSpinner = () => <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>;
 
 /* ---------- ModalShell (overlay & scroll lock) ---------- */
-const ModalShell = ({ children, onClose, width = 1000, maxWidth = '90vw', maxHeight = '90vh' }) => {
+const ModalShell = ({ children, onClose }) => {
+  // Set a larger default size
+  const width = 1200;
+  const maxWidth = '95vw';
+  const maxHeight = '90vh';
+
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -20,49 +64,49 @@ const ModalShell = ({ children, onClose, width = 1000, maxWidth = '90vw', maxHei
   }, [onClose]);
 
   return (
-    <div aria-modal="true" role="dialog" style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)' }} />
-      <div style={{ position: 'relative', zIndex: 1001, width, maxWidth, maxHeight, height: '80vh' }}>{children}</div>
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black/60" onClick={onClose} />
+      <div 
+        className="relative z-[1001] bg-white rounded-lg shadow-2xl flex flex-col overflow-hidden"
+        style={{ width: `${width}px`, maxWidth, maxHeight, height: '85vh' }}
+      >
+        {children}
+      </div>
     </div>
   );
 };
 
 /* ---------- Editor toolbar ---------- */
 const EditorToolbar = ({ onFormat, onInsertLink, showLinkInput, linkUrl, setLinkUrl, onApplyLink, onCancelLink }) => {
-  const btn = { padding: '4px 8px', border: '1px solid #ccc', borderRadius: 4, cursor: 'pointer', minWidth: 30, background: 'white' };
-  const select = { padding: 4, border: '1px solid #ccc', borderRadius: 4, background: 'white' };
-  const colorInputStyle = { padding: 0, border: 'none', width: 30, height: 30, cursor: 'pointer', background: 'transparent' };
-  const linkInputStyle = { border: '1px solid #9ca3af', borderRadius: 4, padding: '4px 6px', fontSize: '0.875rem', outline: 'none' };
+  const btn = "p-1.5 border border-gray-300 rounded cursor-pointer min-w-[30px] bg-white hover:bg-gray-100";
+  const select = "py-1 px-1.5 border border-gray-300 rounded bg-white text-sm";
+  const colorInputStyle = "p-0 border-none w-7 h-7 cursor-pointer bg-transparent";
+  const linkInputStyle = "border border-gray-400 rounded px-2 py-1 text-sm outline-none";
 
   const handleMouseDown = (e, cmd, val = null) => { e.preventDefault(); onFormat(cmd, val); };
   return (
-    <div style={{ display: 'flex', gap: 8, padding: 8, borderBottom: '1px solid #e5e7eb', flexWrap: 'wrap', background: '#f9fafb', position: 'relative' }}>
-      <button onMouseDown={(e) => handleMouseDown(e, 'bold')} style={btn}><b>B</b></button>
-      <button onMouseDown={(e) => handleMouseDown(e, 'italic')} style={btn}><i>I</i></button>
-      <button onMouseDown={(e) => handleMouseDown(e, 'underline')} style={btn}><u>U</u></button>
-      <button onMouseDown={(e) => handleMouseDown(e, 'strikeThrough')} style={btn}><s>S</s></button>
+    <div className="flex gap-2 p-2 border-b border-gray-200 flex-wrap bg-gray-50 relative">
+      <button onMouseDown={(e) => handleMouseDown(e, 'bold')} className={`${btn} font-bold`}>B</button>
+      <button onMouseDown={(e) => handleMouseDown(e, 'italic')} className={`${btn} italic`}>I</button>
+      <button onMouseDown={(e) => handleMouseDown(e, 'underline')} className={`${btn} underline`}>U</button>
+      <button onMouseDown={(e) => handleMouseDown(e, 'strikeThrough')} className={`${btn} line-through`}>S</button>
 
-      {/* *
-        * THE FIX IS HERE: 
-        * I removed onMouseDown={e => e.preventDefault()} from this <select> tag.
-        *
-      */}
-      <select onChange={(e) => onFormat('fontSize', e.target.value)} style={select}>
+      <select onChange={(e) => onFormat('fontSize', e.target.value)} className={select}>
         <option value="3">Normal</option>
         <option value="5">Large</option>
         <option value="1">Small</option>
       </select>
 
-      <input type="color" onInput={(e) => onFormat('foreColor', e.target.value)} style={colorInputStyle} />
+      <input type="color" onInput={(e) => onFormat('foreColor', e.target.value)} className={colorInputStyle} />
 
-      <button onMouseDown={(e) => { e.preventDefault(); onInsertLink(); }} style={btn}>🔗</button>
-      <button onMouseDown={(e) => { e.preventDefault(); onFormat('unlink'); }} style={btn}>Unlink</button>
+      <button onMouseDown={(e) => { e.preventDefault(); onInsertLink(); }} className={btn}>🔗</button>
+      <button onMouseDown={(e) => { e.preventDefault(); onFormat('unlink'); }} className={btn}>Unlink</button>
 
       {showLinkInput && (
-        <div style={{ position: 'absolute', top: '100%', left: 8, background: 'white', border: '1px solid #ccc', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', padding: 8, borderRadius: 6, zIndex: 20, display: 'flex', gap: 8, marginTop: 4 }}>
-          <input id="note-link-input" type="text" style={linkInputStyle} placeholder="https://example.com" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} autoFocus onMouseDown={(e) => e.stopPropagation()} />
-          <button onMouseDown={(e) => { e.preventDefault(); onApplyLink(); }} style={{ ...btn, background: '#3b82f6', color: 'white' }}>Apply</button>
-          <button onMouseDown={(e) => { e.preventDefault(); onCancelLink(); }} style={btn}>Cancel</button>
+        <div className="absolute top-full left-2 bg-white border border-gray-300 shadow-lg p-2 rounded-lg z-20 flex gap-2 mt-1">
+          <input id="note-link-input" type="text" className={linkInputStyle} placeholder="https://example.com" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} autoFocus onMouseDown={(e) => e.stopPropagation()} />
+          <button onMouseDown={(e) => { e.preventDefault(); onApplyLink(); }} className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">Apply</button>
+          <button onMouseDown={(e) => { e.preventDefault(); onCancelLink(); }} className="px-3 py-1 bg-gray-200 text-sm rounded hover:bg-gray-300">Cancel</button>
         </div>
       )}
     </div>
@@ -88,8 +132,130 @@ function unwrapAnchors(node) {
   });
 }
 
+/* ---------- NEW: Comment Section Component ---------- */
+const CommentSection = ({ teamId, taskId }) => {
+  const { t } = useContext(LanguageContext);
+  const [comments, setComments] = useState([]);
+  const [newComment, setNewComment] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const commentsEndRef = useRef(null);
+
+  useEffect(() => {
+    const commentsRef = collection(db, 'teams', teamId, 'tasks', taskId, 'comments');
+    const q = query(commentsRef, orderBy('createdAt', 'asc'));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedComments = [];
+      snapshot.forEach((doc) => {
+        fetchedComments.push({ id: doc.id, ...doc.data() });
+      });
+      setComments(fetchedComments);
+      setIsLoading(false);
+    }, (err) => {
+      console.error("Error fetching comments: ", err);
+      setError(t('comments.loadError'));
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [teamId, taskId, t]);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [comments]);
+
+  const handlePostComment = async (e) => {
+    e.preventDefault();
+    const text = newComment.trim();
+    if (!text || !auth.currentUser) return;
+
+    const { uid, displayName, email } = auth.currentUser;
+    const authorName = displayName || email || 'Anonymous';
+
+    try {
+      setNewComment(''); // Clear input immediately
+      await addDoc(collection(db, 'teams', teamId, 'tasks', taskId, 'comments'), {
+        text: text,
+        authorId: uid,
+        authorName: authorName,
+        createdAt: serverTimestamp()
+      });
+    } catch (err) {
+      console.error("Error posting comment: ", err);
+      setError(t('comments.postError'));
+      setNewComment(text); // Put text back if it failed
+    }
+  };
+  
+  // Simple time formatter
+  const formatCommentTime = (timestamp) => {
+    if (!timestamp) return '...';
+    try {
+      return timestamp.toDate().toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+      });
+    } catch (e) {
+      return '...'; // In case timestamp isn't populated yet
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-gray-50 border-l border-gray-200">
+      <h3 className="text-sm font-semibold p-3 border-b border-gray-200 flex items-center text-gray-700 flex-shrink-0">
+        <ChatBubbleIcon /> {t('comments.title')}
+      </h3>
+      {isLoading && <Spinner />}
+      {error && <div className="text-red-600 p-3 text-sm">{error}</div>}
+      <ul className="list-none p-3 m-0 overflow-y-auto flex-1 space-y-3">
+        {!isLoading && comments.length === 0 && (
+          <li className="text-sm text-gray-500 italic text-center py-4">
+            {t('comments.none')}
+          </li>
+        )}
+        {comments.map(comment => (
+          <li key={comment.id} className="text-sm">
+            <div className="flex justify-between items-center">
+              <span className="font-semibold text-gray-800 text-[13px]">{comment.authorName}</span>
+              <span className="text-xs text-gray-500">{formatCommentTime(comment.createdAt)}</span>
+            </div>
+            <p className="text-gray-700 whitespace-pre-wrap break-words m-0 mt-0.5">
+              {comment.text}
+            </p>
+          </li>
+        ))}
+        <div ref={commentsEndRef} />
+      </ul>
+      <div className="p-3 border-t border-gray-200 bg-white flex-shrink-0">
+        <form onSubmit={handlePostComment}>
+          <textarea
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+            placeholder={t('comments.placeholder')}
+            rows="3"
+            className="w-full border border-gray-300 rounded-md p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+          <button 
+            type="submit" 
+            disabled={!newComment.trim()} 
+            className="w-full p-2 bg-blue-600 text-white rounded-md font-semibold mt-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700"
+          >
+            {t('comments.post')}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+
 /* ---------- Note editor (main) ---------- */
 const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
+  const { t } = useContext(LanguageContext);
   const [saveStatus, setSaveStatus] = useState('loading'); // loading | idle | saving | saved | error
   const [initialHtml, setInitialHtml] = useState(null);
 
@@ -102,7 +268,6 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
   // link UI
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
-  // saved info: { type: 'placeholder', id } | { type: 'caret', range } | { type: 'edit', anchor } | { type: 'none' }
   const linkSelectionRef = useRef(null);
 
   const editorRef = useRef(null);
@@ -564,55 +729,68 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
   /* ---------- small UI helpers ---------- */
   const getStatusMessage = () => {
     switch (saveStatus) {
-      case 'saving': return { msg: 'Saving note...', color: '#6b7280' };
-      case 'saved': return { msg: 'Note saved', color: '#16a34a' };
-      case 'error': return { msg: 'Error saving note', color: '#dc2626' };
+      case 'saving': return { msg: t('common.saving'), color: '#6b7280' };
+      case 'saved': return { msg: t('common.saved'), color: '#16a34a' };
+      case 'error': return { msg: t('common.saveError', 'Error saving note'), color: '#dc2626' }; // Added fallback
       default: return { msg: '', color: '#6b7280' };
     }
   };
   const status = getStatusMessage();
 
-  /* ---------- render ---------- */
+  /* ---------- RENDER ---------- */
   return (
-    <div style={{ width: '100%', height: '100%', background: 'white', borderRadius: 8, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div className="w-full h-full bg-white rounded-lg flex flex-col overflow-hidden">
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e5e7eb', padding: '12px 16px' }}>
-        <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1f2937' }}>Note: <span style={{ fontFamily: 'monospace', color: '#2563eb' }}>{columnKey}</span></h2>
-        <button onClick={onClose} aria-label="Close" style={{ color: '#9ca3af', fontSize: 24, background: 'none', border: 'none', cursor: 'pointer' }}>&times;</button>
+      <div className="flex justify-between items-center border-b border-gray-200 p-4 flex-shrink-0">
+        <h2 className="text-lg font-semibold text-gray-800">
+          Note: <span className="font-mono text-blue-600">{columnKey}</span>
+        </h2>
+        <button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-600">
+          <XIcon />
+        </button>
       </div>
 
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      {/* Main Content Area (3 columns) */}
+      <div className="flex-1 flex overflow-hidden">
         {/* Left file area */}
-        <div style={{ width: 280, borderRight: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', flexDirection: 'column' }}>
-          <h3 style={{ fontSize: 14, fontWeight: 600, padding: '12px 12px 6px 12px' }}>File Attachments</h3>
-          {fileError && <div style={{ color: '#dc2626', padding: '0 12px' }}>{fileError}</div>}
-          <ul style={{ listStyle: 'none', padding: '8px 12px', margin: 0, overflowY: 'auto', flex: 1 }}>
-            {files.length === 0 && <p style={{ color: '#6b7280', fontStyle: 'italic' }}>No files attached.</p>}
+        <div className="w-60 border-r border-gray-200 bg-gray-50 flex flex-col">
+          <h3 className="text-sm font-semibold p-3 border-b border-gray-200 flex items-center text-gray-700 flex-shrink-0">
+            <PaperClipIcon /> {t('attachments.title')}
+          </h3>
+          {fileError && <div className="text-red-600 p-3 text-sm">{fileError}</div>}
+          <ul className="list-none p-3 m-0 overflow-y-auto flex-1 space-y-2">
+            {files.length === 0 && <p className="text-sm text-gray-500 italic">{t('attachments.none')}</p>}
             {files.map(f => (
-              <li key={f.path} style={{ background: 'white', padding: 8, border: '1px solid #e5e7eb', borderRadius: 6, marginBottom: 8 }}>
-                <div style={{ fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.name}>{f.name}</div>
-                <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
-                  <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', fontSize: 13 }}>Download</a>
-                  <button onClick={() => handleFileDelete(f)} disabled={isDeletingFile === f.path} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 13 }}>
-                    {isDeletingFile === f.path ? <MiniSpinner /> : 'Delete'}
+              <li key={f.path} className="bg-white p-2 border border-gray-200 rounded-md">
+                <div className="text-sm font-medium overflow-hidden text-ellipsis whitespace-nowrap text-gray-700" title={f.name}>{f.name}</div>
+                <div className="mt-1.5 flex gap-3">
+                  <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                    <DownloadIcon /> {t('common.download')}
+                  </a>
+                  <button onClick={() => handleFileDelete(f)} disabled={isDeletingFile === f.path} className="text-xs text-red-600 hover:underline flex items-center gap-1 disabled:opacity-50">
+                    {isDeletingFile === f.path ? <MiniSpinner /> : <><TrashIcon /> {t('common.delete')}</>}
                   </button>
                 </div>
               </li>
             ))}
           </ul>
 
-          <div style={{ padding: 12, borderTop: '1px solid #e5e7eb' }}>
-            <input type="file" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileSelected} />
-            <button onClick={handleUploadButtonClick} disabled={!!fileUploadProgress || !!isDeletingFile} style={{ width: '100%', padding: '10px', background: '#3b82f6', color: 'white', borderRadius: 6, border: 'none', fontWeight: 600 }}>
-              {fileUploadProgress ? <MiniSpinner /> : 'Upload File'}
+          <div className="p-3 border-t border-gray-200 flex-shrink-0">
+            <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelected} />
+            <button 
+              onClick={handleUploadButtonClick} 
+              disabled={!!fileUploadProgress || !!isDeletingFile} 
+              className="w-full p-2 bg-blue-600 text-white rounded-md font-semibold text-sm disabled:opacity-50 hover:bg-blue-700 flex items-center justify-center"
+            >
+              {fileUploadProgress ? <MiniSpinner /> : t('attachments.upload')}
             </button>
           </div>
         </div>
 
-        {/* Editor area */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        {/* Editor area (Middle) */}
+        <div className="flex-1 flex flex-col">
           {saveStatus === 'loading' || initialHtml === null ? (
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spinner /></div>
+            <div className="flex-1 flex items-center justify-center"><Spinner /></div>
           ) : (
             <>
               <EditorToolbar
@@ -632,25 +810,34 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
                 onPaste={handlePaste}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => e.preventDefault()}
-                onClick={handleEditorClick} /* <-- MODIFICATION */
-                className="note-editor"   /* <-- MODIFICATION */
+                onClick={handleEditorClick}
+                className="note-editor"
                 tabIndex={0}
                 style={{ flex: 1, padding: 12, overflowY: 'auto', outline: 'none' }}
               />
             </>
           )}
         </div>
+
+        {/* --- NEW: Comment Section Area (Right) --- */}
+        <div className="w-[300px] flex-shrink-0">
+          <CommentSection teamId={teamId} taskId={taskId} />
+        </div>
+        {/* --- END: Comment Section --- */}
+
       </div>
 
       {/* Footer */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e5e7eb', padding: '12px 16px' }}>
-        <div style={{ fontSize: 13 }}>
-          <div style={{ color: status.color, fontWeight: 600 }}>{status.msg}</div>
-          <div style={{ color: '#2563eb', height: 18 }}>{fileUploadProgress}</div>
+      <div className="flex justify-between items-center border-t border-gray-200 p-4 flex-shrink-0">
+        <div className="text-xs">
+          <div style={{ color: status.color }} className="font-semibold h-4">{status.msg}</div>
+          <div className="text-blue-600 h-4">{fileUploadProgress}</div>
         </div>
 
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={onClose} style={{ padding: '8px 12px', background: '#e5e7eb', borderRadius: 6, border: 'none', fontWeight: 600 }}>Close</button>
+        <div className="flex gap-2">
+          <button onClick={onClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md text-sm font-medium hover:bg-gray-300">
+            {t('common.close')}
+          </button>
         </div>
       </div>
     </div>

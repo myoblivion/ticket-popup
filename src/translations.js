@@ -46,6 +46,22 @@ export const translations = {
       clearFilters: 'Clear Filters',
       add: 'Add',
       editNote: 'Edit Note',
+      download: 'Download', // <-- NEW
+    },
+    // --- NEW ATTACHMENTS SECTION ---
+    attachments: {
+      title: 'File Attachments',
+      none: 'No files attached.',
+      upload: 'Upload File'
+    },
+    // --- NEW COMMENTS SECTION ---
+    comments: {
+      title: 'Comments',
+      none: 'No comments yet.',
+      placeholder: 'Write a comment...',
+      post: 'Post',
+      loadError: 'Failed to load comments.',
+      postError: 'Failed to post comment.'
     },
     header: {
       dashboard: 'Dashboard',
@@ -156,7 +172,7 @@ export const translations = {
       itemExistsError: 'This item already exists.',
       invalidTabError: 'Invalid tab selection.',
       memberLabelEmptyError: 'Member label cannot be empty.',
-      confirmDeleteFinalStatus: 'Are you sure you want to remove the final status? This is usually the "Complete" status.',
+      confirmDeleteFinalStatus: 'Are you sure you want to remove the final status? This is usually the "Complete" or "Approved" status.',
       uidLabel: 'UID',
       keyLabel: 'Key', // <-- NEW
       memberPlaceholder: 'uid|label (or uid)',
@@ -328,6 +344,22 @@ export const translations = {
       clearFilters: '필터 지우기',
       add: '추가',
       editNote: '메모 수정',
+      download: '다운로드', // <-- NEW
+    },
+    // --- NEW ATTACHMENTS SECTION ---
+    attachments: {
+      title: '파일 첨부',
+      none: '첨부된 파일이 없습니다.',
+      upload: '파일 업로드'
+    },
+    // --- NEW COMMENTS SECTION ---
+    comments: {
+      title: '댓글',
+      none: '댓글이 없습니다.',
+      placeholder: '댓글 작성...',
+      post: '게시',
+      loadError: '댓글을 불러오지 못했습니다.',
+      postError: '댓글을 게시하지 못했습니다.'
     },
     header: {
       dashboard: '대시보드',
