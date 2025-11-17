@@ -1,4 +1,3 @@
-// NotePopup.jsx
 import React, { useState, useEffect, useRef, useCallback, useContext } from 'react';
 import { db, storage, auth } from '../firebaseConfig';
 import {
@@ -11,9 +10,15 @@ import {
   orderBy,
   onSnapshot,
   addDoc,
-  serverTimestamp
+  serverTimestamp,
+  deleteDoc
 } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
+import {
+  ref,
+  uploadBytesResumable,
+  getDownloadURL,
+  deleteObject
+} from 'firebase/storage';
 import './NotePopup.css';
 import { LanguageContext } from '../contexts/LanguageContext';
 
@@ -43,6 +48,22 @@ const TrashIcon = () => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
   </svg>
 );
+const PencilIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" />
+  </svg>
+);
+const ImageIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l-1.586-1.586a2 2 0 00-2.828 0L6 14m6-6l.01.01" />
+  </svg>
+);
+const DetailsIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+  </svg>
+);
+
 
 /* ---------- Small spinners ---------- */
 const Spinner = () => <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>;
@@ -50,7 +71,6 @@ const MiniSpinner = () => <div className="w-4 h-4 border-2 border-current border
 
 /* ---------- ModalShell (overlay & scroll lock) ---------- */
 const ModalShell = ({ children, onClose }) => {
-  // Set a larger default size
   const width = 1200;
   const maxWidth = '95vw';
   const maxHeight = '90vh';
@@ -66,7 +86,7 @@ const ModalShell = ({ children, onClose }) => {
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/60" onClick={onClose} />
-      <div 
+      <div
         className="relative z-[1001] bg-white rounded-lg shadow-2xl flex flex-col overflow-hidden"
         style={{ width: `${width}px`, maxWidth, maxHeight, height: '85vh' }}
       >
@@ -115,24 +135,74 @@ const EditorToolbar = ({ onFormat, onInsertLink, showLinkInput, linkUrl, setLink
 
 /* ---------- Utility: remove anchors inside a Node (unwrap them) ---------- */
 function unwrapAnchors(node) {
-  // Walk the node tree and replace <a> elements with their children
   const walker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT, {
     acceptNode: (n) => n.nodeName === 'A' ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP
   });
-  // collect anchors first because replacing while walking is problematic
   const anchors = [];
   let cur;
   while ((cur = walker.nextNode())) anchors.push(cur);
   anchors.forEach(a => {
     const parent = a.parentNode;
     if (!parent) return;
-    // move children out
     while (a.firstChild) parent.insertBefore(a.firstChild, a);
     parent.removeChild(a);
   });
 }
 
-/* ---------- NEW: Comment Section Component ---------- */
+/* ===================================================================
+  MODIFIED: Task Details Display Component
+===================================================================
+*/
+const DetailItem = ({ label, value }) => {
+  if (!value) return null;
+  return (
+    <div>
+      {/* MODIFIED: Added truncate class for long names/UIDs */}
+      <dt className="text-xs font-medium text-gray-500 uppercase tracking-wider">{label}</dt>
+      <dd className="text-sm text-gray-900 truncate" title={value}>{value}</dd>
+    </div>
+  );
+};
+
+// MODIFIED: Added membersList prop
+const TaskDetailsDisplay = ({ taskData, t, membersList = [] }) => {
+  if (!taskData) return null;
+
+  // --- NEW: Helper to find member label from UID ---
+  const getMemberLabel = (uid) => {
+    if (!uid) return null;
+    const member = membersList.find(m => m.uid === uid);
+    return member ? member.label : uid; // Fallback to UID if not found
+  };
+
+  return (
+    <div className="p-4">
+      <h3 className="text-sm font-semibold mb-3 border-b border-gray-200 pb-2 flex items-center text-gray-700">
+        <DetailsIcon /> {t('common.details', 'Details')}
+      </h3>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+        <DetailItem label={t('tickets.priority', 'Priority')} value={taskData.priority} />
+        <DetailItem label={t('tickets.category', 'Category')} value={taskData.category} />
+        <DetailItem label={t('tickets.type', 'Type')} value={taskData.type} />
+        <DetailItem label={t('tickets.status', 'Status')} value={taskData.status} />
+        
+        {/* --- MODIFIED: Use getMemberLabel --- */}
+        <DetailItem label={t('tickets.csManager', 'CS Manager')} value={getMemberLabel(taskData.csManager)} />
+        <DetailItem label={t('tickets.qaManager', 'QA Manager')} value={getMemberLabel(taskData.qaManager)} />
+        <DetailItem label={t('tickets.developer', 'Developer')} value={getMemberLabel(taskData.developer)} />
+        
+        <DetailItem label={t('tickets.startDate', 'Start Date')} value={taskData.startDate} />
+        <DetailItem label={t('tickets.endDate', 'End Date')} value={taskData.endDate} />
+      </dl>
+    </div>
+  );
+};
+
+
+/* ===================================================================
+  MODIFIED: Comment Section Component
+===================================================================
+*/
 const CommentSection = ({ teamId, taskId }) => {
   const { t } = useContext(LanguageContext);
   const [comments, setComments] = useState([]);
@@ -140,6 +210,17 @@ const CommentSection = ({ teamId, taskId }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const commentsEndRef = useRef(null);
+  
+  const [commentImage, setCommentImage] = useState(null);
+  const [commentImagePreview, setCommentImagePreview] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const [editingComment, setEditingComment] = useState(null);
+  const [editText, setEditText] = useState('');
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const currentUserId = auth.currentUser?.uid;
 
   useEffect(() => {
     const commentsRef = collection(db, 'teams', teamId, 'tasks', taskId, 'comments');
@@ -161,35 +242,144 @@ const CommentSection = ({ teamId, taskId }) => {
     return () => unsubscribe();
   }, [teamId, taskId, t]);
 
-  // Auto-scroll to bottom
   useEffect(() => {
-    commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [comments]);
+    if (!editingComment) {
+      commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [comments, editingComment]);
+
+  const handleImageSelect = (file) => {
+    if (file && file.type.startsWith('image/')) {
+      setCommentImage(file);
+      setCommentImagePreview(URL.createObjectURL(file));
+      setError(null);
+    } else {
+      setError('Please select a valid image file.');
+    }
+  };
+
+  const onFileChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      handleImageSelect(e.target.files[0]);
+      e.target.value = null;
+    }
+  };
+
+  const handleCommentPaste = (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          handleImageSelect(file);
+          break;
+        }
+      }
+    }
+  };
+  
+  const clearImage = () => {
+    setCommentImage(null);
+    if (commentImagePreview) {
+      URL.revokeObjectURL(commentImagePreview);
+      setCommentImagePreview(null);
+    }
+  };
 
   const handlePostComment = async (e) => {
     e.preventDefault();
     const text = newComment.trim();
-    if (!text || !auth.currentUser) return;
+    if ((!text && !commentImage) || !currentUserId) return;
 
-    const { uid, displayName, email } = auth.currentUser;
+    setIsUploading(true);
+    setError(null);
+
+    const { displayName, email } = auth.currentUser;
     const authorName = displayName || email || 'Anonymous';
+    
+    let imageUrl = null;
+    let imagePath = null;
 
     try {
-      setNewComment(''); // Clear input immediately
+      if (commentImage) {
+        const storagePath = `comment_images/${teamId}/${taskId}/${Date.now()}-${commentImage.name}`;
+        const storageRef = ref(storage, storagePath);
+        const uploadTask = await uploadBytesResumable(storageRef, commentImage);
+        imageUrl = await getDownloadURL(uploadTask.ref);
+        imagePath = storagePath;
+      }
+
       await addDoc(collection(db, 'teams', teamId, 'tasks', taskId, 'comments'), {
         text: text,
-        authorId: uid,
+        authorId: currentUserId,
         authorName: authorName,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        imageUrl: imageUrl,
+        imagePath: imagePath,
       });
+
+      setNewComment('');
+      clearImage();
+      
     } catch (err) {
       console.error("Error posting comment: ", err);
       setError(t('comments.postError'));
-      setNewComment(text); // Put text back if it failed
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleDeleteComment = async (comment) => {
+    if (comment.authorId !== currentUserId) return;
+    if (!window.confirm(t('common.confirmDelete', 'Are you sure you want to delete this comment?'))) return;
+
+    try {
+      if (comment.imagePath) {
+        const imageRef = ref(storage, comment.imagePath);
+        await deleteObject(imageRef);
+      }
+
+      const commentRef = doc(db, 'teams', teamId, 'tasks', taskId, 'comments', comment.id);
+      await deleteDoc(commentRef);
+
+    } catch (err) {
+      console.error("Error deleting comment: ", err);
+      setError(t('comments.deleteError', 'Failed to delete comment.'));
+    }
+  };
+
+  const startEdit = (comment) => {
+    setEditingComment(comment);
+    setEditText(comment.text);
+  };
+
+  const cancelEdit = () => {
+    setEditingComment(null);
+    setEditText('');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingComment || isUpdating) return;
+    
+    setIsUpdating(true);
+    const commentRef = doc(db, 'teams', teamId, 'tasks', taskId, 'comments', editingComment.id);
+
+    try {
+      await updateDoc(commentRef, {
+        text: editText,
+        editedAt: serverTimestamp()
+      });
+      cancelEdit();
+    } catch (err) {
+      console.error("Error updating comment: ", err);
+      setError(t('comments.editError', 'Failed to save edit.'));
+    } finally {
+      setIsUpdating(false);
     }
   };
   
-  // Simple time formatter
   const formatCommentTime = (timestamp) => {
     if (!timestamp) return '...';
     try {
@@ -200,64 +390,173 @@ const CommentSection = ({ teamId, taskId }) => {
         minute: '2-digit'
       });
     } catch (e) {
-      return '...'; // In case timestamp isn't populated yet
+      return '...';
     }
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 border-l border-gray-200">
+    <div className="flex flex-col bg-gray-50 border-t border-gray-200">
       <h3 className="text-sm font-semibold p-3 border-b border-gray-200 flex items-center text-gray-700 flex-shrink-0">
         <ChatBubbleIcon /> {t('comments.title')}
       </h3>
-      {isLoading && <Spinner />}
+      
+      {isLoading && <div className="flex-1 flex items-center justify-center p-4"><Spinner /></div>}
+      
       {error && <div className="text-red-600 p-3 text-sm">{error}</div>}
-      <ul className="list-none p-3 m-0 overflow-y-auto flex-1 space-y-3">
+      
+      <ul className="list-none p-3 m-0 space-y-3">
         {!isLoading && comments.length === 0 && (
           <li className="text-sm text-gray-500 italic text-center py-4">
             {t('comments.none')}
           </li>
         )}
         {comments.map(comment => (
-          <li key={comment.id} className="text-sm">
-            <div className="flex justify-between items-center">
-              <span className="font-semibold text-gray-800 text-[13px]">{comment.authorName}</span>
-              <span className="text-xs text-gray-500">{formatCommentTime(comment.createdAt)}</span>
-            </div>
-            <p className="text-gray-700 whitespace-pre-wrap break-words m-0 mt-0.5">
-              {comment.text}
-            </p>
+          <li key={comment.id} className="text-sm group relative">
+            {editingComment?.id === comment.id ? (
+              <div className="bg-white border border-blue-500 rounded-md p-2">
+                <textarea
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  rows="3"
+                  autoFocus
+                />
+                <div className="flex justify-end gap-2 mt-2">
+                  <button
+                    onClick={cancelEdit}
+                    className="px-2 py-1 bg-gray-200 rounded text-xs hover:bg-gray-300"
+                  >
+                    {t('common.cancel', 'Cancel')}
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={isUpdating || !editText.trim()}
+                    className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {isUpdating ? <MiniSpinner /> : t('common.save', 'Save')}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="p-2 rounded-md hover:bg-gray-100">
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold text-gray-800 text-[13px]">{comment.authorName}</span>
+                  <span className="text-xs text-gray-500">
+                    {comment.editedAt && <span className="italic mr-1">({t('common.edited', 'edited')})</span>}
+                    {formatCommentTime(comment.createdAt)}
+                  </span>
+                </div>
+                {comment.text && (
+                  <p className="text-gray-700 whitespace-pre-wrap break-words m-0 mt-0.5">
+                    {comment.text}
+                  </p>
+                )}
+                {comment.imageUrl && (
+                  <a href={comment.imageUrl} target="_blank" rel="noopener noreferrer">
+                    <img
+                      src={comment.imageUrl}
+                      alt="Comment attachment"
+                      className="mt-2 max-w-full max-h-48 rounded-md border border-gray-200 cursor-pointer"
+                    />
+                  </a>
+                )}
+                {currentUserId === comment.authorId && (
+                  <div className="absolute top-0 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => startEdit(comment)}
+                      title={t('common.edit', 'Edit')}
+                      className="p-1 rounded-full bg-white text-gray-600 hover:text-blue-600 hover:bg-gray-100 shadow"
+                    >
+                      <PencilIcon />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteComment(comment)}
+                      title={t('common.delete', 'Delete')}
+                      className="p-1 rounded-full bg-white text-gray-600 hover:text-red-600 hover:bg-gray-100 shadow"
+                    >
+                      <TrashIcon />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </li>
         ))}
         <div ref={commentsEndRef} />
       </ul>
+      
       <div className="p-3 border-t border-gray-200 bg-white flex-shrink-0">
         <form onSubmit={handlePostComment}>
+          {commentImagePreview && (
+            <div className="relative inline-block mb-2">
+              <img src={commentImagePreview} alt="Preview" className="max-h-24 rounded-md border border-gray-200" />
+              <button
+                type="button"
+                onClick={clearImage}
+                className="absolute -top-2 -right-2 bg-gray-700 text-white rounded-full p-0.5 leading-none"
+                aria-label="Remove image"
+              >
+                <XIcon />
+              </button>
+            </div>
+          )}
           <textarea
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
+            onPaste={handleCommentPaste}
             placeholder={t('comments.placeholder')}
             rows="3"
             className="w-full border border-gray-300 rounded-md p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={isUploading}
           />
-          <button 
-            type="submit" 
-            disabled={!newComment.trim()} 
-            className="w-full p-2 bg-blue-600 text-white rounded-md font-semibold mt-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700"
-          >
-            {t('comments.post')}
-          </button>
+          <div className="flex justify-between items-center mt-2">
+            <input
+              type="file"
+              ref={fileInputRef}
+              className="hidden"
+              onChange={onFileChange}
+              accept="image/*"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className="text-gray-500 hover:text-blue-600 p-1 disabled:opacity-50"
+              title="Attach image"
+            >
+              <ImageIcon />
+            </button>
+            
+            <button
+              type="submit"
+              disabled={(!newComment.trim() && !commentImage) || isUploading}
+              className="px-4 py-1.5 bg-blue-600 text-white rounded-md font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700 flex items-center justify-center min-w-[80px]"
+            >
+              {isUploading ? <MiniSpinner /> : t('comments.post')}
+            </button>
+          </div>
         </form>
       </div>
     </div>
   );
 };
+/* ===================================================================
+  End of Modified Component
+===================================================================
+*/
 
 
-/* ---------- Note editor (main) ---------- */
-const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
+/* ===================================================================
+  MODIFIED: NotePopupContent (Main Layout)
+===================================================================
+*/
+// MODIFIED: Accept membersList prop
+const NotePopupContent = ({ teamId, taskId, columnKey, onClose, membersList }) => {
   const { t } = useContext(LanguageContext);
-  const [saveStatus, setSaveStatus] = useState('loading'); // loading | idle | saving | saved | error
+  const [saveStatus, setSaveStatus] = useState('loading');
   const [initialHtml, setInitialHtml] = useState(null);
+  
+  const [taskData, setTaskData] = useState(null);
 
   // files state
   const [files, setFiles] = useState([]);
@@ -271,7 +570,7 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
   const linkSelectionRef = useRef(null);
 
   const editorRef = useRef(null);
-  const fileInputRef = useRef(null);
+  const fileInputRef = useRef(null); 
   const debounceTimerRef = useRef(null);
   const lastSavedHtmlRef = useRef(null);
   const isMountedRef = useRef(true);
@@ -291,6 +590,7 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
     (async () => {
       setSaveStatus('loading');
       setFiles([]);
+      setTaskData(null);
       try {
         const docRef = doc(db, 'teams', teamId, 'tasks', taskId);
         const snap = await getDoc(docRef);
@@ -299,6 +599,8 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
           const data = snap.data();
           noteHtml = data[columnKey] || '';
           noteFiles = data[getFilesFieldName()] || [];
+          
+          setTaskData(data);
         }
         if (isMountedRef.current) {
           setInitialHtml(noteHtml);
@@ -308,7 +610,12 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
         }
       } catch (err) {
         console.error('fetch note error', err);
-        if (isMountedRef.current) { setInitialHtml(''); setFiles([]); setSaveStatus('error'); }
+        if (isMountedRef.current) { 
+          setInitialHtml(''); 
+          setFiles([]); 
+          setSaveStatus('error');
+          setTaskData(null);
+        }
       }
     })();
     return () => { isMountedRef.current = false; if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current); };
@@ -345,7 +652,7 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
     }, 1200);
   }, [showLinkInput, saveStatus, saveToFirebase]);
 
-  /* ---------- image paste/upload (kept) ---------- */
+  /* ---------- image paste/upload (for main editor) ---------- */
   const handleImageUpload = (file) => {
     if (!file || !editorRef.current || !file.type.startsWith('image/')) return;
     const placeholderId = `upload-placeholder-${Date.now()}`;
@@ -408,29 +715,18 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
     }
   };
 
-  /* *****************************************
-    * NEW CLICK HANDLER            *
-    *****************************************
-  */
   const handleEditorClick = (e) => {
-    // Check for Ctrl/Cmd key
     const isSpecialClick = e.ctrlKey || e.metaKey;
-
     if (isSpecialClick) {
-      // Find the nearest <a> tag ancestor
       const anchor = e.target.closest('a');
-      
       if (anchor && anchor.href) {
-        // Prevent the editor from doing anything (like moving the cursor)
         e.preventDefault();
-        // Open the link in a new tab
         window.open(anchor.href, '_blank', 'noopener,noreferrer');
       }
     }
-    // If not Ctrl/Cmd+Click, do nothing and let the default contentEditable behavior happen
   };
 
-  /* ---------- file upload helpers (kept) ---------- */
+  /* ---------- file upload helpers (for Attachment section) ---------- */
   const handleUploadButtonClick = () => fileInputRef.current?.click();
   const handleFileSelected = (e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = null; };
 
@@ -476,7 +772,7 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
       const docRef = doc(db, 'teams', teamId, 'tasks', taskId);
       const snap = await getDoc(docRef);
       if (snap.exists()) {
-        const cur = snap.data()[getFilesFieldName()] || []; // Corrected: getFieOlsFieldName() -> getFilesFieldName()
+        const cur = snap.data()[getFilesFieldName()] || [];
         const next = cur.filter(f => f.path !== fileToDelete.path);
         await updateDoc(docRef, { [getFilesFieldName()]: next });
         if (isMountedRef.current) setFiles(next);
@@ -490,32 +786,21 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
   };
 
   /* ---------- Link handling improvements ---------- */
-
-  // wrapper for simple format commands
   const handleFormat = useCallback((command, value = null) => {
     document.execCommand(command, false, value);
     editorRef.current?.focus();
     handleInput();
   }, [handleInput]);
 
-  // When Insert Link is clicked:
-  // - if selection is inside an <a>: we will set type 'edit' and prefill url
-  // - if selection is non-empty inside editor: extract contents into placeholder span and save placeholder id
-  // - if collapsed caret inside editor: save caret Range
   const handleInsertLink = useCallback(() => {
     const sel = window.getSelection();
     let range = null;
     try { if (sel && sel.rangeCount > 0) range = sel.getRangeAt(0).cloneRange(); } catch (e) { range = null; }
-
     linkSelectionRef.current = null;
-
-    // if selection inside an existing anchor, edit mode
     if (range && editorRef.current && editorRef.current.contains(range.commonAncestorContainer)) {
-      // find closest anchor ancestor
       let node = range.startContainer;
       while (node && node !== editorRef.current) {
         if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'A') {
-          // edit this anchor
           linkSelectionRef.current = { type: 'edit', anchor: node };
           setLinkUrl(node.getAttribute('href') || 'https://');
           setShowLinkInput(true);
@@ -524,15 +809,12 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
         node = node.parentNode;
       }
     }
-
     if (range && !range.collapsed && editorRef.current && editorRef.current.contains(range.commonAncestorContainer)) {
-      // Extract content into a placeholder span immediately (prevents losing selection)
       const placeholderId = `pl-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
       let extracted;
       try {
         extracted = range.extractContents();
       } catch (err) {
-        // fallback: plain text
         const text = (window.getSelection()?.toString()) || '';
         extracted = document.createDocumentFragment();
         extracted.appendChild(document.createTextNode(text));
@@ -549,8 +831,6 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
       setShowLinkInput(true);
       return;
     }
-
-    // If collapsed caret inside editor: save caret range
     if (range && editorRef.current && editorRef.current.contains(range.commonAncestorContainer)) {
       linkSelectionRef.current = { type: 'caret', range };
     } else {
@@ -560,24 +840,20 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
     setShowLinkInput(true);
   }, []);
 
-  // Cleanup helper: remove empty anchors
   const removeEmptyAnchors = (root) => {
     const anchors = (root || editorRef.current)?.querySelectorAll('a') || [];
     anchors.forEach(a => {
       if (!a.textContent.trim() && !a.querySelector('img')) {
-        // remove empty anchor
         const parent = a.parentNode;
         if (parent) parent.removeChild(a);
       }
     });
   };
 
-  // apply link: handles 'edit', 'placeholder', 'caret', 'none'
   const applyLink = useCallback(() => {
     let url = (linkUrl || '').trim();
     if (!editorRef.current) { setShowLinkInput(false); setLinkUrl(''); linkSelectionRef.current = null; return; }
     if (!url) {
-      // If there was a placeholder, restore its inner content
       const saved = linkSelectionRef.current;
       if (saved?.type === 'placeholder') {
         const ph = editorRef.current.querySelector(`#${saved.id}`);
@@ -599,14 +875,11 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
       const sel = window.getSelection();
 
       if (saved?.type === 'edit' && saved.anchor) {
-        // update href of existing anchor
         const anchor = saved.anchor;
         anchor.setAttribute('href', url);
         anchor.setAttribute('target', '_blank');
         anchor.setAttribute('rel', 'noopener noreferrer');
-        // if anchor has no text, set text to url
         if (!anchor.textContent.trim()) anchor.textContent = url;
-        // place caret after anchor
         const after = document.createRange();
         after.setStartAfter(anchor);
         after.collapse(true);
@@ -615,10 +888,8 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
       } else if (saved?.type === 'placeholder') {
         const ph = editorRef.current.querySelector(`#${saved.id}`);
         if (ph) {
-          // create anchor and move inner nodes into it, unwrapping any anchors inside
           const frag = document.createDocumentFragment();
           while (ph.firstChild) frag.appendChild(ph.firstChild);
-          // unwrap any anchors inside fragment
           const temp = document.createElement('div');
           temp.appendChild(frag);
           unwrapAnchors(temp);
@@ -626,25 +897,20 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
           anchor.setAttribute('href', url);
           anchor.setAttribute('target', '_blank');
           anchor.setAttribute('rel', 'noopener noreferrer');
-          // move children from temp into anchor
           while (temp.firstChild) anchor.appendChild(temp.firstChild);
           ph.parentNode.replaceChild(anchor, ph);
-          // caret after anchor
           const after = document.createRange();
           after.setStartAfter(anchor);
           after.collapse(true);
           sel.removeAllRanges();
           sel.addRange(after);
         } else {
-          // fallback
           document.execCommand('createLink', false, url);
         }
       } else if (saved?.type === 'caret' && saved.range) {
-        // restore range and insert anchor with url text
         const r = saved.range;
         sel.removeAllRanges();
         try { sel.addRange(r); } catch (err) { /* ignore */ }
-        // if caret is inside an anchor, update that anchor instead
         let node = r.startContainer;
         while (node && node !== editorRef.current) {
           if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'A') {
@@ -665,7 +931,6 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
           }
           node = node.parentNode;
         }
-        // create anchor element
         const a = document.createElement('a');
         a.setAttribute('href', url);
         a.setAttribute('target', '_blank');
@@ -673,18 +938,15 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
         a.textContent = url;
         try {
           r.insertNode(a);
-          // caret after
           const after = document.createRange();
           after.setStartAfter(a);
           after.collapse(true);
           sel.removeAllRanges();
           sel.addRange(after);
         } catch (err) {
-          // fallback
           document.execCommand('createLink', false, url);
         }
       } else {
-        // no saved info: fallback to createLink, then set rel/target for last anchor
         document.execCommand('createLink', false, url);
         const anchors = editorRef.current.querySelectorAll('a[href]');
         if (anchors.length) {
@@ -694,10 +956,7 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
           if (!a.textContent.trim()) a.textContent = url;
         }
       }
-
-      // remove any empty anchors left behind
       removeEmptyAnchors(editorRef.current);
-
     } catch (err) {
       console.error('applyLink error', err);
       try { document.execCommand('createLink', false, url); } catch (e) { /* ignore */ }
@@ -709,7 +968,6 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
     }
   }, [linkUrl, handleInput]);
 
-  // cancel link, restore placeholder if present
   const cancelLink = useCallback(() => {
     const saved = linkSelectionRef.current;
     if (saved?.type === 'placeholder') {
@@ -726,130 +984,160 @@ const NotePopupContent = ({ teamId, taskId, columnKey, onClose }) => {
     editorRef.current?.focus();
   }, []);
 
-  /* ---------- small UI helpers ---------- */
   const getStatusMessage = () => {
     switch (saveStatus) {
       case 'saving': return { msg: t('common.saving'), color: '#6b7280' };
       case 'saved': return { msg: t('common.saved'), color: '#16a34a' };
-      case 'error': return { msg: t('common.saveError', 'Error saving note'), color: '#dc2626' }; // Added fallback
+      case 'error': return { msg: t('common.saveError', 'Error saving note'), color: '#dc2626' };
       default: return { msg: '', color: '#6b7280' };
     }
   };
   const status = getStatusMessage();
 
-  /* ---------- RENDER ---------- */
+  /* ---------- RENDER (MODIFIED) ---------- */
   return (
     <div className="w-full h-full bg-white rounded-lg flex flex-col overflow-hidden">
-      {/* Header */}
+      {/* --- MODIFIED HEADER --- */}
       <div className="flex justify-between items-center border-b border-gray-200 p-4 flex-shrink-0">
-        <h2 className="text-lg font-semibold text-gray-800">
-          Note: <span className="font-mono text-blue-600">{columnKey}</span>
-        </h2>
+        {taskData ? (
+          <h2 className="text-xl font-semibold text-gray-800 truncate">
+            <span className="font-mono text-blue-600" title={taskData.ticketNo || `Task ${taskId}`}>
+              {taskData.ticketNo || `Task ${taskId}`}
+            </span>
+            {taskData.company && (
+              <span className="text-gray-400 font-normal ml-2" title={taskData.company}>
+                - {taskData.company}
+              </span>
+            )}
+          </h2>
+        ) : (
+          <h2 className="text-xl font-semibold text-gray-800">Loading...</h2>
+        )}
         <button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-600">
           <XIcon />
         </button>
       </div>
 
-      {/* Main Content Area (3 columns) */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left file area */}
-        <div className="w-60 border-r border-gray-200 bg-gray-50 flex flex-col">
-          <h3 className="text-sm font-semibold p-3 border-b border-gray-200 flex items-center text-gray-700 flex-shrink-0">
-            <PaperClipIcon /> {t('attachments.title')}
-          </h3>
-          {fileError && <div className="text-red-600 p-3 text-sm">{fileError}</div>}
-          <ul className="list-none p-3 m-0 overflow-y-auto flex-1 space-y-2">
-            {files.length === 0 && <p className="text-sm text-gray-500 italic">{t('attachments.none')}</p>}
-            {files.map(f => (
-              <li key={f.path} className="bg-white p-2 border border-gray-200 rounded-md">
-                <div className="text-sm font-medium overflow-hidden text-ellipsis whitespace-nowrap text-gray-700" title={f.name}>{f.name}</div>
-                <div className="mt-1.5 flex gap-3">
-                  <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
-                    <DownloadIcon /> {t('common.download')}
-                  </a>
-                  <button onClick={() => handleFileDelete(f)} disabled={isDeletingFile === f.path} className="text-xs text-red-600 hover:underline flex items-center gap-1 disabled:opacity-50">
-                    {isDeletingFile === f.path ? <MiniSpinner /> : <><TrashIcon /> {t('common.delete')}</>}
+      {/* --- LOADING/ERROR STATE --- */}
+      {(saveStatus === 'loading' || !taskData) && (
+        <div className="flex-1 flex items-center justify-center"><Spinner /></div>
+      )}
+      {saveStatus === 'error' && (
+        <div className="flex-1 flex items-center justify-center text-red-600 p-4">
+          Error loading task details. Please close and try again.
+        </div>
+      )}
+      
+      {/* --- MAIN CONTENT (post-load) --- */}
+      {saveStatus !== 'loading' && taskData && (
+        <>
+          {/* --- MODIFIED: 2-COLUMN LAYOUT --- */}
+          <div className="flex-1 flex overflow-hidden">
+
+            {/* --- Main Content (Left) --- */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {initialHtml === null ? (
+                <div className="flex-1 flex items-center justify-center"><Spinner /></div>
+              ) : (
+                <>
+                  <h3 className="text-sm font-semibold p-3 border-b border-gray-200 text-gray-700 flex-shrink-0">
+                    Editing Field: <span className="font-mono text-blue-600 ml-1">{columnKey}</span>
+                  </h3>
+                  <EditorToolbar
+                    onFormat={handleFormat}
+                    onInsertLink={handleInsertLink}
+                    showLinkInput={showLinkInput}
+                    linkUrl={linkUrl}
+                    setLinkUrl={setLinkUrl}
+                    onApplyLink={applyLink}
+                    onCancelLink={cancelLink}
+                  />
+                  <div
+                    ref={editorRef}
+                    contentEditable
+                    onInput={handleInput}
+                    onPaste={handlePaste}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => e.preventDefault()}
+                    onClick={handleEditorClick}
+                    className="note-editor"
+                    tabIndex={0}
+                    style={{ flex: 1, padding: '12px 16px', overflowY: 'auto', outline: 'none' }}
+                  />
+                </>
+              )}
+            </div>
+
+            {/* --- Sidebar (Right) --- */}
+            <div className="w-[360px] flex-shrink-0 border-l border-gray-200 bg-gray-50 flex flex-col overflow-y-auto">
+              {/* --- 1. Details Widget (MODIFIED: pass membersList) --- */}
+              <TaskDetailsDisplay taskData={taskData} t={t} membersList={membersList} />
+
+              {/* --- 2. Attachments Widget --- */}
+              <div className="border-t border-gray-200">
+                <h3 className="text-sm font-semibold p-3 border-b border-gray-200 flex items-center text-gray-700 flex-shrink-0">
+                  <PaperClipIcon /> {t('attachments.title')}
+                </h3>
+                {fileError && <div className="text-red-600 p-3 text-sm">{fileError}</div>}
+                <ul className="list-none p-3 m-0 space-y-2">
+                  {files.length === 0 && <p className="text-sm text-gray-500 italic">{t('attachments.none')}</p>}
+                  {files.map(f => (
+                    <li key={f.path} className="bg-white p-2 border border-gray-200 rounded-md">
+                      <div className="text-sm font-medium overflow-hidden text-ellipsis whitespace-nowrap text-gray-700" title={f.name}>{f.name}</div>
+                      <div className="mt-1.5 flex gap-3">
+                        <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                          <DownloadIcon /> {t('common.download')}
+                        </a>
+                        <button onClick={() => handleFileDelete(f)} disabled={isDeletingFile === f.path} className="text-xs text-red-600 hover:underline flex items-center gap-1 disabled:opacity-50">
+                          {isDeletingFile === f.path ? <MiniSpinner /> : <><TrashIcon /> {t('common.delete')}</>}
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="p-3 border-t border-gray-200 flex-shrink-0">
+                  <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelected} />
+                  <button
+                    onClick={handleUploadButtonClick}
+                    disabled={!!fileUploadProgress || !!isDeletingFile}
+                    className="w-full p-2 bg-blue-600 text-white rounded-md font-semibold text-sm disabled:opacity-50 hover:bg-blue-700 flex items-center justify-center"
+                  >
+                    {fileUploadProgress ? <MiniSpinner /> : t('attachments.upload')}
                   </button>
                 </div>
-              </li>
-            ))}
-          </ul>
-
-          <div className="p-3 border-t border-gray-200 flex-shrink-0">
-            <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelected} />
-            <button 
-              onClick={handleUploadButtonClick} 
-              disabled={!!fileUploadProgress || !!isDeletingFile} 
-              className="w-full p-2 bg-blue-600 text-white rounded-md font-semibold text-sm disabled:opacity-50 hover:bg-blue-700 flex items-center justify-center"
-            >
-              {fileUploadProgress ? <MiniSpinner /> : t('attachments.upload')}
-            </button>
+              </div>
+              
+              {/* --- 3. Comments Widget --- */}
+              <CommentSection teamId={teamId} taskId={taskId} />
+            </div>
           </div>
-        </div>
 
-        {/* Editor area (Middle) */}
-        <div className="flex-1 flex flex-col">
-          {saveStatus === 'loading' || initialHtml === null ? (
-            <div className="flex-1 flex items-center justify-center"><Spinner /></div>
-          ) : (
-            <>
-              <EditorToolbar
-                onFormat={handleFormat}
-                onInsertLink={handleInsertLink}
-                showLinkInput={showLinkInput}
-                linkUrl={linkUrl}
-                setLinkUrl={setLinkUrl}
-                onApplyLink={applyLink}
-                onCancelLink={cancelLink}
-              />
+          {/* Footer */}
+          <div className="flex justify-between items-center border-t border-gray-200 p-4 flex-shrink-0 bg-white">
+            <div className="text-xs">
+              <div style={{ color: status.color }} className="font-semibold h-4">{status.msg}</div>
+              <div className="text-blue-600 h-4">{fileUploadProgress}</div>
+            </div>
 
-              <div
-                ref={editorRef}
-                contentEditable
-                onInput={handleInput}
-                onPaste={handlePaste}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => e.preventDefault()}
-                onClick={handleEditorClick}
-                className="note-editor"
-                tabIndex={0}
-                style={{ flex: 1, padding: 12, overflowY: 'auto', outline: 'none' }}
-              />
-            </>
-          )}
-        </div>
-
-        {/* --- NEW: Comment Section Area (Right) --- */}
-        <div className="w-[300px] flex-shrink-0">
-          <CommentSection teamId={teamId} taskId={taskId} />
-        </div>
-        {/* --- END: Comment Section --- */}
-
-      </div>
-
-      {/* Footer */}
-      <div className="flex justify-between items-center border-t border-gray-200 p-4 flex-shrink-0">
-        <div className="text-xs">
-          <div style={{ color: status.color }} className="font-semibold h-4">{status.msg}</div>
-          <div className="text-blue-600 h-4">{fileUploadProgress}</div>
-        </div>
-
-        <div className="flex gap-2">
-          <button onClick={onClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md text-sm font-medium hover:bg-gray-300">
-            {t('common.close')}
-          </button>
-        </div>
-      </div>
+            <div className="flex gap-2">
+              <button onClick={onClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md text-sm font-medium hover:bg-gray-300">
+                {t('common.close')}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };
 
-/* ---------- Wrapper export ---------- */
+/* ---------- Wrapper export (MODIFIED) ---------- */
+// Accept ...props and pass membersList down
 const NotePopup = (props) => {
-  const { onClose } = props;
+  // Pass all props, including membersList, down
   return (
-    <ModalShell onClose={onClose}>
-      <NotePopupContent {...props} />
+    <ModalShell onClose={props.onClose}>
+      <NotePopupContent {...props} /> 
     </ModalShell>
   );
 };

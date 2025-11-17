@@ -129,8 +129,8 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
     { key: 'ticketNo', label: t('tickets.ticketNo'), widthClass: 'w-[110px]', maxWidth: '110px' },
     { key: 'company', label: t('tickets.company'), widthClass: 'w-[160px]', maxWidth: '160px' },
     { key: 'inquiry', label: t('tickets.inquiryHeader'), widthClass: 'w-[120px]', maxWidth: '140px' },
-    { key: 'inquiryDetails', label: 'Inquiry Details', widthClass: 'min-w-[280px]', maxWidth: '520px' }, // This label is not in the list, keeping English
-    { key: 'notes', label: t('tickets.notes'), widthClass: 'w-[160px]', maxWidth: '260px' },
+    { key: 'inquiryDetails', label: 'Inquiry Details', widthClass: 'w-[280px]', maxWidth: '520px' },
+     { key: 'notes', label: t('tickets.notes'), widthClass: 'w-[160px]', maxWidth: '260px' },
     { key: 'csManager', label: t('tickets.csManager'), widthClass: 'w-[160px]', maxWidth: '160px' },
     { key: 'startDate', label: t('tickets.startDate'), widthClass: 'w-[120px]', maxWidth: '120px' },
     { key: 'endDate', label: t('tickets.endDate'), widthClass: 'w-[120px]', maxWidth: '120px' },
@@ -1442,8 +1442,10 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
           columnKey={popupTargetInfo.columnKey}
           onClose={closeGenericPopup}
           isMasterAdminView={isMasterAdminView} // <-- Pass it down
+          membersList={membersList}
         />
       )}
+
 
       {/* Create Task Modal */}
       <CreateTaskModal
@@ -1451,7 +1453,14 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
         onClose={handleTaskCreated}
         teamId={teamId}
         onTaskCreated={handleTaskCreated}
+        // --- ADD THESE PROPS ---
+        categoriesList={categoriesList}
+        typesList={typesList}
+        priorityOptions={priorityOptions}
+        statusOptions={statusOptions}
+        membersList={membersList}
       />
+
 
       {/* Add New Option Modal */}
       {isAddOptionOpen && addOptionMeta && (
