@@ -46,15 +46,13 @@ export const translations = {
       clearFilters: 'Clear Filters',
       add: 'Add',
       editNote: 'Edit Note',
-      download: 'Download', // <-- NEW
+      download: 'Download',
     },
-    // --- NEW ATTACHMENTS SECTION ---
     attachments: {
       title: 'File Attachments',
       none: 'No files attached.',
       upload: 'Upload File'
     },
-    // --- NEW COMMENTS SECTION ---
     comments: {
       title: 'Comments',
       none: 'No comments yet.',
@@ -174,7 +172,7 @@ export const translations = {
       memberLabelEmptyError: 'Member label cannot be empty.',
       confirmDeleteFinalStatus: 'Are you sure you want to remove the final status? This is usually the "Complete" or "Approved" status.',
       uidLabel: 'UID',
-      keyLabel: 'Key', // <-- NEW
+      keyLabel: 'Key',
       memberPlaceholder: 'uid|label (or uid)',
       cannotChangeMasterAdmin: 'You cannot change the team role of a Master Admin.',
       // --- NEW: Checker Options ---
@@ -185,7 +183,7 @@ export const translations = {
       checkerKeyInvalid: 'Key must be one word (no spaces, letters/numbers/_,.- only).',
       checkerKeyExists: 'A checker with this key already exists.',
       checkerLabelEmpty: 'Checker label cannot be empty.',
-      // --- Handovers Section (RENAMED) ---
+      // --- Handovers Section ---
       viewHandovers: 'View Handovers',
       addHandover: '+ Add Handover',
       noHandovers: 'No handovers found for this team.',
@@ -271,7 +269,6 @@ export const translations = {
       agenda: 'Agenda',
       editNoteTitle: 'Edit Note',
     },
-    // --- THIS SECTION IS NOW FIXED ---
     handovers: {
       id: 'No.',
       date: 'Date',
@@ -298,7 +295,54 @@ export const translations = {
       allStatuses: 'All Statuses',
       approved: 'Approved',
     },
+    // --- TASK DETAIL MODAL ---
+    taskDetail: {
+      title: 'Task Details',
+      // Task Info Section
+      infoTitle: 'Task Info',
+      show: 'Show',
+      hide: 'Hide',
+      creationDate: 'Task Creation Date',
+      goalDueDate: 'Company Task Goal Due Date',
+      phase: 'Task Phase',
+      priority: 'Task Priority',
+      actualStartDate: 'Actual Start Date',
+      actualCompletionDate: 'Actual Completion Date',
+      // Assignees Section
+      assignedEmployees: 'Assigned Employees',
+      assignees: 'Assignees',
+      setAssignee: 'Set Assignee',
+      currentAssignees: 'Current Assignees',
+      stopWork: 'Stop Work',
+      startWork: 'Start',
+      deploymentStage: 'Deployment Stage',
+      // History Section
+      historyTitle: 'History',
+      changeHistory: 'Change History',
+      assigner: 'Assigner',
+      worker: 'Worker',
+      assignmentTime: 'Assignment Time',
+      unassignmentTime: 'Unassignment',
+      workHistory: 'Work History',
+      start: 'Start',
+      end: 'End',
+      workTime: 'Work Time',
+      noHistory: 'No history available.',
+      // Comments Section
+      commentsTitle: 'Comments',
+      recipient: 'Comment Recipient',
+      post: 'Post',
+      korean: 'Korean',
+      english: 'English',
+      placeholderKo: 'Enter comment...',
+      placeholderEn: 'Write your comment...',
+      translationPending: '(Translation pending...)',
+      to: 'To:',
+      selectAssignee: 'Select Assignee',
+      cancel: 'Cancel',
+    },
   },
+
   // ===================================================================
   // == KOREAN
   // ===================================================================
@@ -344,15 +388,13 @@ export const translations = {
       clearFilters: '필터 지우기',
       add: '추가',
       editNote: '메모 수정',
-      download: '다운로드', // <-- NEW
+      download: '다운로드',
     },
-    // --- NEW ATTACHMENTS SECTION ---
     attachments: {
       title: '파일 첨부',
       none: '첨부된 파일이 없습니다.',
       upload: '파일 업로드'
     },
-    // --- NEW COMMENTS SECTION ---
     comments: {
       title: '댓글',
       none: '댓글이 없습니다.',
@@ -472,7 +514,7 @@ export const translations = {
       memberLabelEmptyError: '멤버 라벨은 비워둘 수 없습니다.',
       confirmDeleteFinalStatus: '마지막 상태를 삭제하시겠습니까? 이것은 보통 "완료" 상태입니다.',
       uidLabel: 'UID',
-      keyLabel: '키', // <-- NEW
+      keyLabel: '키',
       memberPlaceholder: 'uid|라벨 (또는 uid)',
       cannotChangeMasterAdmin: '마스터 관리자의 팀 역할을 변경할 수 없습니다.',
       // --- NEW: Checker Options ---
@@ -483,7 +525,7 @@ export const translations = {
       checkerKeyInvalid: '키는 공백 없는 한 단어여야 합니다 (문자/숫자/_,.-만 허용).',
       checkerKeyExists: '이 키를 가진 확인자가 이미 존재합니다.',
       checkerLabelEmpty: '확인자 라벨은 비워둘 수 없습니다.',
-      // --- Handovers Section (RENAMED) ---
+      // --- Handovers Section ---
       viewHandovers: '인수인계 보기',
       addHandover: '+ 인수인계 추가',
       noHandovers: '이 팀에 대한 인수인계가 없습니다.',
@@ -594,6 +636,52 @@ export const translations = {
       deleteError: '인수인계를 삭제하지 못했습니다. 다시 시도하세요.',
       allStatuses: '모든 상태',
       approved: '승인됨',
+    },
+    // --- TASK DETAIL MODAL ---
+    taskDetail: {
+      title: '작업 상세',
+      // Task Info Section
+      infoTitle: '작업 정보',
+      show: '보기',
+      hide: '숨기기',
+      creationDate: '작업 생성일',
+      goalDueDate: '회사 작업 목표 완료일',
+      phase: '작업 단계',
+      priority: '작업 우선 순위',
+      actualStartDate: '실제 작업 시작일',
+      actualCompletionDate: '실제 작업 완료일',
+      // Assignees Section
+      assignedEmployees: '담당자',
+      assignees: '작업 담당자',
+      setAssignee: '작업 담당자 설정',
+      currentAssignees: '현재 작업 담당자',
+      stopWork: '작업 중지',
+      startWork: '시작',
+      deploymentStage: '배포 단계',
+      // History Section
+      historyTitle: '히스토리',
+      changeHistory: '작업 담당자 변경 이력',
+      assigner: '할당자',
+      worker: '작업자',
+      assignmentTime: '할당 시간',
+      unassignmentTime: '해제 시간',
+      workHistory: '작업 이력',
+      start: '시작',
+      end: '종료',
+      workTime: '작업 시간',
+      noHistory: '이력이 존재하지 않습니다.',
+      // Comments Section
+      commentsTitle: '댓글',
+      recipient: '댓글 대상자',
+      post: '등록',
+      korean: '한국어',
+      english: '영어',
+      placeholderKo: '댓글을 입력하세요...',
+      placeholderEn: 'Write your comment...',
+      translationPending: '(번역 대기중...)',
+      to: '수신:',
+      selectAssignee: '담당자 선택',
+      cancel: '취소',
     },
   }
 };

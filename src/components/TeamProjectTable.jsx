@@ -1,6 +1,6 @@
 // TeamProjectTable.jsx
 import React, { useState, useEffect, useCallback, useRef, useMemo, useContext } from 'react';
-import { useParams, useNavigate } from 'react-router-dom'; // <-- NEW IMPORTS
+import { useParams, useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebaseConfig';
 import {
   collection,
@@ -21,53 +21,61 @@ import {
   serverTimestamp,
   deleteField
 } from 'firebase/firestore';
-import NotePopup from './NotePopup';
+
+// --- IMPORT BOTH MODALS ---
+import NotePopup from './NotePopup';        // The original simple popup (for Inquiry)
+import TaskDetailModal from './TaskDetailModal'; // The new complex modal (for Ticket No)
 import CreateTaskModal from './CreateTaskModal';
 
-// --- NEW: Language Context ---
 import { LanguageContext } from '../contexts/LanguageContext.jsx';
 
 // placeholders (will be overridden by team meta if present)
 const DEFAULT_PLACEHOLDERS = {
-  members: [
-    { uid: 'uid1', label: 'Member One (member1@example.com)' },
-    { uid: 'uid2', label: 'Member Two (member2@example.com)' }
-  ],
+  members: [], 
   categories: ['Tech Issue', 'Feature Request', 'Inquiry'],
   types: ['Bug', 'Enhancement', 'Question', 'Backend', 'Frontend']
 };
 const DEFAULT_PRIORITY_OPTIONS = ['High', 'Medium', 'Low'];
 const DEFAULT_STATUS_OPTIONS = ['Not started', 'In progress', 'QA', 'Complete'];
 
-const POPUP_TRIGGER_COLUMNS = ['inquiry']; // This column will open the NotePopup
+// Trigger columns
+const POPUP_TRIGGER_COLUMNS = ['inquiry']; 
 
+// Editable Columns 
+// --- CHANGED: Added 'ticketNo' back here so it can be edited on Double Click ---
 const INLINE_EDITABLE_COLUMNS = [
+  'ticketNo', // <--- Added back for editing
   'priority', 'category', 'type', 'status',
-  'ticketNo', 'company', 'inquiryDetails', 'notes', // 'inquiry' is not here, it uses the popup
+  'company', 'inquiryDetails', 'notes', 
   'csManager', 'qaManager', 'developer',
   'startDate', 'endDate'
 ];
+
 // These columns will use a <textarea> for editing
-const TEXTAREA_COLUMNS = ['ticketNo', 'company', 'inquiryDetails', 'notes'];
+const TEXTAREA_COLUMNS = ['company', 'inquiryDetails', 'notes'];
 
-// --- REMOVED UI_STRINGS ARRAY ---
-
-const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) => {  // --- NEW: Language Context ---
+const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) => { 
   const { t } = useContext(LanguageContext);
-
-  // --- NEW: React Router Hooks ---
-  const { taskId } = useParams(); // <-- NEW: Gets :taskId from the URL
-  const navigate = useNavigate(); // <-- NEW: Gets the navigate function
+  const { taskId } = useParams(); 
+  const navigate = useNavigate(); 
 
   const [tasks, setTasks] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [isPopupOpen, setIsPopupOpen] = useState(false);
-  // This state now holds { taskId, columnKey }
-  const [popupTargetInfo, setPopupTargetInfo] = useState(null);
+
+  // --- MODAL STATES ---
+  
+  // 1. NotePopup State (For Inquiry Column - Local State)
+  const [isNotePopupOpen, setIsNotePopupOpen] = useState(false);
+  const [notePopupTarget, setNotePopupTarget] = useState(null); // { taskId, columnKey }
+
+  // 2. TaskDetailModal State (For TicketNo Column - URL Linked)
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [detailTargetTaskId, setDetailTargetTaskId] = useState(null);
+
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
 
-  // editingCell: { taskId, columnKey }
+  // Editing State
   const [editingCell, setEditingCell] = useState(null);
   const [editingValue, setEditingValue] = useState('');
   const [editingOriginalValue, setEditingOriginalValue] = useState('');
@@ -79,13 +87,10 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
   const [savingStatus, setSavingStatus] = useState({});
   const savingTimersRef = useRef({});
 
-  // NEW: Single state for expanding all columns
+  // Single state for expanding all columns
   const [isAllExpanded, setIsAllExpanded] = useState(false);
 
-  // --- REMOVED OLD TRANSLATION STATE ---
-
-  // dynamic option lists (load from Firestore team doc if available)
-  // membersList is now array of objects: { uid, label }
+  // Data Lists
   const [membersList, setMembersList] = useState(DEFAULT_PLACEHOLDERS.members);
   const [categoriesList, setCategoriesList] = useState(DEFAULT_PLACEHOLDERS.categories);
   const [typesList, setTypesList] = useState(DEFAULT_PLACEHOLDERS.types);
@@ -96,10 +101,9 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
 
   // invite modal state
   const [isInviteOpen, setIsInviteOpen] = useState(false);
-  // { headerKey, targetTaskId, applyToEditingCell }
   const [inviteMeta, setInviteMeta] = useState(null);
 
-  // add-option modal state (for category/type/priority/status)
+  // add-option modal state 
   const [isAddOptionOpen, setIsAddOptionOpen] = useState(false);
   const [addOptionMeta, setAddOptionMeta] = useState(null);
   const [addOptionValue, setAddOptionValue] = useState('');
@@ -107,43 +111,49 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
   // Options Editor modal
   const [isOptionsModalOpen, setIsOptionsModalOpen] = useState(false);
 
-  // --- NEW: Tab State ---
-  const [activeTab, setActiveTab] = useState('active'); // 'active' or 'completed'
+  // Tab State
+  const [activeTab, setActiveTab] = useState('active'); 
 
-  // --- NEW: Filter State ---
+  // Filter State
   const [filters, setFilters] = useState({
     company: '',
     developer: '',
     category: ''
   });
 
-  // --- NEW: Ref to store original document title ---
+  // Ref to store original document title
   const baseTitleRef = useRef(document.title);
 
-  // headers (defined here so translation hook can access it)
+  // headers
   const headers = useMemo(() => [
     { key: 'priority', label: t('tickets.priority'), widthClass: 'w-[110px]', maxWidth: '110px' },
     { key: 'category', label: t('tickets.category'), widthClass: 'w-[140px]', maxWidth: '140px' },
     { key: 'type', label: t('tickets.type'), widthClass: 'w-[140px]', maxWidth: '140px' },
     { key: 'status', label: t('tickets.status'), widthClass: 'w-[120px]', maxWidth: '120px' },
+    
+    // Ticket No Trigger
     { key: 'ticketNo', label: t('tickets.ticketNo'), widthClass: 'w-[110px]', maxWidth: '110px' },
+    
     { key: 'company', label: t('tickets.company'), widthClass: 'w-[160px]', maxWidth: '160px' },
+    
+    // Inquiry triggers the NotePopup
     { key: 'inquiry', label: t('tickets.inquiryHeader'), widthClass: 'w-[120px]', maxWidth: '140px' },
+    
     { key: 'inquiryDetails', label: 'Inquiry Details', widthClass: 'w-[280px]', maxWidth: '520px' },
-     { key: 'notes', label: t('tickets.notes'), widthClass: 'w-[160px]', maxWidth: '260px' },
+    { key: 'notes', label: t('tickets.notes'), widthClass: 'w-[160px]', maxWidth: '260px' },
     { key: 'csManager', label: t('tickets.csManager'), widthClass: 'w-[160px]', maxWidth: '160px' },
     { key: 'startDate', label: t('tickets.startDate'), widthClass: 'w-[120px]', maxWidth: '120px' },
     { key: 'endDate', label: t('tickets.endDate'), widthClass: 'w-[120px]', maxWidth: '120px' },
     { key: 'qaManager', label: t('tickets.qaManager'), widthClass: 'w-[160px]', maxWidth: '160px' },
     { key: 'developer', label: t('tickets.developer'), widthClass: 'w-[160px]', maxWidth: '160px' },
     { key: 'actions', label: '', widthClass: 'w-[64px] text-center', maxWidth: '64px' }
-  ], [t]); // --- ADDED t ---
+  ], [t]);
 
   // --- Filter tasks based on status ---
   const { activeTasks, completedTasks } = useMemo(() => {
     const active = [];
     const completed = [];
-    const completeStatusString = 'Complete'; // This is the raw value
+    const completeStatusString = 'Complete'; 
 
     for (const task of tasks) {
       if (task.status === completeStatusString) {
@@ -160,41 +170,35 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
     return activeTab === 'active' ? activeTasks : completedTasks;
   }, [activeTab, activeTasks, completedTasks]);
 
-  // --- NEW: Apply Filters ---
+  // Apply Filters
   const filteredTasksToDisplay = useMemo(() => {
     const { company, developer, category } = filters;
 
     if (!company && !developer && !category) {
-      return tasksToDisplay; // No filters, return original list
+      return tasksToDisplay; 
     }
 
     return tasksToDisplay.filter(task => {
-      // Company filter (case-insensitive text search)
       if (company) {
         if (!task.company || !task.company.toLowerCase().includes(company.toLowerCase())) {
           return false;
         }
       }
-
-      // Developer filter (exact match on UID)
       if (developer) {
         if (task.developer !== developer) {
           return false;
         }
       }
-
-      // Category filter (exact match on string)
       if (category) {
         if (task.category !== category) {
           return false;
         }
       }
-
-      return true; // Passed all active filters
+      return true;
     });
   }, [tasksToDisplay, filters]);
 
-  // Load team members / options, and resolve member UIDs to labels if needed
+  // Load team members / options
   useEffect(() => {
     if (!teamId) return;
     const teamDocRef = doc(db, 'teams', teamId);
@@ -203,7 +207,6 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
     try {
       unsub = onSnapshot(teamDocRef, async (snap) => {
         if (!snap.exists()) {
-          // keep defaults
           setMembersList(DEFAULT_PLACEHOLDERS.members);
           setCategoriesList(DEFAULT_PLACEHOLDERS.categories);
           setTypesList(DEFAULT_PLACEHOLDERS.types);
@@ -213,138 +216,64 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
         }
         const data = snap.data();
 
-        // simple string arrays
         if (data.categories && Array.isArray(data.categories)) setCategoriesList(data.categories);
         if (data.types && Array.isArray(data.types)) setTypesList(data.types);
         if (data.priorities && Array.isArray(data.priorities)) setPriorityOptions(data.priorities);
-        // Ensure statusOptions is set, otherwise use default
         if (data.statusOptions && Array.isArray(data.statusOptions) && data.statusOptions.length > 0) {
           setStatusOptions(data.statusOptions);
         } else {
           setStatusOptions(DEFAULT_STATUS_OPTIONS);
         }
 
-        // members can be stored as array of uids, array of objects {uid, label}, or a mix
         if (data.members && Array.isArray(data.members)) {
           const resolved = await Promise.all(data.members.map(async (member) => {
             let memberUid;
             let existingLabel = null;
 
-            // Check if 'member' is an object {uid, label} or just a string uid
             if (typeof member === 'object' && member !== null && member.uid) {
               memberUid = member.uid;
               existingLabel = member.label || member.name || member.email;
             } else if (typeof member === 'string') {
               memberUid = member;
             } else {
-              // Invalid member data
-              console.warn('Skipping invalid member data:', member);
-              return null; // Will be filtered out later
+              return null; 
             }
 
-            // Guard against empty/invalid UIDs
-            if (!memberUid) {
-              console.warn('Skipping member with empty UID:', member);
-              return null;
-            }
+            if (!memberUid) return null;
 
-            // If we already have a good label from the member object, don't re-fetch
             if (existingLabel) {
               return { uid: memberUid, label: existingLabel };
             }
 
-            // If we only have a UID, fetch the user doc
             try {
-              // **THE FIX**: memberUid is now guaranteed to be a string
               const uSnap = await getDoc(doc(db, 'users', memberUid));
               if (uSnap.exists()) {
                 const udata = uSnap.data();
                 const label = udata.displayName || udata.name || udata.email || memberUid;
                 return { uid: memberUid, label };
               } else {
-                return { uid: memberUid, label: memberUid }; // Fallback
+                return { uid: memberUid, label: memberUid };
               }
             } catch (err) {
-              // Log the original problematic item (string or object) for better debugging
               console.error('Failed to load user data for:', member, err);
-              return { uid: memberUid, label: memberUid }; // Fallback
+              return { uid: memberUid, label: memberUid };
             }
           }));
 
-          // Filter out any nulls from invalid data
           const validMembers = resolved.filter(m => m !== null);
-
-          // --- FIX: Filter for unique UIDs ---
           const uniqueMembers = Array.from(
             new Map(validMembers.map(m => [m.uid, m])).values()
           );
           setMembersList(uniqueMembers);
-          // --- END FIX ---
 
         } else {
-          // no members field -> use defaults
           setMembersList(DEFAULT_PLACEHOLDERS.members);
         }
       }, (err) => {
         console.error('Error listening to team meta:', err);
       });
     } catch (e) {
-      // fallback to getDoc once if snapshot listener fails immediately
-      (async () => {
-        try {
-          const snap = await getDoc(teamDocRef);
-          if (snap.exists()) {
-            const data = snap.data();
-            if (data.categories && Array.isArray(data.categories)) setCategoriesList(data.categories);
-            if (data.types && Array.isArray(data.types)) setTypesList(data.types);
-            if (data.priorities && Array.isArray(data.priorities)) setPriorityOptions(data.priorities);
-            if (data.statusOptions && Array.isArray(data.statusOptions) && data.statusOptions.length > 0) {
-              setStatusOptions(data.statusOptions);
-            } else {
-              setStatusOptions(DEFAULT_STATUS_OPTIONS);
-            }
-
-            if (data.members && Array.isArray(data.members)) {
-              if (data.members.length > 0 && typeof data.members[0] === 'object' && data.members[0].uid) {
-                // --- FIX: De-duplicate object array ---
-                const membersFromObjects = data.members.map(m => ({ uid: m.uid, label: m.label || m.name || m.email || m.uid }));
-                const uniqueMembersFromObjects = Array.from(
-                  new Map(membersFromObjects.map(m => [m.uid, m])).values()
-                );
-                setMembersList(uniqueMembersFromObjects);
-                // --- END FIX ---
-              } else {
-                const uids = data.members;
-                const resolved = await Promise.all(uids.map(async (uid) => {
-                  try {
-                    const uSnap = await getDoc(doc(db, 'users', uid));
-                    if (uSnap.exists()) {
-                      const udata = uSnap.data();
-                      const label = udata.displayName || udata.name || udata.email || uid;
-                      return { uid, label };
-                    } else {
-                      return { uid, label: uid };
-                    }
-                  } catch (err) {
-                    console.error('Failed to load user for uid', uid, err);
-                    return { uid, label: uid };
-                  }
-                }));
-                // --- FIX: De-duplicate resolved UID array ---
-                const uniqueMembersFallback = Array.from(
-                  new Map(resolved.map(m => [m.uid, m])).values()
-                );
-                setMembersList(uniqueMembersFallback);
-                // --- END FIX ---
-              }
-            } else {
-              setMembersList(DEFAULT_PLACEHOLDERS.members);
-            }
-          }
-        } catch (err) {
-          console.error('Failed to load team options:', err);
-        }
-      })();
+       console.error(e);
     }
 
     return () => {
@@ -352,11 +281,7 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
     };
   }, [teamId]);
 
-  // --- REMOVED TRANSLATION useEffect ---
-
-  // --- REMOVED OLD t function ---
-
-  // --- Firestore realtime listener for tasks ---
+  // Firestore realtime listener for tasks
   useEffect(() => {
     setIsLoading(true);
     if (!teamId) {
@@ -373,10 +298,8 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
         return {
           id: docSnap.id,
           ...data,
-          // Convert Timestamps to YYYY-MM-DD strings for date inputs
           startDate: data.startDate instanceof Timestamp ? data.startDate.toDate().toISOString().slice(0, 10) : (data.startDate || ''),
           endDate: data.endDate instanceof Timestamp ? data.endDate.toDate().toISOString().slice(0, 10) : (data.endDate || ''),
-          // Ensure potentially missing fields are empty strings
           notes: data.notes || '',
           inquiryDetails: data.inquiryDetails || '',
           inquiry: data.inquiry || ''
@@ -393,22 +316,50 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
     return () => unsubscribe();
   }, [teamId]);
 
-  // --- NEW: This effect opens the popup if a taskId is present in the URL ---
+  // --- URL ROUTING HANDLER ---
   useEffect(() => {
     if (taskId) {
-      // We assume the popup is always for the 'inquiry' column
-      // as it's the only one configured to open this popup.
-      setPopupTargetInfo({ taskId: taskId, columnKey: 'inquiry' });
-      setIsPopupOpen(true);
-      document.title = `Task ${taskId} - inquiry`;
+      setDetailTargetTaskId(taskId);
+      setIsDetailModalOpen(true);
+      document.title = `Task ${taskId}`;
     } else {
-      // If no taskId, ensure popup is closed
-      setIsPopupOpen(false);
-      setPopupTargetInfo(null);
-      document.title = baseTitleRef.current; // Restore original title
+      setIsDetailModalOpen(false);
+      setDetailTargetTaskId(null);
+      document.title = baseTitleRef.current; 
     }
-  }, [taskId]); // This effect runs when the taskId in the URL changes
+  }, [taskId]); 
 
+  // --- OPEN HANDLERS ---
+
+  // 1. Open NotePopup (Inquiry)
+  const handleOpenNotePopup = (e, taskId, columnKey) => {
+    e.stopPropagation();
+    setNotePopupTarget({ taskId, columnKey });
+    setIsNotePopupOpen(true);
+  };
+
+  const closeNotePopup = () => {
+    setIsNotePopupOpen(false);
+    setNotePopupTarget(null);
+  };
+
+  // 2. Open TaskDetailModal (Ticket No / Deep Link)
+  const handleOpenDetailModal = (e, taskId) => {
+    e.stopPropagation();
+    
+    // Update URL for deep linking
+    navigate(`/team/${teamId}/task/${taskId}`);
+    
+    setDetailTargetTaskId(taskId);
+    setIsDetailModalOpen(true);
+  };
+
+  const closeDetailModal = () => {
+    setIsDetailModalOpen(false);
+    setDetailTargetTaskId(null);
+    // Clear URL
+    navigate(`/team/${teamId}`, { replace: true });
+  };
 
   // --- Helper Functions ---
   const getCellKey = (taskId, headerKey) => `${taskId}-${headerKey}`;
@@ -431,7 +382,6 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
     }
   };
 
-  // cleanup timer/debounce refs on unmount
   useEffect(() => {
     return () => {
       Object.values(savingTimersRef.current).forEach(t => clearTimeout(t));
@@ -445,10 +395,7 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
 
   // --- Save Helpers ---
   const saveDraft = useCallback(async (taskId, columnKey, value) => {
-    if (!teamId || !taskId) {
-      setError(`Missing teamId/taskId for auto-save.`);
-      return;
-    }
+    if (!teamId || !taskId) return;
     const saveKey = getCellKey(taskId, columnKey);
     try {
       setSavingState(saveKey, 'saving');
@@ -467,7 +414,7 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
       setError(`Missing teamId/taskId for save.`);
       return;
     }
-    if (debounceRef.current) { // Clear any pending auto-save
+    if (debounceRef.current) {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
@@ -482,7 +429,7 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
       setError(`Failed to save ${columnKey}.`);
       setTimeout(() => setSavingState(saveKey, null), 1200);
     } finally {
-      setEditingCell(null); // Close editing cell regardless of success/fail
+      setEditingCell(null); 
       setEditingValue('');
       setEditingOriginalValue('');
     }
@@ -490,23 +437,19 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
 
   // --- Delete Row ---
   const deleteRow = useCallback(async (taskId) => {
-    if (!teamId || !taskId) {
-      setError('Missing teamId/taskId for deletion.');
-      return;
-    }
-    const key = getCellKey(taskId, 'actions'); // For saving indicator
+    if (!teamId || !taskId) return;
+    const key = getCellKey(taskId, 'actions'); 
     const confirmed = window.confirm(t('common.confirmDeleteTask'));
     if (!confirmed) return;
     try {
       setSavingState(key, 'saving');
       const taskDocRef = doc(db, `teams/${teamId}/tasks`, taskId);
       await deleteDoc(taskDocRef);
-      // No need for setTasks locally, onSnapshot will handle UI update.
-      setSavingState(key, 'saved'); // Briefly show saved then clear
+      setSavingState(key, 'saved'); 
     } catch (err) {
       console.error('Error deleting task:', err);
       setError('Failed to delete task.');
-      setTimeout(() => setSavingState(key, null), 1200); // Clear error state after a bit
+      setTimeout(() => setSavingState(key, null), 1200); 
     }
   }, [teamId, t]);
 
@@ -532,20 +475,17 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
     if (!editingCell) return;
     const { taskId, columnKey } = editingCell;
     const isTextarea = TEXTAREA_COLUMNS.includes(columnKey);
-    if (!isTextarea) return; // Only debounce textareas
+    if (!isTextarea) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     debounceRef.current = setTimeout(() => {
-      // Don't save if value hasn't changed (though this check might be redundant if Firestore handles it)
       if (editingValue !== editingOriginalValue) {
         saveDraft(taskId, columnKey, editingValue || '');
-        // Update original value after successful draft save? Or rely on Firestore listener? Let's rely on listener.
       }
       debounceRef.current = null;
     }, 800);
 
-    // Cleanup function to clear timeout if component unmounts or editing stops
     return () => {
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
@@ -555,23 +495,20 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
   }, [editingValue, editingCell, saveDraft, editingOriginalValue]);
 
 
-  // Auto-focus logic for inputs/selects when editing starts
   useEffect(() => {
     if (editingCell) {
       const isSelect = !TEXTAREA_COLUMNS.includes(editingCell.columnKey) && !['startDate', 'endDate'].includes(editingCell.columnKey);
       const ref = isSelect ? selectRef : inputRef;
 
       if (ref.current) {
-        // Delay focus slightly to ensure element is fully rendered and ready
         setTimeout(() => {
           try {
             ref.current.focus();
-            // Move cursor to end for inputs/textareas
             const el = ref.current;
             if (el.setSelectionRange && typeof el.value === 'string') {
               const pos = el.value.length;
               el.setSelectionRange(pos, pos);
-            } else if (el.select && !isSelect) { // select() is often for inputs, not dropdowns
+            } else if (el.select && !isSelect) { 
               el.select();
             }
           } catch (e) { console.warn("Auto-focus failed:", e); }
@@ -584,80 +521,39 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
   const handleCellDoubleClick = (e, taskId, columnKey) => {
     e.stopPropagation();
     if (!INLINE_EDITABLE_COLUMNS.includes(columnKey)) return;
-    const task = tasks.find(t => t.id === taskId); // find from ALL tasks
+    const task = tasks.find(t => t.id === taskId); 
     const currentValue = task ? (task[columnKey] ?? '') : '';
     startEditingCell(taskId, columnKey, String(currentValue));
   };
 
-  // --- REPLACED: Click handler for columns that trigger the NotePopup ---
-  const handleGenericPopupClick = (e, taskId, columnKey) => {
-    e.stopPropagation();
-    // Don't open popup if we are already editing this cell
-    if (editingCell?.taskId === taskId && editingCell?.columnKey === columnKey) return;
+  // -- Handle generic popups logic split into two specific handlers --
 
-    // Open popup if this column is designated
-    if (POPUP_TRIGGER_COLUMNS.includes(columnKey)) {
-      // --- NEW: Use React Router's navigate ---
-      const modalUrl = `/team/${teamId}/task/${taskId}`;
-      const modalTitle = `Task ${taskId} - ${columnKey}`;
-
-      // Use navigate to change URL (this replaces history.pushState)
-      navigate(modalUrl);
-      document.title = modalTitle;
-
-      // Set React state to show the modal
-      setPopupTargetInfo({ taskId, columnKey });
-      setIsPopupOpen(true);
-      // --- END NEW ---
-    }
-  };
-
-  // --- REPLACED: Close NotePopup ---
-  const closeGenericPopup = () => {
-    setIsPopupOpen(false);
-    setPopupTargetInfo(null);
-    document.title = baseTitleRef.current;
-
-    // Navigate to the base team URL, replacing the history entry
-    // This replaces history.back()
-    navigate(`/team/${teamId}`, { replace: true });
-  };
-
-
-  // When user chooses a select option (handles regular options, 'Add new...', 'Invite user...')
+  // When user chooses a select option 
   const handleSelectChange = async (taskId, columnKey, newValue) => {
-    // Handle 'Invite user...' sentinel
     if (['csManager', 'qaManager', 'developer'].includes(columnKey) && newValue === '__INVITE_USER__') {
       setInviteMeta({ headerKey: columnKey, targetTaskId: taskId, applyToEditingCell: editingCell?.taskId === taskId && editingCell?.columnKey === columnKey });
       setIsInviteOpen(true);
-      // Don't saveAndClose immediately
       return;
     }
 
-    // Handle 'Add new...' sentinel for string-based dropdowns
     if (['category', 'type', 'priority', 'status'].includes(columnKey) && newValue === '__ADD_NEW__') {
-      setAddOptionValue(''); // Clear previous value
+      setAddOptionValue(''); 
       setAddOptionMeta({ headerKey: columnKey, targetTaskId: taskId, applyToEditingCell: editingCell?.taskId === taskId && editingCell?.columnKey === columnKey });
       setIsAddOptionOpen(true);
-      // Don't saveAndClose immediately
       return;
     }
 
-    // For regular option selections, save immediately and close the editor
     await saveAndClose(taskId, columnKey, newValue || '');
   };
 
-  // Save when input/textarea blurs
   const handleBlurSave = (taskId, columnKey, value) => {
-    // Only save on blur if the value actually changed from the original
     if (value !== editingOriginalValue) {
       saveAndClose(taskId, columnKey, value || '');
     } else {
-      cancelEditing(); // If no change, just cancel editing state
+      cancelEditing();
     }
   };
 
-  // Handle keyboard events (Enter/Escape) in inputs/textareas
   const handleInputKeyDown = (e) => {
     if (!editingCell) return;
     const { taskId, columnKey } = editingCell;
@@ -668,20 +564,18 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
       cancelEditing();
     } else if (e.key === 'Enter') {
       if (isTextarea) {
-        if (e.shiftKey) return; // Allow Shift+Enter for newlines in textareas
-        e.preventDefault(); // Prevent default newline insertion
+        if (e.shiftKey) return; 
+        e.preventDefault();
         saveAndClose(taskId, columnKey, editingValue || '');
-      } else { // Normal input
-        e.preventDefault(); // Prevent form submission if applicable
+      } else { 
+        e.preventDefault(); 
         saveAndClose(taskId, columnKey, editingValue || '');
       }
     }
   };
 
-  // Toggle table expansion
   const toggleAllColumns = () => setIsAllExpanded(prev => !prev);
 
-  // --- NEW: Filter Handlers ---
   const handleFilterChange = useCallback((key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
   }, []);
@@ -692,25 +586,14 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
 
   // --- NEW: Task Creation Handler ---
   const handleTaskCreated = () => {
-    // This function is now called by the CreateTaskModal
-    // when it successfully creates a task OR when it's just closed.
-
-    // 1. Close the modal
     setIsCreateTaskModalOpen(false);
-
-    // 2. Call the onTaskChange prop (which is refreshAnnouncements from TeamView)
     if (onTaskChange) {
-      onTaskChange(); // This tells TeamView to refresh the calendar
+      onTaskChange(); 
     }
-
-    // You could also add code here to refresh the table itself if needed,
-    // but the onSnapshot listener should handle that automatically.
   };
 
 
   // --- Add New Option Logic ---
-
-  // Persists a new string option to the *correct* array field in the team document
   const saveNewOptionToTeam = useCallback(async (headerKey, newLabel) => {
     if (!teamId || !headerKey || !newLabel || !newLabel.trim()) {
       throw new Error('Invalid parameters for saving new option.');
@@ -718,38 +601,33 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
     const teamDocRef = doc(db, 'teams', teamId);
     const normalized = newLabel.trim();
 
-    // Map the column key (from table header) to the Firestore field name
     let fieldName = '';
     if (headerKey === 'category') fieldName = 'categories';
     else if (headerKey === 'type') fieldName = 'types';
     else if (headerKey === 'priority') fieldName = 'priorities';
     else if (headerKey === 'status') fieldName = 'statusOptions';
     else {
-      // This should not happen if called correctly
       console.error(`saveNewOptionToTeam called with unhandled headerKey: ${headerKey}`);
       throw new Error(`Cannot save option for unknown field: ${headerKey}`);
     }
 
-    // Use arrayUnion to add the item if the field exists
     try {
       await updateDoc(teamDocRef, { [fieldName]: arrayUnion(normalized) });
     } catch (err) {
-      // If the field doesn't exist yet (or doc doesn't exist), use setDoc with merge
       if (err.code === 'not-found' || err.message?.includes('No document to update')) {
         try {
           await setDoc(teamDocRef, { [fieldName]: [normalized] }, { merge: true });
         } catch (setErr) {
           console.error(`Error setting new field ${fieldName}:`, setErr);
-          throw setErr; // Re-throw the error from setDoc
+          throw setErr; 
         }
       } else {
         console.error(`Error updating field ${fieldName} with arrayUnion:`, err);
-        throw err; // Re-throw other update errors
+        throw err; 
       }
     }
   }, [teamId]);
 
-  // Handles saving the new option entered in the modal
   const handleAddOptionSave = async () => {
     if (!addOptionMeta) return;
     const { headerKey, targetTaskId, applyToEditingCell } = addOptionMeta;
@@ -760,83 +638,64 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
     }
 
     try {
-      setIsAddOptionOpen(false); // Close modal optimistically
+      setIsAddOptionOpen(false); 
       setError(null);
 
-      // --- BUG FIX for Status Order ---
       if (headerKey === 'status') {
-        // Status requires special handling to insert *before* the last item
         const teamDocRef = doc(db, 'teams', teamId);
         try {
           const snap = await getDoc(teamDocRef);
           let currentStatuses = (snap.exists() && snap.data()?.statusOptions?.length > 0)
-            ? [...snap.data().statusOptions] // Important: Work with a copy
-            : [...DEFAULT_STATUS_OPTIONS];     // Or a copy of the default
+            ? [...snap.data().statusOptions]
+            : [...DEFAULT_STATUS_OPTIONS];
 
-          if (!currentStatuses.includes(value)) { // Only add if it's truly new
-            const completeStatus = currentStatuses.pop(); // Remove the last (assumed complete) status
-            currentStatuses.push(value);               // Add the new status
-            if (completeStatus !== undefined) {     // Add the complete status back at the end
+          if (!currentStatuses.includes(value)) {
+            const completeStatus = currentStatuses.pop(); 
+            currentStatuses.push(value);               
+            if (completeStatus !== undefined) {      
               currentStatuses.push(completeStatus);
             }
-            // Overwrite the entire array in Firestore
             await setDoc(teamDocRef, { statusOptions: currentStatuses }, { merge: true });
           }
-          // If value already exists, we do nothing to the array, but still apply it below.
-
         } catch (err) {
           console.error("Failed to update status options array:", err);
-          throw new Error(`Failed to save new status option: ${err.message}`); // Propagate error
+          throw new Error(`Failed to save new status option: ${err.message}`); 
         }
       } else {
-        // For category, type, priority - simply append using the helper
         await saveNewOptionToTeam(headerKey, value);
       }
-      // --- END BUG FIX ---
 
-      // Firestore listener (onSnapshot) should update the local state (statusOptions, etc.)
-
-      // Apply the newly added value to the cell that triggered the modal
       if (applyToEditingCell && editingCell) {
-        setEditingValue(value); // Update local editing state
-        await saveAndClose(editingCell.taskId, editingCell.columnKey, value); // Save to task
-      } else if (targetTaskId) { // If not currently editing, but triggered from a specific task row
+        setEditingValue(value); 
+        await saveAndClose(editingCell.taskId, editingCell.columnKey, value); 
+      } else if (targetTaskId) { 
         await saveAndClose(targetTaskId, headerKey, value);
       }
-      // If neither, the option is just added globally, nothing to apply to a specific task cell.
 
     } catch (err) {
       console.error('Failed to add option:', err);
       setError(`Failed to add ${headerKey} option. See console.`);
-      // Re-open modal potentially? Or just show error. Currently shows error banner.
-      setIsAddOptionOpen(true); // Re-open on error maybe?
+      setIsAddOptionOpen(true); 
     } finally {
-      // Clear modal state whether successful or not, unless re-opened on error
-      if (!error) { // Only clear if successful save
+      if (!error) { 
         setAddOptionMeta(null);
         setAddOptionValue('');
       }
     }
   };
 
-
   const handleAddOptionCancel = () => {
     setIsAddOptionOpen(false);
     setAddOptionMeta(null);
     setAddOptionValue('');
-    setError(null); // Clear any errors shown in the modal
+    setError(null); 
   };
 
-  // --- Invite Member Logic ---
-  // Called when InviteMemberModal successfully finds/invites a user
   const handleInviteCompleted = async (invitedUid, invitedLabel) => {
     setIsInviteOpen(false);
 
-    // Persist the *new member's UID* to the team's 'members' array (if not already present)
-    // Firestore listener will update the local membersList state
     try {
       const teamDocRef = doc(db, 'teams', teamId);
-      // It's crucial to check if the team document stores UIDs or objects
       const snap = await getDoc(teamDocRef);
       if (snap.exists()) {
         const data = snap.data();
@@ -844,36 +703,31 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
         const isObjectArray = members.length > 0 && typeof members[0] === 'object';
 
         if (isObjectArray) {
-          // Check if member object already exists
           if (!members.some(m => m.uid === invitedUid)) {
             await updateDoc(teamDocRef, { members: arrayUnion({ uid: invitedUid, label: invitedLabel }) });
           }
         } else {
-          // Assume array of UIDs
           if (!members.includes(invitedUid)) {
             await updateDoc(teamDocRef, { members: arrayUnion(invitedUid) });
           }
         }
       } else {
-        // Team doc doesn't exist, create it with the member
-        await setDoc(teamDocRef, { members: [invitedUid] }); // Start with UID array for simplicity
+        await setDoc(teamDocRef, { members: [invitedUid] }); 
       }
 
     } catch (err) {
       console.error('Failed to add invited UID to team members array', err);
-      // Handle potential errors like permissions or doc not found during update after getDoc check
       setError('Could not update team members list.');
     }
 
-    // Apply the invited user's UID to the task cell that triggered the invite
     if (inviteMeta?.applyToEditingCell && editingCell) {
-      setEditingValue(invitedUid); // Update local editing state
-      await saveAndClose(editingCell.taskId, editingCell.columnKey, invitedUid); // Save to task
-    } else if (inviteMeta?.targetTaskId && inviteMeta?.headerKey) { // Triggered from a specific task row but not editing
+      setEditingValue(invitedUid); 
+      await saveAndClose(editingCell.taskId, editingCell.columnKey, invitedUid);
+    } else if (inviteMeta?.targetTaskId && inviteMeta?.headerKey) { 
       await saveAndClose(inviteMeta.targetTaskId, inviteMeta.headerKey, invitedUid);
     }
 
-    setInviteMeta(null); // Clear invite metadata
+    setInviteMeta(null); 
   };
 
   const handleInviteCanceled = () => {
@@ -881,15 +735,15 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
     setInviteMeta(null);
   };
 
-  // --- Options Editor Modal Helpers (Passed down) ---
+  // --- Options Editor Modal Helpers ---
   const persistTeamArrayField = async (fieldName, arr) => {
     if (!teamId) throw new Error('Missing teamId');
     const teamRef = doc(db, 'teams', teamId);
     try {
-      await setDoc(teamRef, { [fieldName]: arr }, { merge: true }); // Use setDoc + merge for simplicity
+      await setDoc(teamRef, { [fieldName]: arr }, { merge: true }); 
     } catch (err) {
       console.error(`Failed to persist ${fieldName}:`, err);
-      throw err; // Re-throw to be caught in the modal
+      throw err; 
     }
   };
 
@@ -904,19 +758,15 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
       const members = data.members || [];
       let newMembers;
 
-      // Ensure we're working with objects
       if (members.length > 0 && typeof members[0] === 'object' && members[0].uid) {
         newMembers = members.map(m => (m.uid === uid ? { ...m, label: newLabel } : m));
       } else {
-        // Convert existing UIDs to objects if necessary
         newMembers = members.map(mUid => (mUid === uid ? { uid, label: newLabel } : { uid: mUid, label: mUid }));
-        // Add the member if they somehow weren't in the list (shouldn't happen with onSnapshot)
         if (!newMembers.some(m => m.uid === uid)) {
           newMembers.push({ uid, label: newLabel });
         }
       }
       await updateDoc(teamRef, { members: newMembers });
-      // onSnapshot will update local state
     } catch (err) {
       console.error("Failed to save member label:", err);
       throw err;
@@ -929,25 +779,22 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
     const teamRef = doc(db, 'teams', teamId);
     try {
       const snap = await getDoc(teamRef);
-      if (!snap.exists()) return; // Nothing to remove from
+      if (!snap.exists()) return; 
 
       const data = snap.data();
       const members = data.members || [];
       let updateData = {};
 
-      // Handle both array types
       if (members.length > 0 && typeof members[0] === 'object') {
         updateData.members = members.filter(m => m.uid !== uid);
       } else {
-        updateData.members = arrayRemove(uid); // Use arrayRemove for UID arrays
+        updateData.members = arrayRemove(uid); 
       }
 
-      // Atomically remove roles/permissions if they exist
       updateData[`roles.${uid}`] = deleteField();
       updateData[`permissions.${uid}`] = deleteField();
 
       await updateDoc(teamRef, updateData);
-      // onSnapshot will update local state
     } catch (err) {
       console.error("Failed to remove member:", err);
       throw err;
@@ -963,26 +810,22 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
       let members = data.members || [];
       let newMembers;
 
-      // Standardize to object array
       if (members.length > 0 && typeof members[0] === 'object') {
-        // Already objects, just add if not present
         if (!members.some(m => m.uid === uid)) {
           newMembers = [...members, { uid, label }];
         } else {
-          newMembers = members; // Already exists
+          newMembers = members; 
         }
       } else {
-        // Convert existing UIDs to objects and add the new one
         newMembers = members.map(mUid => ({ uid: mUid, label: mUid }));
         if (!newMembers.some(m => m.uid === uid)) {
           newMembers.push({ uid, label });
         }
       }
 
-      if (newMembers !== members) { // Only update if changed
+      if (newMembers !== members) { 
         await setDoc(teamRef, { members: newMembers }, { merge: true });
       }
-      // onSnapshot will update local state
     } catch (err) {
       console.error("Failed to add member object:", err);
       throw err;
@@ -996,8 +839,6 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
     'Inquiry': 'tickets.inquiry'
   };
 
-  // Add other maps as needed for 'type', 'priority', 'status'
-  // For now, will just translate category or fallback
   const translateDynamic = (val, map) => {
     return t(map[val] || val);
   };
@@ -1018,7 +859,6 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
             className="p-1 rounded text-gray-500 hover:text-red-600 hover:bg-red-50 focus:outline-none focus:ring-1 focus:ring-red-500"
             aria-label={`${t("common.deleteTask")} ${task.id}`}
           >
-            {/* Simple Trash Icon */}
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
@@ -1029,7 +869,6 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
 
     // --- Editing UI ---
     if (isEditingThisCell) {
-      // Select (dropdown) columns
       if (['priority', 'category', 'type', 'status', 'csManager', 'qaManager', 'developer'].includes(header.key)) {
         let options = [];
         let isMemberSelect = false;
@@ -1038,44 +877,39 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
           case 'category': options = categoriesList; break;
           case 'type': options = typesList; break;
           case 'status': options = statusOptions; break;
-          default: // csManager, qaManager, developer
-            options = membersList; // membersList is array of objects {uid,label}
+          default: 
+            options = membersList; 
             isMemberSelect = true;
         }
 
         return (
           <select
             ref={selectRef}
-            value={editingValue} // For members, this is UID; for others, it's the string value
+            value={editingValue} 
             onChange={(e) => {
               const newValue = e.target.value;
-              setEditingValue(newValue); // Update local state immediately
-              handleSelectChange(task.id, header.key, newValue); // Trigger save/modal logic
+              setEditingValue(newValue); 
+              handleSelectChange(task.id, header.key, newValue); 
             }}
             onBlur={() => {
-              // Delay blur slightly to allow onChange to fire first
               setTimeout(() => {
-                // Check if we are *still* editing this cell (e.g., didn't switch to modal)
                 if (editingCell?.taskId === task.id && editingCell?.columnKey === header.key) {
-                  cancelEditing(); // If still editing, cancel (as select has no explicit save button)
+                  cancelEditing(); 
                 }
               }, 150);
             }}
             className="absolute inset-0 w-full h-full px-2 py-1 border-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm z-10"
-            onKeyDown={handleInputKeyDown} // Handle Escape key
+            onKeyDown={handleInputKeyDown} 
           >
             <option value="">{t('common.empty')}</option>
-            {/* Render options */}
             {isMemberSelect
               ? membersList.map(m => <option key={m.uid} value={m.uid}>{t(m.label)}</option>)
-              : options.map(opt => <option key={opt} value={opt}>{translateDynamic(opt, categoryKeyMap)}</option>) // Use translateDynamic
+              : options.map(opt => <option key={opt} value={opt}>{translateDynamic(opt, categoryKeyMap)}</option>) 
             }
-            {/* Sentinel options */}
             {isMemberSelect
               ? <option value="__INVITE_USER__">{t('admin.inviteUser')}</option>
               : <option value="__ADD_NEW__">{t('common.addNew')}</option>
             }
-            {/* Show original value if it's no longer in the list (e.g., removed member/option) */}
             {isMemberSelect && editingOriginalValue && !membersList.some(m => m.uid === editingOriginalValue) && (
               <option value={editingOriginalValue} disabled>{editingOriginalValue} (removed)</option>
             )}
@@ -1086,13 +920,12 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
         );
       }
 
-      // Date columns
       if (header.key === 'startDate' || header.key === 'endDate') {
         return (
           <input
             ref={inputRef}
             type="date"
-            value={editingValue} // Should be in 'YYYY-MM-DD' format
+            value={editingValue} 
             onChange={(e) => setEditingValue(e.target.value)}
             onBlur={(e) => handleBlurSave(task.id, header.key, e.target.value)}
             onKeyDown={handleInputKeyDown}
@@ -1101,7 +934,6 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
         );
       }
 
-      // Text-like columns (use textarea)
       if (TEXTAREA_COLUMNS.includes(header.key)) {
         return (
           <textarea
@@ -1110,12 +942,12 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
             onChange={(e) => setEditingValue(e.target.value)}
             onBlur={(e) => handleBlurSave(task.id, header.key, e.target.value)}
             onKeyDown={handleInputKeyDown}
-            rows={Math.max(3, (String(editingValue || '').split('\n').length))} // Auto-expand rows
+            rows={Math.max(3, (String(editingValue || '').split('\n').length))} 
             className="absolute inset-0 w-full h-full min-h-[80px] p-2 border-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm resize-y z-10 shadow-lg"
           />
         );
       }
-      // Fallback for any other INLINE_EDITABLE_COLUMNS (shouldn't happen with current config)
+      
       return (
         <input
           ref={inputRef}
@@ -1131,12 +963,12 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
 
     // --- Static Display UI (Not Editing) ---
 
-    // Inquiry column always shows '(open)' button
+    // Inquiry column always shows '(open)' button -> Triggers NotePopup
     if (header.key === 'inquiry') {
       return (
         <div className="px-4 py-2.5">
           <button
-            onClick={(e) => { handleGenericPopupClick(e, task.id, header.key); }}
+            onClick={(e) => handleOpenNotePopup(e, task.id, header.key)}
             className="text-left w-full text-sm text-blue-600 hover:underline focus:outline-none focus:ring-1 focus:ring-blue-500 rounded"
             type="button"
           >
@@ -1146,11 +978,38 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
       );
     }
 
-    // Member columns: Display label instead of UID
+    // TicketNo Column:
+    // - Double Click on Cell -> Edits text
+    // - Click on Icon -> Opens Modal
+    if (header.key === 'ticketNo') {
+        return (
+            <div className="px-4 py-2.5 flex items-center justify-between group">
+                 {/* Number Text (Blue, Double-click edits) */}
+                 <span className="text-sm font-semibold text-blue-600 truncate mr-2 cursor-text">
+                     {displayValue || '-'}
+                 </span>
+
+                 {/* Open Modal Icon (Visible on Hover or always) */}
+                 <button
+                    onClick={(e) => {
+                        e.stopPropagation(); // Stop edit mode from triggering
+                        handleOpenDetailModal(e, task.id);
+                    }}
+                    className="text-gray-400 hover:text-blue-600 focus:outline-none opacity-0 group-hover:opacity-100 transition-opacity"
+                    title={t('common.viewDetails', 'View Details')}
+                 >
+                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                     </svg>
+                 </button>
+            </div>
+        );
+    }
+
     if (['csManager', 'qaManager', 'developer'].includes(header.key)) {
       const foundMember = membersList.find(m => m.uid === displayValue);
-      const label = foundMember ? foundMember.label : displayValue; // Show UID if not found
-      const textToShow = t(label) || '-'; // This t is for the label, which might be a key or plain text
+      const label = foundMember ? foundMember.label : displayValue; 
+      const textToShow = t(label) || '-'; 
       return (
         <div
           className={`px-4 py-2.5 text-sm text-gray-700 ${isAllExpanded ? 'whitespace-pre-wrap break-words' : 'truncate'}`}
@@ -1161,7 +1020,6 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
       );
     }
 
-    // Dynamic value columns (Category, Type, Priority, Status)
     if (['category', 'type', 'priority', 'status'].includes(header.key)) {
       const textToShow = translateDynamic(displayValue, categoryKeyMap) || '-';
       return (
@@ -1174,8 +1032,7 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
       );
     }
 
-    // Default static display for other columns
-    const textToShow = t(displayValue) || '-'; // t() will just return the value if not found
+    const textToShow = t(displayValue) || '-'; 
     return (
       <div
         className={`px-4 py-2.5 text-sm text-gray-700 ${isAllExpanded ? 'whitespace-pre-wrap break-words' : 'truncate'}`}
@@ -1195,8 +1052,7 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
         <div className="px-6 pt-4 pb-3 flex flex-wrap justify-between items-center gap-y-2 border-b border-gray-200">
           <h3 className="text-xl font-semibold text-gray-800">{t('tickets.title')}</h3>
           <div className="flex items-center gap-3 flex-wrap">
-            {/* Language Selector (REMOVED) */}
-
+            
             {/* Expand/Collapse Button */}
             <button
               onClick={toggleAllColumns}
@@ -1208,7 +1064,7 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
             {/* Edit Dropdowns Button */}
             <button
               onClick={() => setIsOptionsModalOpen(true)}
-              title={t('admin.editOptions', 'Edit dropdown options')} // Added translation
+              title={t('admin.editOptions', 'Edit dropdown options')} 
               className="text-sm py-1.5 px-3 rounded border bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {t('admin.editOptions', 'Edit Options')}
@@ -1223,11 +1079,10 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
           </div>
         </div>
 
-        {/* --- NEW: Filter Bar --- */}
+        {/* Filter Bar */}
         <div className="px-6 py-3 border-b border-gray-200 bg-gray-50 flex flex-wrap items-center gap-x-4 gap-y-2">
           <span className="text-sm font-medium text-gray-700">{t('tickets.filters')}</span>
 
-          {/* Company Filter */}
           <div className="flex items-center gap-1.5">
             <label htmlFor="filter-company" className="text-sm text-gray-600">{t('tickets.filterByCompany')}</label>
             <input
@@ -1240,7 +1095,6 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
             />
           </div>
 
-          {/* Developer Filter */}
           <div className="flex items-center gap-1.5">
             <label htmlFor="filter-developer" className="text-sm text-gray-600">{t('tickets.filterByDeveloper')}</label>
             <select
@@ -1251,12 +1105,11 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
             >
               <option value="">{t('tickets.allDevelopers')}</option>
               {membersList.map(m => (
-                <option key={m.uid} value={m.uid}>{m.label}</option> // Labels are already fine, no need to t()
+                <option key={m.uid} value={m.uid}>{m.label}</option> 
               ))}
             </select>
           </div>
 
-          {/* Category Filter */}
           <div className="flex items-center gap-1.5">
             <label htmlFor="filter-category" className="text-sm text-gray-600">{t('tickets.filterByCategory')}</label>
             <select
@@ -1272,7 +1125,6 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
             </select>
           </div>
 
-          {/* Clear Button */}
           {(filters.company || filters.developer || filters.category) && (
             <button
               onClick={clearFilters}
@@ -1349,7 +1201,7 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
                     className={`px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-300 ${(!isAllExpanded && h.widthClass) ? h.widthClass : ''}`}
                     style={{
                       maxWidth: (!isAllExpanded ? h.maxWidth : undefined) || undefined,
-                      whiteSpace: isAllExpanded ? 'normal' : 'nowrap', // Simplified whitespace logic
+                      whiteSpace: isAllExpanded ? 'normal' : 'nowrap', 
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                     }}
@@ -1371,11 +1223,11 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
                 <tr>
                   <td colSpan={headers.length} className="text-center py-10 text-gray-500">
                     {tasksToDisplay.length > 0 ? (
-                      t('tickets.noFilterMatch') // Filters are active but found nothing
+                      t('tickets.noFilterMatch') 
                     ) : (
                       activeTab === 'active'
-                        ? t('tickets.noActiveTasks') // Tab is genuinely empty
-                        : t('tickets.noCompletedTasks')  // Tab is genuinely empty
+                        ? t('tickets.noActiveTasks') 
+                        : t('tickets.noCompletedTasks')  
                     )}
                   </td>
                 </tr>
@@ -1395,27 +1247,22 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
                         key={cellKey}
                         className={[
                           'relative align-top border-b border-gray-100',
-                          // Cursors based on actionability
                           !isEditingThisCell && isPopupTrigger ? 'cursor-pointer' : '',
                           !isEditingThisCell && isEditable && !isPopupTrigger ? 'cursor-text' : '',
-                          // Width classes only in fixed layout mode
                           (!isAllExpanded && header.widthClass) ? header.widthClass : '',
-                          // No padding when editing, handled by input/select styles
                           isEditingThisCell ? 'p-0' : '',
-                          // Align top in expanded mode for better readability with wrapped text
                           isAllExpanded ? 'align-top' : 'align-middle'
                         ].filter(Boolean).join(' ')}
                         style={{
                           maxWidth: (!isAllExpanded ? header.maxWidth : undefined) || undefined,
-                          // Height auto needed for expanding textarea
                           height: (isEditingThisCell && TEXTAREA_COLUMNS.includes(header.key)) ? 'auto' : undefined,
                         }}
-                        // Trigger editing/popup
+                        // Single click triggers modal logic (only if not generic popup or editing)
                         onClick={(e) => !isEditingThisCell && handleGenericPopupClick(e, task.id, header.key)}
+                        // Double click triggers edit logic
                         onDoubleClick={(e) => !isEditingThisCell && handleCellDoubleClick(e, task.id, header.key)}
                       >
                         {renderCellContent(task, header)}
-                        {/* Saving Indicators */}
                         {savingStatus[cellKey] === 'saving' && (
                           <span className="absolute top-1 right-2 text-xs text-gray-500 animate-pulse">{t('common.saving')}</span>
                         )}
@@ -1434,15 +1281,27 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
 
       {/* --- Modals --- */}
 
-      {/* --- MODIFIED: NotePopup Modal (for Inquiry) --- */}
-      {isPopupOpen && popupTargetInfo && (
+      {/* --- 1. THE NOTE POPUP (For simple Inquiry edits) --- */}
+      {isNotePopupOpen && notePopupTarget && (
         <NotePopup
           teamId={teamId}
-          taskId={popupTargetInfo.taskId}
-          columnKey={popupTargetInfo.columnKey}
-          onClose={closeGenericPopup}
-          isMasterAdminView={isMasterAdminView} // <-- Pass it down
+          taskId={notePopupTarget.taskId}
+          columnKey={notePopupTarget.columnKey}
+          onClose={closeNotePopup}
+          isMasterAdminView={isMasterAdminView}
           membersList={membersList}
+        />
+      )}
+
+      {/* --- 2. THE TASK DETAIL MODAL (For full History/Assignees - Ticket No Click) --- */}
+      {isDetailModalOpen && detailTargetTaskId && (
+        <TaskDetailModal
+          isOpen={isDetailModalOpen}
+          onClose={closeDetailModal}
+          taskId={detailTargetTaskId}
+          teamId={teamId}
+          // Map the label (e.g. "John Doe (john@...)") to displayName so the modal displays it correctly
+          teamMembers={membersList.map(m => ({ uid: m.uid, displayName: m.label }))} 
         />
       )}
 
@@ -1453,7 +1312,6 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
         onClose={handleTaskCreated}
         teamId={teamId}
         onTaskCreated={handleTaskCreated}
-        // --- ADD THESE PROPS ---
         categoriesList={categoriesList}
         typesList={typesList}
         priorityOptions={priorityOptions}
@@ -1469,7 +1327,6 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
           <div className="bg-white rounded-lg shadow-xl z-50 max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
             <h4 className="text-lg font-semibold mb-2">{t('common.addNew')}</h4>
             <p className="text-sm text-gray-600 mb-4">{t('admin.addNewOption', `Add a new ${addOptionMeta.headerKey}`)}:</p>
-            {/* Show error specific to this modal if any */}
             {error && addOptionMeta && <p className="text-red-500 text-sm mb-3">{error}</p>}
             <input
               autoFocus
@@ -1496,19 +1353,16 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
           isOpen={isOptionsModalOpen}
           onClose={() => setIsOptionsModalOpen(false)}
           teamId={teamId}
-          t={t} // Pass t function
-          // Pass current state lists
+          t={t} 
           categoriesList={categoriesList}
           typesList={typesList}
           membersList={membersList}
           priorityOptions={priorityOptions}
           statusOptions={statusOptions}
-          // Pass down persistence functions
           persistTeamArrayField={persistTeamArrayField}
           saveMemberLabel={saveMemberLabel}
           removeMember={removeMember}
           addMemberObject={addMemberObject}
-          // Callbacks are less needed now due to onSnapshot, but can be kept for optimistic UI
           onCategoriesChange={() => { }}
           onTypesChange={() => { }}
           onMembersChange={() => { }}
@@ -1523,8 +1377,8 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
           isOpen={isInviteOpen}
           onClose={handleInviteCanceled}
           teamId={teamId}
-          t={t} // Pass t function
-          onInvited={handleInviteCompleted} // Pass the callback
+          t={t} 
+          onInvited={handleInviteCompleted} 
         />
       )}
     </>
@@ -1546,35 +1400,33 @@ function OptionsEditorModal({
   isOpen,
   onClose,
   teamId,
-  t, // Receive t function as a prop
+  t, 
   categoriesList,
   typesList,
-  membersList, // Array of {uid, label}
+  membersList, 
   priorityOptions,
   statusOptions,
-  persistTeamArrayField, // (fieldName, array) => Promise<void>
-  saveMemberLabel,       // (uid, newLabel) => Promise<void>
-  removeMember,          // (uid) => Promise<void>
-  addMemberObject,       // (uid, label) => Promise<void>
-  // Optimistic update callbacks (optional now)
+  persistTeamArrayField, 
+  saveMemberLabel,       
+  removeMember,          
+  addMemberObject,       
   onCategoriesChange,
   onTypesChange,
   onMembersChange,
   onPrioritiesChange,
   onStatusOptionsChange,
 }) {
-  const [tab, setTab] = useState('categories'); // 'categories' | 'types' | 'priorities' | 'statuses' | 'members'
-  const [items, setItems] = useState([]);       // Current list being edited (strings or member objects)
-  const [newValue, setNewValue] = useState('');       // Input for adding new items
-  const [editingIndex, setEditingIndex] = useState(null); // Index of item being edited
-  const [editingValueLocal, setEditingValueLocal] = useState(''); // Local state for the item being edited
-  const [modalError, setModalError] = useState(''); // Error specific to this modal
-  const [isSaving, setIsSaving] = useState(false); // Loading state for async operations
+  const [tab, setTab] = useState('categories'); 
+  const [items, setItems] = useState([]);       
+  const [newValue, setNewValue] = useState('');       
+  const [editingIndex, setEditingIndex] = useState(null); 
+  const [editingValueLocal, setEditingValueLocal] = useState(''); 
+  const [modalError, setModalError] = useState(''); 
+  const [isSaving, setIsSaving] = useState(false); 
 
-  // Reset modal state when opened
   useEffect(() => {
     if (!isOpen) return;
-    setTab('categories'); // Default tab
+    setTab('categories'); 
     setEditingIndex(null);
     setEditingValueLocal('');
     setNewValue('');
@@ -1582,7 +1434,6 @@ function OptionsEditorModal({
     setIsSaving(false);
   }, [isOpen]);
 
-  // Update local items list when the active tab or props change
   useEffect(() => {
     if (!isOpen) return;
     let currentItems = [];
@@ -1591,11 +1442,10 @@ function OptionsEditorModal({
       case 'types': currentItems = typesList; break;
       case 'priorities': currentItems = priorityOptions; break;
       case 'statuses': currentItems = statusOptions; break;
-      case 'members': currentItems = membersList.map(m => ({ uid: m.uid, label: m.label })); break; // Use a copy for members
+      case 'members': currentItems = membersList.map(m => ({ uid: m.uid, label: m.label })); break; 
       default: currentItems = [];
     }
     setItems(currentItems);
-    // Reset editing state when switching tabs
     setEditingIndex(null);
     setEditingValueLocal('');
     setNewValue('');
@@ -1611,11 +1461,9 @@ function OptionsEditorModal({
     setIsSaving(true);
     try {
       await persistTeamArrayField(fieldName, newArr);
-      // Let onSnapshot update the list visually
     } catch (err) {
       console.error(`Failed to persist ${fieldName}:`, err);
       setModalError(t('admin.saveError', `Failed to save changes for ${fieldName}. See console.`));
-      // Optionally revert local state if needed, but onSnapshot should correct it
     } finally {
       setIsSaving(false);
     }
@@ -1626,7 +1474,7 @@ function OptionsEditorModal({
     setIsSaving(true);
     try {
       await saveMemberLabel(uid, newLabel);
-      setEditingIndex(null); // Exit editing mode on success
+      setEditingIndex(null); 
       setEditingValueLocal('');
     } catch (err) {
       setModalError(t('admin.saveMemberLabelError', 'Failed to save member label. See console.'));
@@ -1640,7 +1488,6 @@ function OptionsEditorModal({
     setIsSaving(true);
     try {
       await removeMember(uid);
-      // Let onSnapshot handle UI update
     } catch (err) {
       setModalError(t('admin.removeMemberError', 'Failed to remove member. See console.'));
     } finally {
@@ -1653,7 +1500,7 @@ function OptionsEditorModal({
     setIsSaving(true);
     try {
       await addMemberObject(uid, label);
-      setNewValue(''); // Clear input on success
+      setNewValue(''); 
     } catch (err) {
       setModalError(t('admin.addMemberError', 'Failed to add member. See console.'));
     } finally {
@@ -1671,16 +1518,15 @@ function OptionsEditorModal({
     if (tab === 'members') {
       let uid = v;
       let label = v;
-      if (v.includes('|')) { // Support "uid|label" format
+      if (v.includes('|')) { 
         const parts = v.split('|');
         uid = parts[0].trim();
-        label = parts.slice(1).join('|').trim() || uid; // Fallback label to uid if empty
+        label = parts.slice(1).join('|').trim() || uid; 
       }
       if (!uid) {
         setModalError(t('admin.uidRequiredError', 'Please provide a UID (or uid|label).'));
         return;
       }
-      // Check if UID already exists
       if (items.some(item => item.uid === uid)) {
         setModalError(t('admin.memberExistsError', "A member with this UID already exists."));
         return;
@@ -1689,7 +1535,6 @@ function OptionsEditorModal({
       return;
     }
 
-    // For string-based lists
     if (items.includes(v)) {
       setModalError(t('admin.itemExistsError', "This item already exists."));
       return;
@@ -1697,16 +1542,14 @@ function OptionsEditorModal({
 
     let next = [...items, v];
     let fieldName = '';
-    // Special case: Ensure new status is added *before* the last item
     if (tab === 'statuses') {
-      const completeStatus = next.pop(); // Remove last
-      next.push(v); // Add new
-      if (completeStatus !== undefined) next.push(completeStatus); // Add last back
+      const completeStatus = next.pop(); 
+      next.push(v); 
+      if (completeStatus !== undefined) next.push(completeStatus); 
       fieldName = 'statusOptions';
     } else {
-      // Normal append for others
-      fieldName = tab; // 'categories', 'types', 'priorities'
-      if (tab === 'priorities') fieldName = 'priorities'; // Ensure correct field name
+      fieldName = tab; 
+      if (tab === 'priorities') fieldName = 'priorities'; 
       else if (tab === 'categories') fieldName = 'categories';
       else if (tab === 'types') fieldName = 'types';
       else {
@@ -1716,16 +1559,15 @@ function OptionsEditorModal({
     }
 
 
-    setItems(next); // Optimistic UI update
-    setNewValue(''); // Clear input
-    await handlePersistArray(fieldName, next); // Persist
+    setItems(next); 
+    setNewValue(''); 
+    await handlePersistArray(fieldName, next); 
   };
 
   const startEdit = (idx) => {
     setModalError('');
     setEditingIndex(idx);
     const itemToEdit = items[idx];
-    // Check item type here as well
     setEditingValueLocal(typeof itemToEdit === 'object' && itemToEdit !== null ? itemToEdit.label : itemToEdit);
   };
 
@@ -1734,11 +1576,9 @@ function OptionsEditorModal({
     if (!v || editingIndex === null) return;
     setModalError('');
 
-    // Check item type to decide logic
     const itemToEdit = items[editingIndex];
     if (typeof itemToEdit === 'object' && itemToEdit !== null && 'uid' in itemToEdit) {
       const uid = itemToEdit.uid;
-      // Check if new label is empty
       if (!v) {
         setModalError(t('admin.memberLabelEmptyError', "Member label cannot be empty."));
         return;
@@ -1747,8 +1587,6 @@ function OptionsEditorModal({
       return;
     }
 
-    // For string-based lists
-    // Check if the edited value duplicates another existing item
     const duplicateIndex = items.findIndex(item => item === v);
     if (duplicateIndex !== -1 && duplicateIndex !== editingIndex) {
       setModalError(t('admin.itemExistsError', "This item already exists."));
@@ -1767,8 +1605,8 @@ function OptionsEditorModal({
       return;
     }
 
-    setItems(next); // Optimistic update
-    setEditingIndex(null); // Exit editing mode locally
+    setItems(next); 
+    setEditingIndex(null); 
     setEditingValueLocal('');
     await handlePersistArray(fieldName, next);
   };
@@ -1780,25 +1618,22 @@ function OptionsEditorModal({
   };
 
   const handleRemove = async (idx) => {
-    if (isSaving) return; // Prevent double actions
+    if (isSaving) return; 
     setModalError('');
 
     const itemToRemove = items[idx];
 
-    // Check item type to decide logic
     if (typeof itemToRemove === 'object' && itemToRemove !== null && 'uid' in itemToRemove) {
       const uid = itemToRemove.uid;
       await handleRemoveMember(uid);
       return;
     }
 
-    // For string-based lists
-    // Prevent deleting the last status if it's the 'Complete' status? Maybe allow via confirmation.
     if (tab === 'statuses' && idx === items.length - 1) {
       if (!window.confirm(t('admin.confirmDeleteFinalStatus', 'Are you sure you want to remove the final status? This is usually the "Complete" status.'))) {
         return;
       }
-    } else if (!window.confirm(t('common.confirmDelete'))) { // Use translated confirm
+    } else if (!window.confirm(t('common.confirmDelete'))) { 
       return;
     }
 
@@ -1815,12 +1650,12 @@ function OptionsEditorModal({
       return;
     }
 
-    setItems(next); // Optimistic update
+    setItems(next); 
     await handlePersistArray(fieldName, next);
   };
 
   const handleCloseModal = () => {
-    if (isSaving) return; // Don't close while saving
+    if (isSaving) return; 
     onClose();
   };
 
@@ -1828,8 +1663,6 @@ function OptionsEditorModal({
   const renderListItem = (it, idx) => {
     const isEditingThisItem = editingIndex === idx;
 
-    // --- FIX 1: Check item type, not tab state ---
-    // --- Member List Item ---
     if (typeof it === 'object' && it !== null && 'uid' in it) {
       return (
         <li key={it.uid} className="flex items-center justify-between gap-2 bg-gray-50 p-2 rounded text-sm">
@@ -1867,8 +1700,6 @@ function OptionsEditorModal({
       );
     }
 
-    // --- Regular String List Item ---
-    // (If it's not an object, it must be a string)
     return (
       <li key={String(it) + idx} className="flex items-center justify-between gap-2 bg-gray-50 p-2 rounded text-sm">
         <div className="min-w-0 flex-1">
@@ -1905,7 +1736,6 @@ function OptionsEditorModal({
     );
   };
 
-  // --- Helper to get translated tab title ---
   const getTabTitle = (tabKey) => {
     switch (tabKey) {
       case 'categories': return t('admin.categories');
@@ -1917,7 +1747,6 @@ function OptionsEditorModal({
     }
   }
 
-  // --- Modal Structure ---
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
       <div className="bg-white rounded-lg shadow-xl z-50 max-w-3xl w-full p-6 relative flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
@@ -1967,12 +1796,10 @@ function OptionsEditorModal({
 
             {/* List of Items */}
             <ul className="space-y-1.5 overflow-y-auto flex-1 pr-1">
-              {/* --- FIX 2: Added key prop --- */}
               {items.length === 0 && <li key="empty-state" className="text-sm text-gray-500 px-1 py-4 text-center">{t('admin.noItems', 'No items defined for')} {tab}.</li>}
 
               {items.map((it, idx) => renderListItem(it, idx))}
 
-              {/* --- FIX 2: Added key prop --- */}
               <li key="spacer" style={{ height: '10px' }}></li>
             </ul>
 
@@ -1998,7 +1825,6 @@ function InviteMemberModal({ isOpen, onClose, teamId, t, onInvited }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Reset state when modal opens/closes
   useEffect(() => {
     if (!isOpen) {
       setEmail('');
@@ -2011,7 +1837,7 @@ function InviteMemberModal({ isOpen, onClose, teamId, t, onInvited }) {
   if (!isOpen) return null;
 
   const handleInvite = async () => {
-    if (!email.trim() || !email.includes('@')) { // Basic email validation
+    if (!email.trim() || !email.includes('@')) { 
       setError(t('admin.invalidEmail', 'Please enter a valid email address.'));
       return;
     }
@@ -2026,7 +1852,6 @@ function InviteMemberModal({ isOpen, onClose, teamId, t, onInvited }) {
         throw new Error("Authentication error: User not logged in.");
       }
 
-      // 1. Find the user by email in the 'users' collection
       const usersRef = collection(db, 'users');
       const q = query(usersRef, where('email', '==', email.trim().toLowerCase()));
       const querySnapshot = await getDocs(q);
@@ -2040,35 +1865,30 @@ function InviteMemberModal({ isOpen, onClose, teamId, t, onInvited }) {
       const userDoc = querySnapshot.docs[0];
       const invitedUserId = userDoc.id;
       const invitedData = userDoc.data();
-      // Determine best label: displayName > name > email > uid
       const invitedLabel = invitedData.displayName || invitedData.name || invitedData.email || invitedUserId;
 
-      // Prevent self-invites
       if (invitedUserId === currentUser.uid) {
         setError(t('admin.inviteSelfError', "You cannot invite yourself to the team."));
         setIsInviting(false);
         return;
       }
 
-      // 2. Get team data (needed for name and member check)
       const teamRef = doc(db, 'teams', teamId);
       const teamSnap = await getDoc(teamRef);
 
       if (!teamSnap.exists()) {
-        // This case should ideally not happen if the table component loaded correctly
         setError(t('admin.teamNotFoundError', 'Team data not found. Cannot process invitation.'));
         setIsInviting(false);
         return;
       }
 
       const teamData = teamSnap.data();
-      const teamName = teamData.teamName || `Team ${teamId.substring(0, 6)}`; // Use ID prefix if no name
+      const teamName = teamData.teamName || `Team ${teamId.substring(0, 6)}`; 
       const members = teamData.members || [];
 
-      // 3. Check if user is already a member (handle both UID array and object array)
       const isAlreadyMember = members.some(member =>
-        (typeof member === 'object' && member.uid === invitedUserId) || // Check object array
-        (typeof member === 'string' && member === invitedUserId)     // Check UID string array
+        (typeof member === 'object' && member.uid === invitedUserId) || 
+        (typeof member === 'string' && member === invitedUserId)     
       );
 
       if (isAlreadyMember) {
@@ -2077,10 +1897,9 @@ function InviteMemberModal({ isOpen, onClose, teamId, t, onInvited }) {
         return;
       }
 
-      // 4. Create the invitation notification for the invited user
       const senderName = currentUser.displayName || currentUser.email || 'A team member';
       await addDoc(collection(db, 'notifications'), {
-        userId: invitedUserId,       // Recipient
+        userId: invitedUserId,       
         type: 'INVITATION',
         senderId: currentUser.uid,
         senderName: senderName,
@@ -2093,26 +1912,22 @@ function InviteMemberModal({ isOpen, onClose, teamId, t, onInvited }) {
 
       setSuccess(`${t('admin.inviteSuccess', 'Invitation sent successfully to')} ${invitedLabel} (${email})!`);
 
-      // 5. Call the onInvited callback to update the team document and potentially the table cell
       if (typeof onInvited === 'function') {
-        onInvited(invitedUserId, invitedLabel); // Pass UID and Label back
+        onInvited(invitedUserId, invitedLabel); 
       }
 
-      // Optionally close modal after success
       setTimeout(() => {
         if (typeof onClose === 'function') onClose();
-      }, 1500); // Keep success message visible briefly
+      }, 1500); 
 
     } catch (err) {
       console.error('Error sending invitation:', err);
       setError(t('admin.inviteFailError', 'Failed to send invitation. Please check the console and try again.'));
-      setIsInviting(false); // Ensure loading state stops on error
+      setIsInviting(false); 
     }
-    // No finally block needed for setIsInviting if errors are handled above
   };
 
   const handleClose = () => {
-    // Only allow close if not currently inviting
     if (!isInviting && typeof onClose === 'function') {
       onClose();
     }
@@ -2120,22 +1935,17 @@ function InviteMemberModal({ isOpen, onClose, teamId, t, onInvited }) {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-      {/* Modal Content */}
       <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6 relative">
-        {/* Close Button */}
         <button onClick={handleClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 focus:outline-none" disabled={isInviting}>&times;</button>
-        {/* Header */}
         <div className="mb-4">
           <h3 className="text-xl font-semibold text-gray-800">{t('admin.inviteMember')}</h3>
           <p className="text-sm text-gray-500 mt-1">{t('admin.inviteSubtext', 'Enter the email address of the user you want to invite.')}</p>
         </div>
 
-        {/* Status Messages */}
         {error && <p className="text-red-600 text-sm mb-3 p-2 bg-red-50 rounded border border-red-200">{error}</p>}
         {success && <p className="text-green-600 text-sm mb-3 p-2 bg-green-50 rounded border border-green-200">{success}</p>}
 
-        {/* Input Field */}
-        {!success && ( // Hide input after success
+        {!success && ( 
           <div className="space-y-4">
             <div>
               <label htmlFor="inviteEmail" className="sr-only">{t('admin.emailLabel', "User's Email")}</label>
@@ -2152,12 +1962,11 @@ function InviteMemberModal({ isOpen, onClose, teamId, t, onInvited }) {
           </div>
         )}
 
-        {/* Action Buttons */}
         <div className="flex justify-end gap-2 mt-6 border-t pt-4">
           <button onClick={handleClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md text-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50" disabled={isInviting}>
             {success ? t('common.close') : t('common.cancel')}
           </button>
-          {!success && ( // Hide invite button after success
+          {!success && ( 
             <button
               onClick={handleInvite}
               disabled={isInviting || !email.trim()}

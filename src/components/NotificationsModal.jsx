@@ -76,9 +76,11 @@ const NotificationsModal = ({ isOpen, onClose }) => {
             ...doc.data(),
           }))
           .filter(notif => {
-            if (notif.type === 'INVITATION') {
+            // Always show personal invites or mentions
+            if (notif.type === 'INVITATION' || notif.type === 'MENTION') {
               return true; 
             }
+            // For team-wide stuff, check membership
             return userTeams.includes(notif.teamId);
           });
           
@@ -157,13 +159,11 @@ const NotificationsModal = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
-    // --- FIX: Backdrop for clicking outside ---
     <div 
       className="fixed inset-0 bg-black bg-opacity-60 z-50"
       onClick={onClose}
     >
       <div
-        // --- FIX: Absolute positioning below header ---
         className="absolute top-20 right-8 bg-white rounded-lg shadow-xl w-full max-w-md max-h-[calc(100vh-120px)] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
@@ -173,7 +173,7 @@ const NotificationsModal = ({ isOpen, onClose }) => {
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-3xl">&times;</button>
         </div>
 
-        {/* --- FIX: Content wrapper that scrolls --- */}
+        {/* --- Content --- */}
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
             <Spinner />
@@ -187,6 +187,7 @@ const NotificationsModal = ({ isOpen, onClose }) => {
                   className={`p-4 ${!notif.isRead ? 'bg-blue-50' : 'bg-white'}`}
                   onMouseEnter={() => handleMarkAsReadOnHover(notif)}
                 >
+                  {/* --- 1. INVITATION TYPE --- */}
                   {notif.type === 'INVITATION' && (
                     <>
                       <p className="text-sm">
@@ -209,6 +210,8 @@ const NotificationsModal = ({ isOpen, onClose }) => {
                       </div>
                     </>
                   )}
+
+                  {/* --- 2. ANNOUNCEMENT TYPE --- */}
                   {notif.type === 'ANNOUNCEMENT' && (
                     <Link to={`/team/${notif.teamId}`} onClick={() => { markAsRead(notif.id); onClose(); }}>
                       <p className="text-sm">
@@ -218,6 +221,8 @@ const NotificationsModal = ({ isOpen, onClose }) => {
                       <p className="text-sm text-gray-600 mt-1 truncate">"{notif.title}"</p>
                     </Link>
                   )}
+
+                  {/* --- 3. MEETING TYPE --- */}
                   {notif.type === 'MEETING' && (
                     <Link to={`/team/${notif.teamId}`} onClick={() => { markAsRead(notif.id); onClose(); }}>
                       <p className="text-sm">
@@ -227,6 +232,31 @@ const NotificationsModal = ({ isOpen, onClose }) => {
                       <p className="text-sm text-gray-600 mt-1 truncate">"{notif.title}"</p>
                     </Link>
                   )}
+
+                  {/* --- 4. MENTION TYPE (NEW) --- */}
+                  {notif.type === 'MENTION' && (
+                    <Link 
+                        // Deep link to open the Task Detail Modal directly
+                        to={`/team/${notif.teamId}/task/${notif.taskId}`} 
+                        onClick={() => { markAsRead(notif.id); onClose(); }}
+                    >
+                      <div className="flex items-start gap-2">
+                          <div className="text-blue-500 mt-0.5">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                              </svg>
+                          </div>
+                          <div>
+                              <p className="text-sm">
+                                <span className="font-semibold">{notif.senderName}</span> mentioned you in a comment.
+                              </p>
+                              <p className="text-xs text-gray-500 mt-1">Task: {notif.taskTitle || notif.taskId}</p>
+                              <p className="text-sm text-gray-600 mt-1 line-clamp-2 italic">"{notif.message}"</p>
+                          </div>
+                      </div>
+                    </Link>
+                  )}
+
                 </li>
               ))}
             </ul>
