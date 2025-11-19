@@ -11,15 +11,16 @@ import {
   onSnapshot,
   addDoc,
   serverTimestamp,
-  deleteDoc // <-- Added deleteDoc
+  deleteDoc,
+  getDocs
 } from 'firebase/firestore';
 import {
   ref,
   uploadBytesResumable,
   getDownloadURL,
-  deleteObject
+  deleteObject,
 } from 'firebase/storage';
-import './NotePopup.css'; // We can reuse the same CSS
+import './NotePopup.css';
 import { LanguageContext } from '../contexts/LanguageContext';
 
 /* ---------- Icons ---------- */
@@ -48,7 +49,6 @@ const TrashIcon = () => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
   </svg>
 );
-// --- NEW ICONS ---
 const PencilIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" />
@@ -64,13 +64,22 @@ const DetailsIcon = () => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
   </svg>
 );
-
+const HistoryIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+const UserIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+  </svg>
+);
 
 /* ---------- Small spinners ---------- */
 const Spinner = () => <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>;
 const MiniSpinner = () => <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>;
 
-/* ---------- ModalShell (overlay & scroll lock) ---------- */
+/* ---------- ModalShell ---------- */
 const ModalShell = ({ children, onClose }) => {
   const width = 1200;
   const maxWidth = '95vw';
@@ -151,9 +160,8 @@ function unwrapAnchors(node) {
 }
 
 /* ===================================================================
-  NEW: Handover Details Display Component
-===================================================================
-*/
+  Handover Details Display (Sidebar 1)
+===================================================================*/
 const DetailItem = ({ label, value }) => {
   if (!value) return null;
   return (
@@ -164,63 +172,209 @@ const DetailItem = ({ label, value }) => {
   );
 };
 
-// This component displays details for the Handover
-const HandoverDetailsDisplay = ({ handoverData, t, membersList = [] }) => {
+const HandoverDetailsDisplay = ({ handoverData, t, membersList = [], handleUpdateField }) => {
   if (!handoverData) return null;
 
-  // Helper to find member label from UID
   const getMemberLabel = (uid) => {
     if (!uid) return null;
+    if (!membersList || !Array.isArray(membersList)) return uid;
     const member = membersList.find(m => m.uid === uid);
-    return member ? member.label : uid; // Fallback to UID if not found
+    return member ? member.label : uid;
   };
 
+  const defaultStatusOptions = ['Pending', 'In Progress', 'Approved', 'Rejected'];
+
   return (
-    <div className="p-4">
-      <h3 className="text-sm font-semibold mb-3 border-b border-gray-200 pb-2 flex items-center text-gray-700">
+    <div className="p-4 border-b border-gray-200 bg-white">
+      <h3 className="text-sm font-semibold mb-3 pb-2 flex items-center text-gray-700">
         <DetailsIcon /> {t('common.details', 'Details')}
       </h3>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
-        {/* Fields specific to a Handover document */}
+        <DetailItem label={t('handovers.date', 'Date')} value={handoverData.date} />
+        <DetailItem label={t('tickets.category', 'Category')} value={handoverData.categories} />
+        <DetailItem label={t('handovers.shift', 'Shift')} value={handoverData.shift} />
+        
+        {/* Editable Status */}
+        <div>
+          <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">{t('tickets.status', 'Status')}</label>
+          <select
+            className="w-full p-1.5 border border-gray-300 rounded text-sm bg-white focus:ring-blue-500 focus:border-blue-500"
+            value={handoverData.status || 'Pending'}
+            onChange={(e) => handleUpdateField('status', e.target.value)}
+          >
+            {defaultStatusOptions.map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Member fields */}
+        <DetailItem label={t('handovers.postedBy', 'Posted By')} value={getMemberLabel(handoverData.postedBy)} />
         <DetailItem label={t('handovers.from', 'From')} value={getMemberLabel(handoverData.fromUser)} />
         <DetailItem label={t('handovers.to', 'To')} value={getMemberLabel(handoverData.toUser)} />
-        <DetailItem label={t('handovers.shift', 'Shift')} value={handoverData.shift} />
-        <DetailItem label={t('handovers.date', 'Date')} value={handoverData.date} />
       </dl>
+
+      {/* Creation Metadata */}
+      <div className="mt-4 pt-3 border-t border-gray-100 text-xs text-gray-400">
+         Created: {handoverData.createdAt?.toDate ? handoverData.createdAt.toDate().toLocaleString() : '-'}
+      </div>
     </div>
   );
 };
 
+/* ===================================================================
+  POSTED BY Section (Sidebar 2)
+  REMOVED: Dropdown to change user. Now read-only.
+===================================================================*/
+const PostedBySection = ({ handoverData, membersList = [], t }) => {
+  if (!handoverData) return null;
+
+  const getMemberLabel = (uid) => {
+    if (!uid) return 'Unknown';
+    if (!membersList || !Array.isArray(membersList)) return uid;
+    const member = membersList.find(m => m.uid === uid);
+    return member ? member.label : uid;
+  };
+
+  const currentPosterUid = handoverData.postedBy;
+  const posterLabel = getMemberLabel(currentPosterUid);
+
+  return (
+    <div className="p-4 border-t border-gray-200 bg-gray-50">
+      <h3 className="text-sm font-semibold mb-3 flex items-center text-gray-700">
+        <UserIcon /> {t('handovers.postedBy', 'Posted By')}
+      </h3>
+
+      <div className="bg-white p-4 rounded border border-gray-200 shadow-sm">
+        {/* User Display Card */}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-lg">
+            {posterLabel ? posterLabel.charAt(0).toUpperCase() : '?'}
+          </div>
+          <div className="overflow-hidden">
+            <p className="text-sm font-medium text-gray-900 truncate" title={posterLabel}>
+              {posterLabel}
+            </p>
+            <p className="text-xs text-gray-500 truncate">
+              {t('admin.owner', 'Owner')}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 /* ===================================================================
-  UPGRADED: Comment Section Component
-===================================================================
-*/
-const CommentSection = ({ teamId, handoverId }) => { // Changed prop from taskId
+  History Section (Sidebar 3)
+===================================================================*/
+const HistorySection = ({ teamId, handoverId, t }) => {
+  const [showHistory, setShowHistory] = useState(false);
+  const [assignmentHistory, setAssignmentHistory] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!showHistory || !handoverId || !teamId) return;
+
+    const fetchHistories = async () => {
+      setLoading(true);
+      try {
+        const assignRef = collection(db, 'teams', teamId, 'endorsements', handoverId, 'assignmentHistory');
+        const qAssign = query(assignRef, orderBy('assignedAt', 'desc'));
+        const assignSnap = await getDocs(qAssign);
+        setAssignmentHistory(assignSnap.docs.map(d => d.data()));
+      } catch (err) {
+        console.error("Error fetching history", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchHistories();
+  }, [showHistory, handoverId, teamId]);
+
+  const formatTime = (timestamp) => {
+    if (!timestamp) return '-';
+    try {
+      if (timestamp.toDate) return timestamp.toDate().toLocaleString();
+      return new Date(timestamp).toLocaleString();
+    } catch (e) {
+      return '-';
+    }
+  };
+
+  return (
+    <div className="p-4 border-t border-gray-200 bg-white">
+      <div className="flex justify-between items-center mb-3">
+        <h3 className="text-sm font-semibold flex items-center text-gray-700">
+          <HistoryIcon /> {t('taskDetail.historyTitle', 'History')}
+        </h3>
+        <button onClick={() => setShowHistory(!showHistory)} className="bg-gray-200 text-gray-700 text-xs px-3 py-1 rounded hover:bg-gray-300">
+          {showHistory ? t('taskDetail.hide', 'Hide') : t('taskDetail.show', 'Show')}
+        </button>
+      </div>
+
+      {showHistory && (
+        <div className="space-y-4">
+          {loading ? (
+            <div className="flex justify-center py-4"><MiniSpinner /></div>
+          ) : (
+            <>
+              <div>
+                <h4 className="font-semibold text-xs mb-1 text-gray-600">{t('taskDetail.changeHistory', 'Change Log')}</h4>
+                <div className="overflow-x-auto border rounded max-h-40">
+                  <table className="w-full text-xs text-left text-gray-500">
+                    <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="px-3 py-1.5">{t('taskDetail.assigner', 'Changed By')}</th>
+                        <th className="px-3 py-1.5">{t('taskDetail.worker', 'Target')}</th>
+                        <th className="px-3 py-1.5">{t('taskDetail.assignmentTime', 'Time')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {assignmentHistory.length > 0 ? assignmentHistory.map((h, i) => (
+                        <tr key={i} className="bg-white border-b hover:bg-gray-50">
+                          <td className="px-3 py-1.5 font-medium">{h.assignerName}</td>
+                          <td className="px-3 py-1.5">{h.workerName}</td>
+                          <td className="px-3 py-1.5">{formatTime(h.assignedAt)}</td>
+                        </tr>
+                      )) : (
+                        <tr><td colSpan="3" className="px-3 py-3 text-center text-gray-400">{t('taskDetail.noHistory', 'No history.')}</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ===================================================================
+  Comment Section Component (FIXED LAYOUT) (Sidebar 5)
+===================================================================*/
+const CommentSection = ({ teamId, handoverId }) => {
   const { t } = useContext(LanguageContext);
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const commentsEndRef = useRef(null);
-  
-  // --- NEW: State for image uploads ---
+
   const [commentImage, setCommentImage] = useState(null);
   const [commentImagePreview, setCommentImagePreview] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
 
-  // --- NEW: State for editing ---
   const [editingComment, setEditingComment] = useState(null);
   const [editText, setEditText] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
 
-  // --- Utility: Get current user ID ---
   const currentUserId = auth.currentUser?.uid;
 
-  // --- Fetch comments ---
   useEffect(() => {
-    // --- UPDATED FIRESTORE PATH ---
     const commentsRef = collection(db, 'teams', teamId, 'endorsements', handoverId, 'comments');
     const q = query(commentsRef, orderBy('createdAt', 'asc'));
 
@@ -238,16 +392,14 @@ const CommentSection = ({ teamId, handoverId }) => { // Changed prop from taskId
     });
 
     return () => unsubscribe();
-  }, [teamId, handoverId, t]); // <-- Updated dependency
+  }, [teamId, handoverId, t]);
 
-  // Auto-scroll to bottom
   useEffect(() => {
-    if (!editingComment) { // Only auto-scroll if not editing
+    if (!editingComment) {
       commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [comments, editingComment]);
 
-  // --- NEW: Handle image selection ---
   const handleImageSelect = (file) => {
     if (file && file.type.startsWith('image/')) {
       setCommentImage(file);
@@ -258,15 +410,13 @@ const CommentSection = ({ teamId, handoverId }) => { // Changed prop from taskId
     }
   };
 
-  // --- NEW: Handle file input change ---
   const onFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       handleImageSelect(e.target.files[0]);
-      e.target.value = null; // Reset file input
+      e.target.value = null;
     }
   };
 
-  // --- NEW: Handle pasting image ---
   const handleCommentPaste = (e) => {
     const items = e.clipboardData?.items;
     if (!items) return;
@@ -281,8 +431,7 @@ const CommentSection = ({ teamId, handoverId }) => { // Changed prop from taskId
       }
     }
   };
-  
-  // --- NEW: Clear attached image ---
+
   const clearImage = () => {
     setCommentImage(null);
     if (commentImagePreview) {
@@ -291,7 +440,6 @@ const CommentSection = ({ teamId, handoverId }) => { // Changed prop from taskId
     }
   };
 
-  // --- MODIFIED: Handle posting comment (with image upload) ---
   const handlePostComment = async (e) => {
     e.preventDefault();
     const text = newComment.trim();
@@ -302,14 +450,12 @@ const CommentSection = ({ teamId, handoverId }) => { // Changed prop from taskId
 
     const { displayName, email } = auth.currentUser;
     const authorName = displayName || email || 'Anonymous';
-    
+
     let imageUrl = null;
     let imagePath = null;
 
     try {
-      // 1. If there's an image, upload it first
       if (commentImage) {
-        // --- UPDATED STORAGE PATH ---
         const storagePath = `comment_images/${teamId}/${handoverId}/${Date.now()}-${commentImage.name}`;
         const storageRef = ref(storage, storagePath);
         const uploadTask = await uploadBytesResumable(storageRef, commentImage);
@@ -317,21 +463,18 @@ const CommentSection = ({ teamId, handoverId }) => { // Changed prop from taskId
         imagePath = storagePath;
       }
 
-      // 2. Add the comment doc to Firestore
-      // --- UPDATED FIRESTORE PATH ---
       await addDoc(collection(db, 'teams', teamId, 'endorsements', handoverId, 'comments'), {
         text: text,
         authorId: currentUserId,
         authorName: authorName,
         createdAt: serverTimestamp(),
-        imageUrl: imageUrl, // Will be null if no image
-        imagePath: imagePath, // Will be null if no image
+        imageUrl: imageUrl,
+        imagePath: imagePath,
       });
 
-      // 3. Reset form
       setNewComment('');
       clearImage();
-      
+
     } catch (err) {
       console.error("Error posting comment: ", err);
       setError(t('comments.postError'));
@@ -340,20 +483,16 @@ const CommentSection = ({ teamId, handoverId }) => { // Changed prop from taskId
     }
   };
 
-  // --- NEW: Handle deleting a comment ---
   const handleDeleteComment = async (comment) => {
-    if (comment.authorId !== currentUserId) return; // Security check
+    if (comment.authorId !== currentUserId) return;
     if (!window.confirm(t('common.confirmDelete', 'Are you sure you want to delete this comment?'))) return;
 
     try {
-      // 1. If there's an image, delete it from Storage
       if (comment.imagePath) {
         const imageRef = ref(storage, comment.imagePath);
         await deleteObject(imageRef);
       }
 
-      // 2. Delete the comment document from Firestore
-      // --- UPDATED FIRESTORE PATH ---
       const commentRef = doc(db, 'teams', teamId, 'endorsements', handoverId, 'comments', comment.id);
       await deleteDoc(commentRef);
 
@@ -363,24 +502,20 @@ const CommentSection = ({ teamId, handoverId }) => { // Changed prop from taskId
     }
   };
 
-  // --- NEW: Start editing a comment ---
   const startEdit = (comment) => {
     setEditingComment(comment);
     setEditText(comment.text);
   };
 
-  // --- NEW: Cancel editing ---
   const cancelEdit = () => {
     setEditingComment(null);
     setEditText('');
   };
 
-  // --- NEW: Save an edited comment ---
   const handleSaveEdit = async () => {
     if (!editingComment || isUpdating) return;
-    
+
     setIsUpdating(true);
-    // --- UPDATED FIRESTORE PATH ---
     const commentRef = doc(db, 'teams', teamId, 'endorsements', handoverId, 'comments', editingComment.id);
 
     try {
@@ -388,7 +523,7 @@ const CommentSection = ({ teamId, handoverId }) => { // Changed prop from taskId
         text: editText,
         editedAt: serverTimestamp()
       });
-      cancelEdit(); // Reset state
+      cancelEdit();
     } catch (err) {
       console.error("Error updating comment: ", err);
       setError(t('comments.editError', 'Failed to save edit.'));
@@ -396,8 +531,7 @@ const CommentSection = ({ teamId, handoverId }) => { // Changed prop from taskId
       setIsUpdating(false);
     }
   };
-  
-  // Simple time formatter
+
   const formatCommentTime = (timestamp) => {
     if (!timestamp) return '...';
     try {
@@ -413,17 +547,15 @@ const CommentSection = ({ teamId, handoverId }) => { // Changed prop from taskId
   };
 
   return (
-    // Changed layout for stacking in sidebar
     <div className="flex flex-col bg-gray-50 border-t border-gray-200">
       <h3 className="text-sm font-semibold p-3 border-b border-gray-200 flex items-center text-gray-700 flex-shrink-0">
         <ChatBubbleIcon /> {t('comments.title')}
       </h3>
-      
-      {isLoading && <div className="flex-1 flex items-center justify-center p-4"><Spinner /></div>}
-      
+
+      {isLoading && <div className="p-4 flex justify-center"><Spinner /></div>}
       {error && <div className="text-red-600 p-3 text-sm">{error}</div>}
-      
-      <ul className="list-none p-3 m-0 space-y-3">
+
+      <ul className="list-none p-4 m-0 space-y-6">
         {!isLoading && comments.length === 0 && (
           <li className="text-sm text-gray-500 italic text-center py-4">
             {t('comments.none')}
@@ -432,7 +564,7 @@ const CommentSection = ({ teamId, handoverId }) => { // Changed prop from taskId
         {comments.map(comment => (
           <li key={comment.id} className="text-sm group relative">
             {editingComment?.id === comment.id ? (
-              <div className="bg-white border border-blue-500 rounded-md p-2">
+              <div className="bg-white border border-blue-500 rounded-md p-4">
                 <textarea
                   value={editText}
                   onChange={(e) => setEditText(e.target.value)}
@@ -440,24 +572,17 @@ const CommentSection = ({ teamId, handoverId }) => { // Changed prop from taskId
                   rows="3"
                   autoFocus
                 />
-                <div className="flex justify-end gap-2 mt-2">
-                  <button
-                    onClick={cancelEdit}
-                    className="px-2 py-1 bg-gray-200 rounded text-xs hover:bg-gray-300"
-                  >
-                    {t('common.cancel', 'Cancel')}
+                <div className="flex justify-end gap-2 mt-3">
+                  <button onClick={cancelEdit} className="px-2 py-1 bg-gray-200 rounded text-xs hover:bg-gray-300">
+                    {t('common.cancel')}
                   </button>
-                  <button
-                    onClick={handleSaveEdit}
-                    disabled={isUpdating || !editText.trim()}
-                    className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50"
-                  >
+                  <button onClick={handleSaveEdit} disabled={isUpdating || !editText.trim()} className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50">
                     {isUpdating ? <MiniSpinner /> : t('common.save', 'Save')}
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="p-2 rounded-md hover:bg-gray-100">
+              <div className="p-4 rounded-md hover:bg-gray-100 bg-white border border-gray-100 shadow-sm transition-colors duration-200">
                 <div className="flex justify-between items-center">
                   <span className="font-semibold text-gray-800 text-[13px]">{comment.authorName}</span>
                   <span className="text-xs text-gray-500">
@@ -466,35 +591,19 @@ const CommentSection = ({ teamId, handoverId }) => { // Changed prop from taskId
                   </span>
                 </div>
                 {comment.text && (
-                  <p className="text-gray-700 whitespace-pre-wrap break-words m-0 mt-0.5">
+                  <p className="text-gray-700 whitespace-pre-wrap break-words mt-3 leading-relaxed">
                     {comment.text}
                   </p>
                 )}
                 {comment.imageUrl && (
                   <a href={comment.imageUrl} target="_blank" rel="noopener noreferrer">
-                    <img
-                      src={comment.imageUrl}
-                      alt="Comment attachment"
-                      className="mt-2 max-w-full max-h-48 rounded-md border border-gray-200 cursor-pointer"
-                    />
+                    <img src={comment.imageUrl} alt="Comment attachment" className="mt-4 max-w-full max-h-48 rounded-md border border-gray-200 cursor-pointer" />
                   </a>
                 )}
                 {currentUserId === comment.authorId && (
-                  <div className="absolute top-0 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => startEdit(comment)}
-                      title={t('common.edit', 'Edit')}
-                      className="p-1 rounded-full bg-white text-gray-600 hover:text-blue-600 hover:bg-gray-100 shadow"
-                    >
-                      <PencilIcon />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteComment(comment)}
-                      title={t('common.delete', 'Delete')}
-                      className="p-1 rounded-full bg-white text-gray-600 hover:text-red-600 hover:bg-gray-100 shadow"
-                    >
-                      <TrashIcon />
-                    </button>
+                  <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => startEdit(comment)} className="p-1 rounded-full bg-white text-gray-600 hover:text-blue-600 hover:bg-gray-100 shadow"><PencilIcon /></button>
+                    <button onClick={() => handleDeleteComment(comment)} className="p-1 rounded-full bg-white text-gray-600 hover:text-red-600 hover:bg-gray-100 shadow"><TrashIcon /></button>
                   </div>
                 )}
               </div>
@@ -503,20 +612,13 @@ const CommentSection = ({ teamId, handoverId }) => { // Changed prop from taskId
         ))}
         <div ref={commentsEndRef} />
       </ul>
-      
-      <div className="p-3 border-t border-gray-200 bg-white flex-shrink-0">
+
+      <div className="p-3 border-t border-gray-200 bg-white flex-shrink-0 sticky bottom-0 z-10">
         <form onSubmit={handlePostComment}>
           {commentImagePreview && (
             <div className="relative inline-block mb-2">
               <img src={commentImagePreview} alt="Preview" className="max-h-24 rounded-md border border-gray-200" />
-              <button
-                type="button"
-                onClick={clearImage}
-                className="absolute -top-2 -right-2 bg-gray-700 text-white rounded-full p-0.5 leading-none"
-                aria-label="Remove image"
-              >
-                <XIcon />
-              </button>
+              <button type="button" onClick={clearImage} className="absolute -top-2 -right-2 bg-gray-700 text-white rounded-full p-0.5 leading-none"><XIcon /></button>
             </div>
           )}
           <textarea
@@ -524,33 +626,16 @@ const CommentSection = ({ teamId, handoverId }) => { // Changed prop from taskId
             onChange={(e) => setNewComment(e.target.value)}
             onPaste={handleCommentPaste}
             placeholder={t('comments.placeholder')}
-            rows="3"
-            className="w-full border border-gray-300 rounded-md p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            rows="2" 
+            className="w-full border border-gray-300 rounded-md p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
             disabled={isUploading}
           />
           <div className="flex justify-between items-center mt-2">
-            <input
-              type="file"
-              ref={fileInputRef}
-              className="hidden"
-              onChange={onFileChange}
-              accept="image/*"
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
-              className="text-gray-500 hover:text-blue-600 p-1 disabled:opacity-50"
-              title="Attach image"
-            >
+            <input type="file" ref={fileInputRef} className="hidden" onChange={onFileChange} accept="image/*" />
+            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="text-gray-500 hover:text-blue-600 p-1 disabled:opacity-50" title="Attach image">
               <ImageIcon />
             </button>
-            
-            <button
-              type="submit"
-              disabled={(!newComment.trim() && !commentImage) || isUploading}
-              className="px-4 py-1.5 bg-blue-600 text-white rounded-md font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700 flex items-center justify-center min-w-[80px]"
-            >
+            <button type="submit" disabled={(!newComment.trim() && !commentImage) || isUploading} className="px-4 py-1 bg-blue-600 text-white rounded-md font-semibold text-xs disabled:opacity-50 hover:bg-blue-700 min-w-[60px]">
               {isUploading ? <MiniSpinner /> : t('comments.post')}
             </button>
           </div>
@@ -559,23 +644,15 @@ const CommentSection = ({ teamId, handoverId }) => { // Changed prop from taskId
     </div>
   );
 };
-/* ===================================================================
-  End of Upgraded Component
-===================================================================
-*/
-
 
 /* ===================================================================
   MODIFIED: HandoverPopupContent (Main Layout)
-===================================================================
-*/
-// --- ADDED membersList prop ---
+===================================================================*/
 const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersList }) => {
   const { t } = useContext(LanguageContext);
   const [saveStatus, setSaveStatus] = useState('loading');
   const [initialHtml, setInitialHtml] = useState(null);
   
-  // --- NEW: State for all handover data ---
   const [handoverData, setHandoverData] = useState(null);
 
   // files state
@@ -590,7 +667,7 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
   const linkSelectionRef = useRef(null);
 
   const editorRef = useRef(null);
-  const fileInputRef = useRef(null); // This is for the *Attachment* section file input
+  const fileInputRef = useRef(null);
   const debounceTimerRef = useRef(null);
   const lastSavedHtmlRef = useRef(null);
   const isMountedRef = useRef(true);
@@ -598,21 +675,20 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
 
   const getFilesFieldName = React.useCallback(() => `${columnKey}_files`, [columnKey]);
 
-  /* ---------- MODIFIED: load initial content (now fetches all handover data) ---------- */
+  /* ---------- load initial content & handover data ---------- */
   useEffect(() => {
     isMountedRef.current = true;
     injectedRef.current = false;
     if (!teamId || !handoverId || !columnKey) {
       setSaveStatus('error');
-      console.error('Missing props teamId/handoverId/columnKey');
       return;
     }
     (async () => {
       setSaveStatus('loading');
       setFiles([]);
-      setHandoverData(null); // Reset handover data on load
+      setHandoverData(null);
       try {
-        const docRef = doc(db, 'teams', teamId, 'endorsements', handoverId); // Updated Path
+        const docRef = doc(db, 'teams', teamId, 'endorsements', handoverId); // Path to endorsements
         const snap = await getDoc(docRef);
         let noteHtml = '', noteFiles = [];
         if (snap.exists()) {
@@ -620,7 +696,6 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
           noteHtml = data[columnKey] || '';
           noteFiles = data[getFilesFieldName()] || [];
           
-          // --- NEW: Set all handover data ---
           setHandoverData(data);
         }
         if (isMountedRef.current) {
@@ -630,7 +705,7 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
           setSaveStatus('idle');
         }
       } catch (err) {
-        console.error('fetch note error', err);
+        console.error('fetch handover error', err);
         if (isMountedRef.current) { 
           setInitialHtml(''); 
           setFiles([]); 
@@ -650,10 +725,22 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
     }
   }, [initialHtml]);
 
+  /* ---------- Field Update Handler ---------- */
+  const handleUpdateField = useCallback(async (field, value) => {
+    if (!handoverData) return;
+    try {
+      const docRef = doc(db, 'teams', teamId, 'endorsements', handoverId);
+      await updateDoc(docRef, { [field]: value });
+      setHandoverData(prev => ({ ...prev, [field]: value }));
+    } catch (error) {
+      console.error("Error updating field:", error);
+    }
+  }, [teamId, handoverId, handoverData]);
+
   /* ---------- autosave ---------- */
   const saveToFirebase = useCallback(async (html) => {
     if (html === lastSavedHtmlRef.current) { setSaveStatus('idle'); return; }
-    const docRef = doc(db, 'teams', teamId, 'endorsements', handoverId); // Updated Path
+    const docRef = doc(db, 'teams', teamId, 'endorsements', handoverId);
     try {
       await updateDoc(docRef, { [columnKey]: html });
       if (isMountedRef.current) { lastSavedHtmlRef.current = html; setSaveStatus('saved'); setTimeout(() => { if (isMountedRef.current) setSaveStatus('idle'); }, 1500); }
@@ -673,7 +760,7 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
     }, 1200);
   }, [showLinkInput, saveStatus, saveToFirebase]);
 
-  /* ---------- image paste/upload (for main editor) ---------- */
+  /* ---------- image paste/upload ---------- */
   const handleImageUpload = (file) => {
     if (!file || !editorRef.current || !file.type.startsWith('image/')) return;
     const placeholderId = `upload-placeholder-${Date.now()}`;
@@ -681,7 +768,7 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
     const imgHtml = `<img src="${blobUrl}" id="${placeholderId}" alt="Uploading..." style="max-width:90%; opacity:.5; filter:blur(3px); border-radius:4px; display:block; margin:8px 0;" />`;
     document.execCommand('insertHTML', false, imgHtml);
 
-    const storagePath = `handover_images/${teamId}/${handoverId}/${columnKey}/${Date.now()}-${file.name}`; // Updated Path
+    const storagePath = `handover_images/${teamId}/${handoverId}/${columnKey}/${Date.now()}-${file.name}`;
     const storageRef = ref(storage, storagePath);
     const uploadTask = uploadBytesResumable(storageRef, file);
     setFileUploadProgress('Uploading image (0%)...');
@@ -747,14 +834,14 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
     }
   };
 
-  /* ---------- file upload helpers (for Attachment section) ---------- */
+  /* ---------- file upload helpers ---------- */
   const handleUploadButtonClick = () => fileInputRef.current?.click();
   const handleFileSelected = (e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = null; };
 
   const handleFileUpload = (file) => {
     if (!file) return;
     setFileError('');
-    const storagePath = `handover_files/${teamId}/${handoverId}/${columnKey}/${Date.now()}-${file.name}`; // Updated Path
+    const storagePath = `handover_files/${teamId}/${handoverId}/${columnKey}/${Date.now()}-${file.name}`;
     const storageRef = ref(storage, storagePath);
     const uploadTask = uploadBytesResumable(storageRef, file);
     setFileUploadProgress(`Uploading ${file.name} (0%)...`);
@@ -771,7 +858,7 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
         try {
           const url = await getDownloadURL(uploadTask.snapshot.ref);
           const newFile = { name: file.name, url, path: storagePath, createdAt: new Date().toISOString() };
-          const docRef = doc(db, 'teams', teamId, 'endorsements', handoverId); // Updated Path
+          const docRef = doc(db, 'teams', teamId, 'endorsements', handoverId);
           const filesField = getFilesFieldName();
           await updateDoc(docRef, { [filesField]: arrayUnion(newFile) });
           if (isMountedRef.current) { setFiles(prev => [...prev, newFile]); setFileUploadProgress('Upload complete!'); setTimeout(() => setFileUploadProgress(null), 3000); }
@@ -790,7 +877,7 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
     try {
       const fileRef = ref(storage, fileToDelete.path);
       await deleteObject(fileRef);
-      const docRef = doc(db, 'teams', teamId, 'endorsements', handoverId); // Updated Path
+      const docRef = doc(db, 'teams', teamId, 'endorsements', handoverId);
       const snap = await getDoc(docRef);
       if (snap.exists()) {
         const cur = snap.data()[getFilesFieldName()] || [];
@@ -806,7 +893,6 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
     }
   };
 
-  /* ---------- Link handling improvements ---------- */
   const handleFormat = useCallback((command, value = null) => {
     document.execCommand(command, false, value);
     editorRef.current?.focus();
@@ -995,7 +1081,7 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
       const ph = editorRef.current?.querySelector(`#${saved.id}`);
       if (ph) {
         const p = ph.parentNode;
-        while (ph.firstChild) p.insertBefore(ph.firstChild, ph);
+        while (ph.firstChild) p.insertBefore(ph.firstChild, p);
         p.removeChild(ph);
       }
     }
@@ -1024,7 +1110,7 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
           <h2 className="text-xl font-semibold text-gray-800 truncate">
             <span className="font-mono text-blue-600" title={handoverData.title || `Handover ${handoverId}`}>
               {/* Use title if it exists, otherwise a formatted ID */}
-              {handoverData.title || `Handover ${handoverId.substring(0, 8)}...`}
+              {handoverData.title || `Handover ${handoverId}`}
             </span>
             {handoverData.shift && (
               <span className="text-gray-400 font-normal ml-2" title={handoverData.shift}>
@@ -1094,18 +1180,38 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
             <div className="w-[360px] flex-shrink-0 border-l border-gray-200 bg-gray-50 flex flex-col overflow-y-auto">
               
               {/* --- 1. Details Widget --- */}
-              <HandoverDetailsDisplay handoverData={handoverData} t={t} membersList={membersList} />
+              <HandoverDetailsDisplay 
+                handoverData={handoverData} 
+                t={t} 
+                membersList={membersList} 
+                handleUpdateField={handleUpdateField}
+              />
 
-              {/* --- 2. Attachments Widget --- */}
-              <div className="border-t border-gray-200">
+              {/* --- 2. POSTED BY Widget (Replaces Assignees) --- */}
+              <PostedBySection 
+                handoverData={handoverData} 
+                membersList={membersList} 
+                t={t} 
+                // No update handler passed since it's read-only now
+              />
+
+              {/* --- 3. History Widget --- */}
+              <HistorySection 
+                teamId={teamId} 
+                handoverId={handoverId} 
+                t={t} 
+              />
+
+              {/* --- 4. Attachments Widget --- */}
+              <div className="border-t border-gray-200 bg-white">
                 <h3 className="text-sm font-semibold p-3 border-b border-gray-200 flex items-center text-gray-700 flex-shrink-0">
-                  <PaperClipIcon /> {t('attachments.title')}
+                  <PaperClipIcon /> {t('attachments.title')} (Note Field)
                 </h3>
                 {fileError && <div className="text-red-600 p-3 text-sm">{fileError}</div>}
-                <ul className="list-none p-3 m-0 space-y-2">
+                <ul className="list-none p-3 m-0 space-y-2 max-h-40 overflow-y-auto">
                   {files.length === 0 && <p className="text-sm text-gray-500 italic">{t('attachments.none')}</p>}
                   {files.map(f => (
-                    <li key={f.path} className="bg-white p-2 border border-gray-200 rounded-md">
+                    <li key={f.path} className="bg-gray-50 p-2 border border-gray-200 rounded-md">
                       <div className="text-sm font-medium overflow-hidden text-ellipsis whitespace-nowrap text-gray-700" title={f.name}>{f.name}</div>
                       <div className="mt-1.5 flex gap-3">
                         <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
@@ -1130,7 +1236,7 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
                 </div>
               </div>
               
-              {/* --- 3. Comments Widget --- */}
+              {/* --- 5. Comments Widget --- */}
               <CommentSection teamId={teamId} handoverId={handoverId} />
             </div>
           </div>
