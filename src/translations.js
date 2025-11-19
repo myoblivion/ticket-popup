@@ -11,6 +11,7 @@ export const translations = {
       backToDashboard: 'Back to Dashboard',
       delete: 'Delete',
       view: 'View',
+      details: 'Details', // <-- Added
       refresh: 'Refresh',
       search: 'Search',
       compactView: 'Compact View',
@@ -339,6 +340,7 @@ export const translations = {
       translationPending: '(Translation pending...)',
       to: 'To:',
       selectAssignee: 'Select Assignee',
+      selectMember: 'Select Member', // <-- Added
       cancel: 'Cancel',
     },
   },
@@ -353,6 +355,7 @@ export const translations = {
       backToDashboard: '대시보드로 돌아가기',
       delete: '삭제',
       view: '보기',
+      details: '상세 정보', // <-- Added
       refresh: '새로고침',
       search: '검색',
       compactView: '간략 보기',
@@ -681,6 +684,7 @@ export const translations = {
       translationPending: '(번역 대기중...)',
       to: '수신:',
       selectAssignee: '담당자 선택',
+      selectMember: '멤버 선택', // <-- Added
       cancel: '취소',
     },
   }

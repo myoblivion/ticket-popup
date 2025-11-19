@@ -1,8 +1,8 @@
 // src/components/EndorsementModal.jsx
 
 import React, { useState, useEffect, useCallback, useContext, useMemo, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom'; // <-- NEW IMPORTS
-import { db, auth } from '../firebaseConfig'; // <-- Added auth
+import { useParams, useNavigate } from 'react-router-dom';
+import { db, auth } from '../firebaseConfig';
 
 import {
   collection,
@@ -14,29 +14,28 @@ import {
   addDoc,
   serverTimestamp,
   deleteDoc,
-  onSnapshot, // <-- Added
-  arrayUnion, // <-- Added
-  arrayRemove, // <-- Added
-  getDoc, // <-- Added
-  setDoc, // <-- Added
-  where, // <-- Added
-  deleteField // <-- Added
+  onSnapshot,
+  arrayUnion,
+  arrayRemove,
+  getDoc,
+  setDoc,
+  where,
+  deleteField
 } from 'firebase/firestore';
 
 import AddEndorsementModal from './AddEndorsementModal';
 import HandoverPopup from './HandoverPopup';
 import { LanguageContext } from '../contexts/LanguageContext';
 
-
-
 // --- Placeholders ---
 const DEFAULT_PLACEHOLDERS = {
   members: [],
   categories: ['General', 'Tech', 'Operations'],
-  types: [],
+  // types removed
   priorities: [],
 };
 const DEFAULT_STATUS_OPTIONS = ['Pending', 'In Progress', 'Approved', 'Rejected'];
+
 // --- NEW: Default Checkers (as a fallback) ---
 const DEFAULT_CHECKERS = [
   { key: 'checkerCS', label: 'CS Lead' },
@@ -47,7 +46,6 @@ const DEFAULT_CHECKERS = [
   { key: 'checkerKim', label: 'Kim Director' },
 ];
 
-
 // --- NEW: Editable Columns Config ---
 const INLINE_EDITABLE_COLUMNS = [
   'number', 'categories', 'content', 'postedBy', 'status', 'remarks'
@@ -57,15 +55,12 @@ const TEXTAREA_COLUMNS = ['content', 'remarks'];
 // These columns will be a <select> dropdown of team members
 const MEMBER_COLUMNS = ['postedBy'];
 
-
 // --- Spinner component ---
 const Spinner = () => (
   <div className="flex justify-center items-center py-6">
     <div className="w-6 h-6 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
   </div>
 );
-
-
 
 // --- formatDate utility ---
 const formatDate = (value, { fallback = '' } = {}) => {
@@ -91,19 +86,17 @@ const formatDate = (value, { fallback = '' } = {}) => {
   }
 };
 
-
-
 // --- THIS IS THE HANDOVER SECTION COMPONENT ---
 const HandoversSection = ({ teamId }) => {
   const { t } = useContext(LanguageContext);
   
   // --- NEW: React Router Hooks ---
-  const { handoverId } = useParams(); // <-- NEW: Gets :handoverId from the URL
-  const navigate = useNavigate(); // <-- NEW: Gets the navigate function
-  const baseTitleRef = useRef(document.title); // <-- NEW: Add this ref
+  const { handoverId } = useParams(); 
+  const navigate = useNavigate(); 
+  const baseTitleRef = useRef(document.title); 
 
   const [handovers, setHandovers] = useState([]);
-  const [isLoading, setIsLoading] = useState(true); // Start as true
+  const [isLoading, setIsLoading] = useState(true); 
   const [error, setError] = useState(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
@@ -128,24 +121,22 @@ const HandoversSection = ({ teamId }) => {
   // --- Dynamic Option Lists State ---
   const [membersList, setMembersList] = useState(DEFAULT_PLACEHOLDERS.members);
   const [categoriesList, setCategoriesList] = useState(DEFAULT_PLACEHOLDERS.categories);
-  const [typesList, setTypesList] = useState(DEFAULT_PLACEHOLDERS.types);
+  // typesList removed
   const [priorityOptions, setPriorityOptions] = useState(DEFAULT_PLACEHOLDERS.priorities);
   const [statusOptions, setStatusOptions] = useState(DEFAULT_STATUS_OPTIONS);
-  const [checkerList, setCheckerList] = useState(DEFAULT_CHECKERS); // <-- NEW: State for dynamic checkers
+  const [checkerList, setCheckerList] = useState(DEFAULT_CHECKERS); 
 
   // --- NEW: Inline Editing State ---
-  // editingCell: { docId, columnKey }
   const [editingCell, setEditingCell] = useState(null);
   const [editingValue, setEditingValue] = useState('');
   const [editingOriginalValue, setEditingOriginalValue] = useState('');
   const debounceRef = useRef(null);
-  const inputRef = useRef(null); // Ref for inputs/textareas
-  const selectRef = useRef(null); // Ref for selects
+  const inputRef = useRef(null); 
+  const selectRef = useRef(null); 
 
   // --- NEW: Saving Indicator State ---
   const [savingStatus, setSavingStatus] = useState({});
   const savingTimersRef = useRef({});
-
 
   // --- NEW: Load team members / options from Firestore ---
   useEffect(() => {
@@ -159,10 +150,9 @@ const HandoversSection = ({ teamId }) => {
           // keep defaults
           setMembersList(DEFAULT_PLACEHOLDERS.members);
           setCategoriesList(DEFAULT_PLACEHOLDERS.categories);
-          setTypesList(DEFAULT_PLACEHOLDERS.types);
           setPriorityOptions(DEFAULT_PLACEHOLDERS.priorities);
           setStatusOptions(DEFAULT_STATUS_OPTIONS);
-          setCheckerList(DEFAULT_CHECKERS); // <-- NEW
+          setCheckerList(DEFAULT_CHECKERS);
           return;
         }
         const data = snap.data();
@@ -190,7 +180,6 @@ const HandoversSection = ({ teamId }) => {
         }
 
         // --- Load other options for the OptionsEditorModal ---
-        if (data.types && Array.isArray(data.types)) setTypesList(data.types);
         if (data.priorities && Array.isArray(data.priorities)) setPriorityOptions(data.priorities);
 
         // --- Load Members (copied from TeamProjectTable) ---
@@ -233,10 +222,9 @@ const HandoversSection = ({ teamId }) => {
         // Set defaults on error
         setMembersList(DEFAULT_PLACEHOLDERS.members);
         setCategoriesList(DEFAULT_PLACEHOLDERS.categories);
-        setTypesList(DEFAULT_PLACEHOLDERS.types);
         setPriorityOptions(DEFAULT_PLACEHOLDERS.priorities);
         setStatusOptions(DEFAULT_STATUS_OPTIONS);
-        setCheckerList(DEFAULT_CHECKERS); // <-- NEW
+        setCheckerList(DEFAULT_CHECKERS);
       });
     } catch (e) {
       console.error('Failed to initialize team meta snapshot:', e);
@@ -246,7 +234,6 @@ const HandoversSection = ({ teamId }) => {
       if (typeof unsub === 'function') unsub();
     };
   }, [teamId]);
-
 
   // --- Fetch Handovers with onSnapshot ---
   useEffect(() => {
@@ -263,8 +250,7 @@ const HandoversSection = ({ teamId }) => {
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const fetchedData = querySnapshot.docs.map(docSnap => ({
         id: docSnap.id,
-        number: docSnap.data().number || '', // <-- ADDED EDITABLE NUMBER FIELD
-        // Ensure all potentially editable fields exist
+        number: docSnap.data().number || '', 
         categories: docSnap.data().categories || '',
         content: docSnap.data().content || '',
         postedBy: docSnap.data().postedBy || '',
@@ -285,33 +271,28 @@ const HandoversSection = ({ teamId }) => {
 
   // --- NEW: This effect opens the popup if a handoverId is present in the URL ---
   useEffect(() => {
-    // Also wait for handovers to load before trying to find one
     if (handoverId && handovers.length > 0) { 
       const handoverToOpen = handovers.find(h => h.id === handoverId);
       if (handoverToOpen) {
-        // We assume the popup is always for the 'details' column
         setSelectedHandover(handoverToOpen);
         setIsDetailsModalOpen(true);
         document.title = `Handover ${handoverId}`;
       } else {
-        // Handover ID in URL doesn't exist, clear it
         console.warn(`Handover with ID ${handoverId} not found.`);
         navigate(`/team/${teamId}`, { replace: true });
       }
     } else if (!handoverId) {
-      // If no handoverId, ensure popup is closed
       setIsDetailsModalOpen(false);
       setSelectedHandover(null);
-      document.title = baseTitleRef.current; // Restore original title
+      document.title = baseTitleRef.current; 
     }
-  }, [handoverId, handovers, teamId, navigate]); // Run when ID or data changes
-
+  }, [handoverId, handovers, teamId, navigate]); 
 
   // --- Split handovers into Active and Approved ---
   const { activeHandovers, approvedHandovers } = useMemo(() => {
     const active = [];
     const approved = [];
-    const approvedStatusString = 'Approved'; // This is the raw value
+    const approvedStatusString = 'Approved'; 
 
     for (const handover of handovers) {
       if (handover.status === approvedStatusString) {
@@ -323,49 +304,38 @@ const HandoversSection = ({ teamId }) => {
     return { activeHandovers: active, approvedHandovers: approved };
   }, [handovers]);
 
-
-
   // --- Select handovers based on the active tab ---
   const handoversToDisplay = useMemo(() => {
     return activeTab === 'active' ? activeHandovers : approvedHandovers;
   }, [activeTab, activeHandovers, approvedHandovers]);
-
-
 
   // --- Apply Filters ---
   const filteredHandoversToDisplay = useMemo(() => {
     const { categories, postedBy, status } = filters;
     
     if (!categories && !postedBy && !status) {
-      return handoversToDisplay; // No filters, return tabbed list
+      return handoversToDisplay; 
     }
 
     return handoversToDisplay.filter(item => {
-      // Categories filter
       if (categories) {
         if (!item.categories || item.categories !== categories) {
           return false;
         }
       }
-      
-      // Posted By filter (UID match)
       if (postedBy) {
         if (!item.postedBy || item.postedBy !== postedBy) {
           return false;
         }
       }
-      
-      // Status filter (exact match on string)
       if (status) {
-        if ((item.status || 'Pending') !== status) { // Default to 'Pending' if status is missing
+        if ((item.status || 'Pending') !== status) { 
           return false;
         }
       }
-      
-      return true; // Passed all active filters
+      return true; 
     });
   }, [handoversToDisplay, filters]);
-
 
   // --- Checkbox & Delete Handlers (Original) ---
   const handleCheckboxChange = async (docId, field, currentValue) => {
@@ -374,7 +344,6 @@ const HandoversSection = ({ teamId }) => {
       await updateDoc(docRef, { [field]: !currentValue });
     } catch (err) {
       console.error("Error updating checkbox:", err);
-      // onSnapshot will revert the change if update fails
     }
   };
 
@@ -382,21 +351,16 @@ const HandoversSection = ({ teamId }) => {
     if (!window.confirm(t('handovers.confirmDelete', 'Are you sure you want to delete this handover?'))) {
       return;
     }
-    
     const docRef = doc(db, `teams/${teamId}/endorsements`, docId);
     try {
       await deleteDoc(docRef);
-      // onSnapshot will handle UI update
     } catch (err) {
       console.error("Error deleting handover:", err);
       setError(t('handovers.deleteError', 'Failed to delete handover. Please try again.'));
     }
   };
 
-
-
   // --- NEW: Inline Editing Functions (from TeamProjectTable) ---
-
   const getCellKey = (docId, headerKey) => `${docId}-${headerKey}`;
 
   const setSavingState = (key, state) => {
@@ -417,7 +381,6 @@ const HandoversSection = ({ teamId }) => {
     }
   };
 
-  // Cleanup timers on unmount
   useEffect(() => {
     return () => {
       Object.values(savingTimersRef.current).forEach(t => clearTimeout(t));
@@ -438,7 +401,6 @@ const HandoversSection = ({ teamId }) => {
     try {
       setSavingState(saveKey, 'saving');
       const docRef = doc(db, `teams/${teamId}/endorsements`, docId);
-      // Handle 'number' field saving
       const valueToSave = columnKey === 'number' ? (Number(value) || 0) : value;
       await updateDoc(docRef, { [columnKey]: valueToSave });
       setSavingState(saveKey, 'saved');
@@ -447,14 +409,14 @@ const HandoversSection = ({ teamId }) => {
       setError(`Failed to save ${columnKey}.`);
       setTimeout(() => setSavingState(saveKey, null), 1200);
     }
-  }, [teamId]); // Removed 't' dependency
+  }, [teamId]); 
 
   const saveAndClose = useCallback(async (docId, columnKey, value) => {
     if (!teamId || !docId) {
       setError(`Missing teamId/docId for save.`);
       return;
     }
-    if (debounceRef.current) { // Clear any pending auto-save
+    if (debounceRef.current) { 
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
@@ -462,7 +424,6 @@ const HandoversSection = ({ teamId }) => {
     try {
       setSavingState(saveKey, 'saving');
       const docRef = doc(db, `teams/${teamId}/endorsements`, docId);
-      // Handle 'number' field saving
       const valueToSave = columnKey === 'number' ? (Number(value) || 0) : value;
       await updateDoc(docRef, { [columnKey]: valueToSave });
       setSavingState(saveKey, 'saved');
@@ -471,11 +432,11 @@ const HandoversSection = ({ teamId }) => {
       setError(`Failed to save ${columnKey}.`);
       setTimeout(() => setSavingState(saveKey, null), 1200);
     } finally {
-      setEditingCell(null); // Close editing cell regardless of success/fail
+      setEditingCell(null); 
       setEditingValue('');
       setEditingOriginalValue('');
     }
-  }, [teamId]); // Removed 't' dependency
+  }, [teamId]);
 
   const startEditingCell = (docId, columnKey, currentValue) => {
     setEditingCell({ docId, columnKey });
@@ -493,12 +454,11 @@ const HandoversSection = ({ teamId }) => {
     }
   };
 
-  // Debounced auto-save for text-like columns
   useEffect(() => {
     if (!editingCell) return;
     const { docId, columnKey } = editingCell;
     const isTextarea = TEXTAREA_COLUMNS.includes(columnKey);
-    if (!isTextarea) return; // Only debounce textareas
+    if (!isTextarea) return; 
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
@@ -518,16 +478,14 @@ const HandoversSection = ({ teamId }) => {
   }, [editingValue, editingCell, saveDraft, editingOriginalValue]);
 
 
-  // Auto-focus logic for inputs/selects when editing starts
   useEffect(() => {
     if (editingCell) {
-      // Check if it's a select or textarea
       const isSelect = ['categories', 'status', 'postedBy'].includes(editingCell.columnKey);
       const isTextarea = TEXTAREA_COLUMNS.includes(editingCell.columnKey);
       
-      let ref = inputRef; // Default to text input
+      let ref = inputRef; 
       if (isSelect) ref = selectRef;
-      else if (isTextarea) ref = inputRef; // 'inputRef' is used for textarea too
+      else if (isTextarea) ref = inputRef; 
 
       if (ref.current) {
         setTimeout(() => {
@@ -555,22 +513,18 @@ const HandoversSection = ({ teamId }) => {
     startEditingCell(docId, columnKey, String(currentValue));
   };
 
-  // For dropdowns (categories, status, postedBy)
   const handleSelectChange = async (docId, columnKey, newValue) => {
-    // We don't have "Invite" or "Add New" here yet, but could be added.
     await saveAndClose(docId, columnKey, newValue || '');
   };
 
-  // Save when input/textarea blurs
   const handleBlurSave = (docId, columnKey, value) => {
     if (value !== editingOriginalValue) {
         saveAndClose(docId, columnKey, value || '');
     } else {
-        cancelEditing(); // If no change, just cancel
+        cancelEditing(); 
     }
   };
 
-  // Handle keyboard events (Enter/Escape) in inputs/textareas
   const handleInputKeyDown = (e) => {
     if (!editingCell) return;
     const { docId, columnKey } = editingCell;
@@ -581,16 +535,15 @@ const HandoversSection = ({ teamId }) => {
       cancelEditing();
     } else if (e.key === 'Enter') {
       if (isTextarea) {
-        if (e.shiftKey) return; // Allow Shift+Enter
+        if (e.shiftKey) return; 
         e.preventDefault(); 
         saveAndClose(docId, columnKey, editingValue || '');
-      } else { // Normal input
+      } else { 
         e.preventDefault(); 
         saveAndClose(docId, columnKey, editingValue || '');
       }
     }
   };
-
 
   // --- Filter/Modal Handlers (Original) ---
   const toggleAllColumns = () => setIsAllExpanded(prev => !prev);
@@ -606,20 +559,17 @@ const HandoversSection = ({ teamId }) => {
   const openAddModal = () => setIsAddModalOpen(true);
 
   const handleHandoverAdded = () => {
-    setIsAddModalOpen(false); // onSnapshot handles the data refresh
+    setIsAddModalOpen(false); 
   };
 
   // --- MODIFIED: openDetailsModal ---
   const openDetailsModal = (item) => {
-    // --- NEW: Use React Router's navigate ---
-    const modalUrl = `/team/${teamId}/handover/${item.id}`; // <-- NEW URL
+    const modalUrl = `/team/${teamId}/handover/${item.id}`; 
     const modalTitle = `Handover ${item.id} - details`;
 
-    // Use navigate to change URL
     navigate(modalUrl); 
     document.title = modalTitle;
 
-    // Set React state to show the modal
     setSelectedHandover(item);
     setIsDetailsModalOpen(true);
   };
@@ -630,7 +580,6 @@ const HandoversSection = ({ teamId }) => {
     setSelectedHandover(null);
     document.title = baseTitleRef.current;
   
-    // Navigate to the base team URL, replacing the history entry
     navigate(`/team/${teamId}`, { replace: true }); 
   };
   
@@ -641,9 +590,8 @@ const HandoversSection = ({ teamId }) => {
     let actualFieldName = fieldName;
     if (fieldName === 'categories') actualFieldName = 'handoverCategories';
     if (fieldName === 'statusOptions') actualFieldName = 'handoverStatusOptions';
-    if (fieldName === 'types') actualFieldName = 'handoverTypes';
     if (fieldName === 'priorities') actualFieldName = 'handoverPriorities';
-    if (fieldName === 'checkers') actualFieldName = 'handoverCheckers'; // <-- NEW
+    if (fieldName === 'checkers') actualFieldName = 'handoverCheckers'; 
     
     const teamRef = doc(db, 'teams', teamId);
     try {
@@ -741,10 +689,9 @@ const HandoversSection = ({ teamId }) => {
       setInviteMeta(null);
   };
 
-
   // --- Headers (FIXED KOREAN DEFAULTS) ---
   const mainHeaders = useMemo(() => [
-    { key: 'number', label: t('handovers.id', 'No.') }, // <-- CHANGED
+    { key: 'number', label: t('handovers.id', 'No.') }, 
     { key: 'date', label: t('handovers.date', 'Date') },
     { key: 'categories', label: t('handovers.categories', 'Categories') },
     { key: 'content', label: t('handovers.content', 'Handover Contents') },
@@ -753,18 +700,15 @@ const HandoversSection = ({ teamId }) => {
   ], [t]);
 
   // --- MODIFIED: Checker headers are now dynamic ---
-  // --- FIX: This block is now corrected ---
   const checkerHeaders = useMemo(() => {
     if (!checkerList || checkerList.length === 0) {
       return [];
     }
-    // --- FIX: Use the label directly from the checkerList state.
-    // The label is now user-editable and should not be translated.
     return checkerList.map(checker => ({
       key: checker.key,
-      label: checker.label // <-- This was the bug. It now correctly uses the label from state.
+      label: checker.label 
     }));
-  }, [checkerList]); // <-- Removed 't' from dependency array, as it's no longer needed here.
+  }, [checkerList]); 
 
   // --- NEW: Memoized list of checker keys for renderCellContent ---
   const checkerKeys = useMemo(() => checkerList.map(c => c.key), [checkerList]);
@@ -860,22 +804,17 @@ const HandoversSection = ({ teamId }) => {
 
     // Special non-editable columns
     switch(headerKey) {
-      // --- FIX: START ---
-      // Handle 'number' column display logic
       case 'number': {
         const manualNumber = item.number; // Value from Firestore
         const { index, total } = meta;
         let textToShow;
         
-        // If user manually entered a number (or it's 0), show it.
         if (manualNumber || manualNumber === 0) {
           textToShow = String(manualNumber);
         } 
-        // Otherwise, if it's empty, use the calculated index.
         else if (index !== undefined && total !== undefined) {
           textToShow = total - index;
         } 
-        // Fallback
         else {
           textToShow = '-';
         }
@@ -889,7 +828,6 @@ const HandoversSection = ({ teamId }) => {
           </div>
         );
       }
-      // --- FIX: END ---
 
       case 'date':
         return <div className="truncate">{formatDate(item.createdAt)}</div>;
@@ -911,11 +849,8 @@ const HandoversSection = ({ teamId }) => {
           </div>
         );
       
-      // --- REMOVED: Hardcoded checker cases ---
-      // case 'checkerCS': ...
-      
       default:
-        break; // Continue to default text rendering
+        break; 
     }
 
     // --- NEW: Dynamic Checker Rendering ---
@@ -932,7 +867,6 @@ const HandoversSection = ({ teamId }) => {
       );
     }
 
-    // Default static display for other columns (content, remarks, status, postedBy)
     let textToShow = displayValue || '-';
     
     // For member columns, show label instead of UID
@@ -941,7 +875,6 @@ const HandoversSection = ({ teamId }) => {
       textToShow = foundMember ? foundMember.label : (displayValue || '-');
     }
     
-    // **THE FIX**: 'remarks' now *only* shows 'item.remarks'
     if (headerKey === 'remarks') {
       textToShow = item.remarks || '-';
     }
@@ -1179,10 +1112,10 @@ const HandoversSection = ({ teamId }) => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-100 text-sm">
-                {filteredHandoversToDisplay.map((item, index) => { {/* <-- FIX: Added index */}
+                {filteredHandoversToDisplay.map((item, index) => { 
                   const allHeaders = [
                     ...mainHeaders,
-                    ...checkerHeaders, // <-- MODIFIED: Now dynamic
+                    ...checkerHeaders, 
                     { key: 'status' },
                     { key: 'remarks' },
                     { key: 'actions' }
@@ -1210,7 +1143,7 @@ const HandoversSection = ({ teamId }) => {
                               !isAllExpanded && header.key === 'actions' ? 'w-[80px]' : '',
                               // --- MODIFIED: Dynamic checker width ---
                               !isAllExpanded && checkerKeys.includes(header.key) ? 'w-[80px]' : '',
-                              !isAllExpanded && header.key === 'number' ? 'w-[80px]' : '', // <-- Sized 'number'
+                              !isAllExpanded && header.key === 'number' ? 'w-[80px]' : '', 
                               !isAllExpanded && !checkerKeys.includes(header.key) && !['number', 'content', 'remarks', 'status', 'actions'].includes(header.key) ? 'w-[120px]' : '',
                               // Padding reset for editing
                               isEditingThisCell ? 'p-0' : ''
@@ -1224,7 +1157,7 @@ const HandoversSection = ({ teamId }) => {
                                 // --- MODIFIED: Dynamic checker width ---
                                 (checkerKeys.includes(header.key) ? '80px' : 
                                 (header.key === 'actions' ? '80px' : 
-                                (header.key === 'number' ? '80px' : '120px')))))) : undefined, // <-- Sized 'number'
+                                (header.key === 'number' ? '80px' : '120px')))))) : undefined, 
                               height: (isEditingThisCell && TEXTAREA_COLUMNS.includes(header.key)) ? 'auto' : undefined,
                             }}
                             onDoubleClick={(e) => !isEditingThisCell && handleCellDoubleClick(e, item.id, header.key)}
@@ -1281,11 +1214,10 @@ const HandoversSection = ({ teamId }) => {
           t={t}
           // Pass current state lists
           categoriesList={categoriesList}
-          typesList={typesList}
           membersList={membersList}
           priorityOptions={priorityOptions}
           statusOptions={statusOptions}
-          checkerList={checkerList} // <-- NEW PROP
+          checkerList={checkerList} 
           // Pass down persistence functions
           persistTeamArrayField={persistTeamArrayField}
           saveMemberLabel={saveMemberLabel}
@@ -1293,11 +1225,10 @@ const HandoversSection = ({ teamId }) => {
           addMemberObject={addMemberObject}
           // Callbacks (no longer strictly needed with onSnapshot)
           onCategoriesChange={() => {}}
-          onTypesChange={() => {}}
           onMembersChange={() => {}}
           onPrioritiesChange={() => {}}
           onStatusOptionsChange={() => {}}
-          onCheckersChange={() => {}} // <-- NEW PROP
+          onCheckersChange={() => {}} 
         />
       )}
 
@@ -1324,7 +1255,7 @@ export default HandoversSection;
 
 /* ------------------------------------------------------------------
   OptionsEditorModal
-  - Manages editing Categories, Types, Priorities, Statuses, Members, Checkers
+  - Manages editing Categories, Priorities, Statuses, Members, Checkers
 -------------------------------------------------------------------*/
 function OptionsEditorModal({
   isOpen,
@@ -1332,7 +1263,6 @@ function OptionsEditorModal({
   teamId,
   t, // Receive t function as a prop
   categoriesList,
-  typesList,
   membersList, // Array of {uid, label}
   priorityOptions,
   statusOptions,
@@ -1342,7 +1272,7 @@ function OptionsEditorModal({
   removeMember,          // (uid) => Promise<void>
   addMemberObject,       // (uid, label) => Promise<void>
 }) {
-  const [tab, setTab] = useState('categories'); // 'categories' | 'types' | 'priorities' | 'statuses' | 'members' | 'checkers'
+  const [tab, setTab] = useState('categories'); // 'categories' | 'priorities' | 'statuses' | 'members' | 'checkers'
   const [items, setItems] = useState([]);       // Current list being edited (strings or member/checker objects)
   const [newValue, setNewValue] = useState('');       // Input for adding new items
   const [editingIndex, setEditingIndex] = useState(null); // Index of item being edited
@@ -1367,7 +1297,6 @@ function OptionsEditorModal({
     let currentItems = [];
     switch (tab) {
       case 'categories': currentItems = categoriesList; break;
-      case 'types': currentItems = typesList; break;
       case 'priorities': currentItems = priorityOptions; break;
       case 'statuses': currentItems = statusOptions; break;
       case 'members': currentItems = membersList.map(m => ({ uid: m.uid, label: m.label })); break; // Use a copy
@@ -1379,7 +1308,7 @@ function OptionsEditorModal({
     setEditingValueLocal('');
     setNewValue('');
     setModalError('');
-  }, [tab, categoriesList, typesList, priorityOptions, statusOptions, membersList, checkerList, isOpen]); // <-- NEW dependency
+  }, [tab, categoriesList, priorityOptions, statusOptions, membersList, checkerList, isOpen]); 
 
   if (!isOpen) return null;
 
@@ -1513,7 +1442,6 @@ function OptionsEditorModal({
     } else {
       if (tab === 'priorities') fieldName = 'priorities';
       else if (tab === 'categories') fieldName = 'categories';
-      else if (tab === 'types') fieldName = 'types';
       else {
         setModalError(t('admin.invalidTabError', `Cannot determine field name for tab: ${tab}`));
         return;
@@ -1585,7 +1513,6 @@ function OptionsEditorModal({
     if (tab === 'statuses') fieldName = 'statusOptions';
     else if (tab === 'priorities') fieldName = 'priorities';
     else if (tab === 'categories') fieldName = 'categories';
-    else if (tab === 'types') fieldName = 'types';
     else {
       setModalError(t('admin.invalidTabError', `Cannot determine field name for tab: ${tab}`));
       return;
@@ -1640,7 +1567,6 @@ function OptionsEditorModal({
     if (tab === 'statuses') fieldName = 'statusOptions';
     else if (tab === 'priorities') fieldName = 'priorities';
     else if (tab === 'categories') fieldName = 'categories';
-    else if (tab === 'types') fieldName = 'types';
     else {
       setModalError(t('admin.invalidTabError', `Cannot determine field name for tab: ${tab}`));
       return;
@@ -1775,11 +1701,10 @@ function OptionsEditorModal({
   const getTabTitle = (tabKey) => {
     switch(tabKey) {
       case 'categories': return t('admin.categories');
-      case 'types': return t('admin.types');
       case 'priorities': return t('admin.priorities');
       case 'statuses': return t('admin.statuses');
       case 'members': return t('admin.tabMembers');
-      case 'checkers': return t('admin.checkers', 'Checkers'); // <-- NEW
+      case 'checkers': return t('admin.checkers', 'Checkers'); 
       default: return tabKey;
     }
   }
@@ -1801,8 +1726,7 @@ function OptionsEditorModal({
             <nav className="flex flex-col gap-1">
               <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'categories' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('categories')}>{t('admin.categories')} (Endorsement)</button>
               <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'statuses' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('statuses')}>{t('admin.statuses')} (Endorsement)</button>
-              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'checkers' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('checkers')}>{t('admin.checkers', 'Checkers')}</button> {/* <-- NEW */}
-              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'types' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('types')}>{t('admin.types')}</button>
+              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'checkers' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('checkers')}>{t('admin.checkers', 'Checkers')}</button> 
               <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'priorities' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('priorities')}>{t('admin.priorities')}</button>
               <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'members' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('members')}>{t('admin.tabMembers')}</button>
             </nav>
