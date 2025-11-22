@@ -224,7 +224,6 @@ const HandoverDetailsDisplay = ({ handoverData, t, membersList = [], handleUpdat
 
 /* ===================================================================
   POSTED BY Section (Sidebar 2)
-  REMOVED: Dropdown to change user. Now read-only.
 ===================================================================*/
 const PostedBySection = ({ handoverData, membersList = [], t }) => {
   if (!handoverData) return null;
@@ -693,13 +692,13 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
         let noteHtml = '', noteFiles = [];
         if (snap.exists()) {
           const data = snap.data();
-          noteHtml = data[columnKey] || '';
+          noteHtml = data[columnKey] || ''; // <--- THIS LOADS THE CONTENT
           noteFiles = data[getFilesFieldName()] || [];
           
           setHandoverData(data);
         }
         if (isMountedRef.current) {
-          setInitialHtml(noteHtml);
+          setInitialHtml(noteHtml || ''); // Ensure string
           setFiles(noteFiles);
           lastSavedHtmlRef.current = noteHtml;
           setSaveStatus('idle');
@@ -717,13 +716,18 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
     return () => { isMountedRef.current = false; if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current); };
   }, [teamId, handoverId, columnKey, getFilesFieldName]);
 
+  // --- FIX: Ensure editor gets content if it mounts AFTER data load ---
   useEffect(() => {
-    if (initialHtml === null) return;
-    if (editorRef.current && !injectedRef.current) {
-      editorRef.current.innerHTML = initialHtml;
-      injectedRef.current = true;
+    if (initialHtml !== null && editorRef.current) {
+        // Only set if empty to avoid overwriting user edits in race conditions
+        // But for initial load, we force it.
+        if (!injectedRef.current || editorRef.current.innerHTML === '') {
+             editorRef.current.innerHTML = initialHtml;
+             injectedRef.current = true;
+        }
     }
   }, [initialHtml]);
+
 
   /* ---------- Field Update Handler ---------- */
   const handleUpdateField = useCallback(async (field, value) => {
@@ -1101,17 +1105,31 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
   };
   const status = getStatusMessage();
 
-  /* ---------- RENDER (MODIFIED) ---------- */
+  /* ---------- RENDER ---------- */
+  // Row number fallback logic:
+  const resolveRowNumber = (data) => {
+    if (!data) return null;
+    if (data.number !== undefined && data.number !== null) return data.number;
+    // Fallback for older records if they have rowNo or rowNumber stored
+    if (data.rowNumber !== undefined && data.rowNumber !== null) return data.rowNumber;
+    if (data.rowNo !== undefined && data.rowNo !== null) return data.rowNo;
+    return null;
+  };
+
+  const rowNumberValue = resolveRowNumber(handoverData);
+
   return (
     <div className="w-full h-full bg-white rounded-lg flex flex-col overflow-hidden">
-      {/* --- MODIFIED HEADER --- */}
+      {/* --- HEADER --- */}
       <div className="flex justify-between items-center border-b border-gray-200 p-4 flex-shrink-0">
         {handoverData ? (
-          <h2 className="text-xl font-semibold text-gray-800 truncate">
-            <span className="font-mono text-blue-600" title={handoverData.title || `Handover ${handoverId}`}>
-              {/* Use title if it exists, otherwise a formatted ID */}
-              {handoverData.title || `Handover ${handoverId}`}
+          <h2 className="text-xl font-semibold text-gray-800 truncate flex items-center gap-3">
+            <span className="flex items-baseline gap-3">
+              <span className="font-mono text-blue-600">
+                 {rowNumberValue !== null ? `Handover #${rowNumberValue}` : 'Handover'}
+              </span>
             </span>
+
             {handoverData.shift && (
               <span className="text-gray-400 font-normal ml-2" title={handoverData.shift}>
                 - {handoverData.shift}
@@ -1139,7 +1157,7 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
       {/* --- MAIN CONTENT (post-load) --- */}
       {saveStatus !== 'loading' && handoverData && (
         <>
-          {/* --- NEW 2-COLUMN LAYOUT --- */}
+          {/* --- 2-COLUMN LAYOUT --- */}
           <div className="flex-1 flex overflow-hidden">
 
             {/* --- Main Content (Left) --- */}
@@ -1187,12 +1205,11 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
                 handleUpdateField={handleUpdateField}
               />
 
-              {/* --- 2. POSTED BY Widget (Replaces Assignees) --- */}
+              {/* --- 2. POSTED BY Widget --- */}
               <PostedBySection 
                 handoverData={handoverData} 
                 membersList={membersList} 
                 t={t} 
-                // No update handler passed since it's read-only now
               />
 
               {/* --- 3. History Widget --- */}
@@ -1261,7 +1278,6 @@ const HandoverPopupContent = ({ teamId, handoverId, columnKey, onClose, membersL
 };
 
 /* ---------- Wrapper export ---------- */
-// --- MODIFIED: Pass all props down, including membersList ---
 const HandoverPopup = (props) => {
   return (
     <ModalShell onClose={props.onClose}>

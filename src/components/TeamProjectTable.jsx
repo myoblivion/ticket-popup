@@ -117,6 +117,10 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
     category: ''
   });
 
+  // --- NEW: Sorting State ---
+  // Default sort by priority (handled by firestore mostly, but we can default here)
+  const [sortConfig, setSortConfig] = useState({ key: 'startDate', direction: 'desc' });
+
   // --- NEW: Ref to store original document title ---
   const baseTitleRef = useRef(document.title);
 
@@ -193,6 +197,56 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
       return true; // Passed all active filters
     });
   }, [tasksToDisplay, filters]);
+
+  // --- NEW: Sorting Logic ---
+  const sortedTasks = useMemo(() => {
+    // Create a shallow copy to sort
+    let data = [...filteredTasksToDisplay];
+    
+    if (!sortConfig.key) return data;
+
+    return data.sort((a, b) => {
+      let valA, valB;
+
+      if (sortConfig.key === 'ticketNo') {
+        // Try converting to number for numeric sort, else string sort
+        const numA = Number(a.ticketNo);
+        const numB = Number(b.ticketNo);
+        if (!isNaN(numA) && !isNaN(numB)) {
+            valA = numA;
+            valB = numB;
+        } else {
+            valA = (a.ticketNo || '').toLowerCase();
+            valB = (b.ticketNo || '').toLowerCase();
+        }
+      } else if (sortConfig.key === 'startDate') {
+        // startDate is usually YYYY-MM-DD string in this component
+        const dateA = a.startDate ? new Date(a.startDate) : new Date(0);
+        const dateB = b.startDate ? new Date(b.startDate) : new Date(0);
+        valA = dateA.getTime();
+        valB = dateB.getTime();
+      } else {
+        // Default fallback (shouldn't reach here if we only enable sort on specific cols)
+        return 0;
+      }
+
+      if (valA < valB) {
+        return sortConfig.direction === 'asc' ? -1 : 1;
+      }
+      if (valA > valB) {
+        return sortConfig.direction === 'asc' ? 1 : -1;
+      }
+      return 0;
+    });
+  }, [filteredTasksToDisplay, sortConfig]);
+
+  // --- NEW: Sort Handler ---
+  const handleSort = (key) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
 
   // Load team members / options, and resolve member UIDs to labels if needed
   useEffect(() => {
@@ -775,8 +829,8 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
 
           if (!currentStatuses.includes(value)) { // Only add if it's truly new
             const completeStatus = currentStatuses.pop(); // Remove the last (assumed complete) status
-            currentStatuses.push(value);               // Add the new status
-            if (completeStatus !== undefined) {     // Add the complete status back at the end
+            currentStatuses.push(value);                // Add the new status
+            if (completeStatus !== undefined) {      // Add the complete status back at the end
               currentStatuses.push(completeStatus);
             }
             // Overwrite the entire array in Firestore
@@ -1342,21 +1396,38 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
           >
             <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
-                {headers.map(h => (
-                  <th
-                    key={h.key}
-                    scope="col"
-                    className={`px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-300 ${(!isAllExpanded && h.widthClass) ? h.widthClass : ''}`}
-                    style={{
-                      maxWidth: (!isAllExpanded ? h.maxWidth : undefined) || undefined,
-                      whiteSpace: isAllExpanded ? 'normal' : 'nowrap', // Simplified whitespace logic
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    {h.label}
-                  </th>
-                ))}
+                {headers.map(h => {
+                   // --- NEW: Sortable Header Logic ---
+                   const isSortable = ['ticketNo', 'startDate'].includes(h.key);
+                   const isActiveSort = sortConfig.key === h.key;
+
+                   return (
+                    <th
+                      key={h.key}
+                      scope="col"
+                      onClick={isSortable ? () => handleSort(h.key) : undefined}
+                      className={`px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-300 ${(!isAllExpanded && h.widthClass) ? h.widthClass : ''} ${isSortable ? 'cursor-pointer hover:bg-gray-100 select-none group' : ''}`}
+                      style={{
+                        maxWidth: (!isAllExpanded ? h.maxWidth : undefined) || undefined,
+                        whiteSpace: isAllExpanded ? 'normal' : 'nowrap', // Simplified whitespace logic
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      <div className="flex items-center gap-1">
+                        {h.label}
+                        {isSortable && (
+                          <span className={`text-[10px] ml-0.5 ${isActiveSort ? 'text-blue-600' : 'text-gray-300 group-hover:text-gray-400'}`}>
+                             {isActiveSort 
+                                ? (sortConfig.direction === 'asc' ? '▲' : '▼') 
+                                : '▲▼' // Show both or a neutral indicator when not active
+                              }
+                          </span>
+                        )}
+                      </div>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
 
@@ -1382,7 +1453,7 @@ const TeamProjectTable = ({ teamId, onTaskChange, isMasterAdminView = false }) =
               )}
 
               {/* Task Rows */}
-              {!isLoading && filteredTasksToDisplay.map(task => (
+              {!isLoading && sortedTasks.map(task => (
                 <tr key={task.id} className="group hover:bg-gray-50 transition-colors duration-100 relative">
                   {headers.map(header => {
                     const cellKey = getCellKey(task.id, header.key);
@@ -1564,8 +1635,8 @@ function OptionsEditorModal({
   onStatusOptionsChange,
 }) {
   const [tab, setTab] = useState('categories'); // 'categories' | 'types' | 'priorities' | 'statuses' | 'members'
-  const [items, setItems] = useState([]);       // Current list being edited (strings or member objects)
-  const [newValue, setNewValue] = useState('');       // Input for adding new items
+  const [items, setItems] = useState([]);        // Current list being edited (strings or member objects)
+  const [newValue, setNewValue] = useState('');        // Input for adding new items
   const [editingIndex, setEditingIndex] = useState(null); // Index of item being edited
   const [editingValueLocal, setEditingValueLocal] = useState(''); // Local state for the item being edited
   const [modalError, setModalError] = useState(''); // Error specific to this modal

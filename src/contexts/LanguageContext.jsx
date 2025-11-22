@@ -75,7 +75,6 @@ export const LanguageProvider = ({ children }) => {
       // If result is not found (e.g., missing translation), return the key itself
       return result || key;
     } catch (error) {
-      console.warn(`Translation key "${key}" not found.`);
       return key; // Return the key on error
     }
   }, [language]); // Re-create this function only if 'language' changes

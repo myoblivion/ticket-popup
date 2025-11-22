@@ -1,5 +1,5 @@
 // MasterAdminDashboard.jsx
-import React, { useEffect, useState, useCallback, useRef, useContext, useMemo } from 'react'; // --- IMPORTED useContext and useMemo ---
+import React, { useEffect, useState, useCallback, useRef, useContext, useMemo } from 'react';
 import {
   collection,
   query,
@@ -31,14 +31,24 @@ import ScheduleMeetingModal from './ScheduleMeetingModal';
 import EditUpdateModal from './EditUpdateModal';
 import AnnounceMultiTeamModal from './AnnounceMultiTeamModal';
 
-// --- NEW: Handovers Section import (do not hardcode component here) ---
+// --- NEW: Handovers & FAQ Section imports ---
 import HandoversSection from './EndorsementModal';
+import FAQSection from './FAQSection';
 
 // --- NEW LANGUAGE CONTEXT IMPORT ---
 import { LanguageContext } from '../contexts/LanguageContext.jsx';
 
 // --- Setup Calendar Localizer ---
 const localizer = momentLocalizer(moment);
+
+// --- Constants & Helpers for Sub-projects ---
+const SUBPROJECT_STATUS_CONFIG = [
+  { key: 'not_started', color: 'bg-gray-100 text-gray-600 border-gray-300' },
+  { key: 'in_progress', color: 'bg-blue-100 text-blue-700 border-blue-300' },
+  { key: 'pending', color: 'bg-yellow-100 text-yellow-800 border-yellow-300' },
+  { key: 'paused', color: 'bg-red-100 text-red-700 border-red-300' },
+  { key: 'completed', color: 'bg-green-100 text-green-700 border-green-300' },
+];
 
 // --- Icons ---
 const UsersIcon = () => (
@@ -69,6 +79,20 @@ const CalendarIcon = () => (
 const HandoversIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6M9 16h6M12 4v4m-7 8a2 2 0 012-2h10a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2z" />
+  </svg>
+);
+
+// --- NEW: FAQ Icon ---
+const FAQIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
+// --- NEW: Chart/Progress Icon ---
+const ChartBarIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
   </svg>
 );
 
@@ -103,23 +127,148 @@ const normalizeValueToDate = (val) => {
   return null;
 };
 
-const hasTimeComponent = (d) => {
-  if (!d || !(d instanceof Date)) return false;
-  return d.getHours() !== 0 || d.getMinutes() !== 0 || d.getSeconds() !== 0 || d.getMilliseconds() !== 0;
-};
-
-const msInDay = 24 * 60 * 60 * 1000;
-// --- END CALENDAR HELPER FUNCTIONS ---
-
-
 // ---------- Constants for pagination / UI ----------
 const TEAMS_PAGE_SIZE = 18;
 const USERS_PAGE_SIZE = 30;
 const DEBOUNCE_MS = 350;
 
+// ---------- SubProjectsSection (NEW) ----------
+const SubProjectsSection = ({ teamId, teamData, onUpdate }) => {
+  const { t } = useContext(LanguageContext);
+  const [newSubProjectName, setNewSubProjectName] = useState('');
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  // Helper to update the team document
+  const updateTeamSubProjects = async (updatedSubProjects) => {
+    setIsUpdating(true);
+    try {
+      const teamRef = doc(db, 'teams', teamId);
+      await updateDoc(teamRef, { subProjects: updatedSubProjects });
+      if (onUpdate) onUpdate(); // Trigger refresh in parent
+    } catch (error) {
+      console.error("Error updating sub-projects:", error);
+      alert("Failed to update sub-project.");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleAddSubProject = async (e) => {
+    e.preventDefault();
+    if (!newSubProjectName.trim()) return;
+
+    const newItem = {
+      id: Date.now().toString(),
+      title: newSubProjectName.trim(),
+      status: 'not_started'
+    };
+
+    const updatedList = [...(teamData.subProjects || []), newItem];
+    await updateTeamSubProjects(updatedList);
+    setNewSubProjectName('');
+  };
+
+  const handleStatusChange = (subProjectId, newStatus) => {
+    const currentList = teamData.subProjects || [];
+    const updatedList = currentList.map(item => {
+      if (item.id === subProjectId) {
+        return { ...item, status: newStatus };
+      }
+      return item;
+    });
+    updateTeamSubProjects(updatedList);
+  };
+
+  const handleDeleteSubProject = (subProjectId) => {
+    if (!window.confirm(t('home.confirmDeleteSub', 'Delete this sub-project?'))) return;
+    const currentList = teamData.subProjects || [];
+    const updatedList = currentList.filter(item => item.id !== subProjectId);
+    updateTeamSubProjects(updatedList);
+  };
+
+  return (
+    <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm border h-full flex flex-col">
+      <h3 className="text-lg font-semibold text-gray-700 border-b pb-2 mb-3">
+        {t('home.subProjects', 'Sub-projects / Progress')}
+      </h3>
+      
+      {/* List */}
+      <div className="space-y-2 mb-4 flex-1 max-h-[420px] overflow-y-auto pr-2">
+        {(!teamData.subProjects || teamData.subProjects.length === 0) && (
+          <p className="text-sm text-gray-500 italic py-4 text-center">
+             {t('home.noSubProjects', 'No sub-projects yet.')}
+          </p>
+        )}
+        {(teamData.subProjects || []).map(sub => {
+          const currentStatusKey = sub.status || 'not_started';
+          const statusConfig = SUBPROJECT_STATUS_CONFIG.find(s => s.key === currentStatusKey) || SUBPROJECT_STATUS_CONFIG[0];
+          
+          return (
+            <div key={sub.id} className="flex items-center justify-between bg-white p-3 rounded border border-gray-200 shadow-sm gap-3">
+              <span className="text-sm text-gray-800 font-medium truncate flex-1" title={sub.title}>{sub.title}</span>
+              
+              <div className="flex items-center gap-2">
+                {/* Status Dropdown */}
+                <select
+                  value={currentStatusKey}
+                  onChange={(e) => handleStatusChange(sub.id, e.target.value)}
+                  disabled={isUpdating}
+                  className={`text-xs px-2 py-1.5 rounded border outline-none cursor-pointer appearance-none text-center font-medium min-w-[110px] ${statusConfig.color}`}
+                  style={{
+                    WebkitAppearance: 'none', 
+                    MozAppearance: 'none',
+                    textAlignLast: 'center' 
+                  }}
+                >
+                  {SUBPROJECT_STATUS_CONFIG.map(config => (
+                    <option key={config.key} value={config.key} className="bg-white text-gray-800 text-left">
+                      {t(`status.${config.key}`, config.key)}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Delete Button */}
+                <button 
+                  onClick={() => handleDeleteSubProject(sub.id)}
+                  disabled={isUpdating}
+                  className="text-gray-400 hover:text-red-500 p-1.5 rounded hover:bg-red-50 transition-colors"
+                  title={t('common.delete', 'Delete')}
+                >
+                  <TrashIcon />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Add Form */}
+      <form onSubmit={handleAddSubProject} className="mt-auto pt-4 border-t border-gray-100 bg-gray-50/50 -m-4 p-4 rounded-b-lg">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newSubProjectName}
+            onChange={(e) => setNewSubProjectName(e.target.value)}
+            placeholder={t('home.addSubProject', 'Add sub-project...')}
+            className="flex-1 text-sm border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+          />
+          <button
+            type="submit"
+            disabled={!newSubProjectName.trim() || isUpdating}
+            className="bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-2 flex items-center justify-center disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
+          >
+             {isUpdating ? <Spinner /> : <span>+ {t('common.add', 'Add')}</span>}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+
 // ---------- AnnouncementsSection (ADDED LANGUAGE HOOK) ----------
 const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
-  const { t } = useContext(LanguageContext); // --- ADDED ---
+  const { t } = useContext(LanguageContext); 
   const [updates, setUpdates] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -133,22 +282,22 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
       setUpdates(querySnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (err) {
       console.error("Error fetching announcements:", err);
-      setError(t('admin.updatesError')); // --- MODIFIED ---
+      setError(t('admin.updatesError')); 
     }
     finally { setIsLoading(false); }
-  }, [teamId, t]); // --- ADDED t ---
+  }, [teamId, t]);
 
   useEffect(() => { fetchAnnouncements(); }, [teamId, fetchAnnouncements, refreshTrigger]);
 
   const handleDelete = async (updateId) => {
-    if (!window.confirm(t('common.confirmDelete'))) return; // --- MODIFIED ---
+    if (!window.confirm(t('common.confirmDelete'))) return; 
     try {
       await deleteDoc(doc(db, `teams/${teamId}/announcements`, updateId));
       setUpdates(prev => prev.filter(u => u.id !== updateId));
     }
     catch (err) {
       console.error("Failed to delete update:", err);
-      setError(t('common.deleteError')); // --- MODIFIED ---
+      setError(t('common.deleteError')); 
     }
   };
 
@@ -197,7 +346,7 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
 
 // ---------- MembersSection (MODIFIED: Added onRemoveMember prop and button) ----------
 const MembersSection = ({ membersDetails, teamData, canManageMembers, onChangeRole, onInviteClick, onRemoveMember }) => {
-  const { t } = useContext(LanguageContext); // --- ADDED ---
+  const { t } = useContext(LanguageContext); 
 
   return (
     <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm border h-full">
@@ -225,7 +374,7 @@ const MembersSection = ({ membersDetails, teamData, canManageMembers, onChangeRo
                 {canManageMembers ? (
                   <div className="flex items-center gap-2">
                     {isCreator ? ( <div className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded border border-yellow-200">{t('admin.creator')}</div> ) : (
-                      // --- MODIFIED: Wrapped select and button in fragment ---
+                      
                       <>
                         <select value={roleRaw} onChange={(e) => onChangeRole(uid, e.target.value)} className="text-xs border border-gray-300 rounded px-2 py-1 bg-white hover:border-gray-400" title={t('admin.changeRole')}>
                           <option value="admin">{t('admin.admin')}</option>
@@ -240,7 +389,7 @@ const MembersSection = ({ membersDetails, teamData, canManageMembers, onChangeRo
                           <TrashIcon />
                         </button>
                       </>
-                      // --- END MODIFICATION ---
+                      
                     )}
                   </div>
                 ) : null}
@@ -256,7 +405,7 @@ const MembersSection = ({ membersDetails, teamData, canManageMembers, onChangeRo
 
 // ---------- UserManagementSection (MODIFIED: Added onDeleteUser prop and button) ----------
 const UserManagementSection = ({ allUsers, allTeams, loadingUsers, errorUsers, onLoadMoreUsers, hasMoreUsers, onToggleCompact, usersViewCompact, onDeleteUser }) => {
-  const { t } = useContext(LanguageContext); // --- ADDED ---
+  const { t } = useContext(LanguageContext); 
 
   const findTeamsForUser = useCallback((userId) => {
     return allTeams.filter(team => {
@@ -393,7 +542,7 @@ const UserManagementSection = ({ allUsers, allTeams, loadingUsers, errorUsers, o
 
 // ---------- NEW: ManualNoteModal (ADDED LANGUAGE HOOK) ----------
 const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin }) => {
-  const { t } = useContext(LanguageContext); // --- ADDED ---
+  const { t } = useContext(LanguageContext); 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
 
@@ -488,7 +637,7 @@ const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin
 
 // ---------- NEW: TeamCalendar (ADDED LANGUAGE HOOK & Completed tab) ----------
 const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
-  const { t } = useContext(LanguageContext); // --- ADDED ---
+  const { t } = useContext(LanguageContext); 
   const [events, setEvents] = useState([]); // active events: meetings + notes + non-completed tasks
   const [completedEvents, setCompletedEvents] = useState([]); // completed tickets shown separately
   const [loading, setLoading] = useState(true);
@@ -775,7 +924,7 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
 
 // ---------- Main Dashboard Component ----------
 export default function MasterAdminDashboard() {
-  const { t } = useContext(LanguageContext); // --- ADDED ---
+  const { t } = useContext(LanguageContext); 
 
   // Lists + pagination state (No changes)
   const [teams, setTeams] = useState([]);
@@ -844,11 +993,11 @@ export default function MasterAdminDashboard() {
       setTeamsHasMore(snap.docs.length === pageSize);
     } catch (err) {
       console.error('Failed to load teams:', err);
-      setTeamsError(t('admin.loadTeamsError')); // --- MODIFIED ---
+      setTeamsError(t('admin.loadTeamsError')); 
     } finally {
       setTeamsLoading(false);
     }
-  }, [teamsLastDoc, t]); // --- ADDED t ---
+  }, [teamsLastDoc, t]); 
 
   // --------- Users: paginated fetch ----------
   const fetchUsersPage = useCallback(async ({ reset = false, pageSize = USERS_PAGE_SIZE } = {}) => {
@@ -869,11 +1018,11 @@ export default function MasterAdminDashboard() {
       setUsersHasMore(snap.docs.length === pageSize);
     } catch (err) {
       console.error('Failed to load users:', err);
-      setUsersError(t('admin.loadUsersError')); // --- MODIFIED ---
+      setUsersError(t('admin.loadUsersError')); 
     } finally {
       setUsersLoading(false);
     }
-  }, [usersLastDoc, t]); // --- ADDED t ---
+  }, [usersLastDoc, t]); 
 
   // --------- Team details & members fetch ----------
   const fetchTeamDetails = useCallback(async (teamId) => {
@@ -900,18 +1049,18 @@ export default function MasterAdminDashboard() {
         const memberDocsSnap = await Promise.all(memberPromises);
         setMembersDetails(memberDocsSnap.map((userDoc, index) => {
           const uid = uniqueMemberUIDs[index];
-          return userDoc.exists() ? { uid, ...userDoc.data() } : { uid, displayName: null, email: t('admin.profileNotFound') }; // --- MODIFIED ---
+          return userDoc.exists() ? { uid, ...userDoc.data() } : { uid, displayName: null, email: t('admin.profileNotFound') }; 
         }));
       } else {
         setMembersDetails([]);
       }
     } catch (err) {
       console.error("Error fetching team details:", err);
-      setTeamsError(t('admin.loadTeamDetailsError')); // --- MODIFIED ---
+      setTeamsError(t('admin.loadTeamDetailsError')); 
     } finally {
       setIsLoadingDetails(false);
     }
-  }, [t]); // --- ADDED t ---
+  }, [t]); 
 
   // --------- Role change ----------
   const changeRole = async (memberUid, newRole) => {
@@ -923,20 +1072,20 @@ export default function MasterAdminDashboard() {
       setTeamData(prev => ({ ...prev, roles: { ...(prev?.roles || {}), [memberUid]: newRole }, permissions: { ...(prev?.permissions || {}), [memberUid]: permsForRole } }));
     } catch (err) {
       console.error('Failed to change role:', err);
-      alert(t('admin.changeRoleError')); // --- MODIFIED ---
+      alert(t('admin.changeRoleError')); 
     }
   };
 
   // --------- Delete team ----------
   const handleDeleteTeam = async (teamId) => {
-    if (!window.confirm(t('common.confirmDeleteTeam'))) return; // --- MODIFIED ---
+    if (!window.confirm(t('common.confirmDeleteTeam'))) return; 
     try {
       await deleteDoc(doc(db, 'teams', teamId));
       setTeams(prev => prev.filter(t => t.id !== teamId));
       if (selectedTeam?.id === teamId) setSelectedTeam(null);
     } catch (err) {
       console.error('Failed to delete team:', err);
-      alert(t('common.deleteTeamError')); // --- MODIFIED ---
+      alert(t('common.deleteTeamError')); 
     }
   };
 
@@ -945,11 +1094,10 @@ export default function MasterAdminDashboard() {
     if (!teamData || !teamData.id || !memberUid) return;
 
     if (teamData.createdBy === memberUid) {
-      alert(t('admin.cannotRemoveCreator', 'Cannot remove the team creator.')); // Added fallback
+      alert(t('admin.cannotRemoveCreator', 'Cannot remove the team creator.')); 
       return;
     }
 
-    // Using existing confirmation key
     if (!window.confirm(t('common.confirmDelete', 'Are you sure you want to delete this?'))) {
       return;
     }
@@ -984,7 +1132,7 @@ export default function MasterAdminDashboard() {
 
     } catch (err) {
       console.error('Failed to remove member:', err);
-      alert(t('admin.removeMemberError', 'Failed to remove member. Please try again.')); // Added fallback
+      alert(t('admin.removeMemberError', 'Failed to remove member. Please try again.')); 
     }
   };
 
@@ -1013,9 +1161,6 @@ export default function MasterAdminDashboard() {
       // Also, if this user was in the currently viewed team, refresh that list
       if (selectedTeam && membersDetails.some(m => m.uid === userId)) {
         setMembersDetails(prev => prev.filter(m => m.uid !== userId));
-        // Note: This only updates the local view. The user might still be in the
-        // team's 'members' array in Firestore. A full solution would
-        // require a Cloud Function to remove them from all teams.
       }
       
       alert(t('admin.deleteUserSuccess', 'User document deleted successfully. Note: Their Auth account (login) may still exist.'));
@@ -1038,7 +1183,7 @@ export default function MasterAdminDashboard() {
   useEffect(() => {
     fetchTeamsPage({ reset: true });
     fetchUsersPage({ reset: true });
-  }, []); // eslint-disable-line
+  }, []); 
 
   // --------- Search debounce for teams (client-side search on fetched pages) ----------
   const handleTeamsSearchChange = (v) => {
@@ -1208,14 +1353,16 @@ export default function MasterAdminDashboard() {
                     <button onClick={() => setIsScheduleModalOpen(true)} className="bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md shadow-sm">{t('admin.scheduleMeeting')}</button>
                   </div>
 
-                  {/* --- Tabs (Added Handovers tab) --- */}
+                  {/* --- Tabs (Added Handovers & Progress tabs) --- */}
                   <div className="px-4 sm:px-6 lg:px-8 border-b border-gray-200">
-                    <nav className="flex space-x-6" aria-label="Tabs">
+                    <nav className="flex space-x-6 overflow-x-auto" aria-label="Tabs">
                       <button onClick={() => setActiveTab('projects')} className={tabClass('projects')}><TableIcon /> {t('admin.tabProjects')}</button>
+                      <button onClick={() => setActiveTab('progress')} className={tabClass('progress')}><ChartBarIcon /> {t('home.subProjects', 'Progress')}</button>
                       <button onClick={() => setActiveTab('calendar')} className={tabClass('calendar')}><CalendarIcon /> {t('admin.tabCalendar')}</button>
                       <button onClick={() => setActiveTab('members')} className={tabClass('members')}><UsersIcon /> {t('admin.tabMembers')}</button>
                       <button onClick={() => setActiveTab('updates')} className={tabClass('updates')}><MegaphoneIcon /> {t('admin.tabUpdates')}</button>
                       <button onClick={() => setActiveTab('handovers')} className={tabClass('handovers')}><HandoversIcon /> {t('admin.tabHandovers', 'Handovers')}</button>
+                      <button onClick={() => setActiveTab('faq')} className={tabClass('faq')}><FAQIcon /> {t('admin.tabFAQ', 'FAQ')}</button>
                     </nav>
                   </div>
 
@@ -1223,13 +1370,23 @@ export default function MasterAdminDashboard() {
                     {isLoadingDetails && ( <div className="p-6 flex justify-center"><Spinner /></div> )}
                     {!isLoadingDetails && teamData && (
                       <>
-                        {/* --- MODIFICATION: Added isMasterAdminView prop --- */}
                         {activeTab === 'projects' && ( 
                           <TeamProjectTable 
                             teamId={selectedTeam.id} 
                             onTaskChange={refreshAnnouncements} 
                             isMasterAdminView={true} 
                           /> 
+                        )}
+
+                        {/* --- NEW: Progress / Sub-projects Tab --- */}
+                        {activeTab === 'progress' && (
+                          <div className="p-4 sm:p-6 lg:p-8">
+                             <SubProjectsSection 
+                                teamId={selectedTeam.id} 
+                                teamData={teamData} 
+                                onUpdate={() => fetchTeamDetails(selectedTeam.id)}
+                             />
+                          </div>
                         )}
                         
                         {activeTab === 'calendar' && (
@@ -1246,10 +1403,17 @@ export default function MasterAdminDashboard() {
                         
                         {activeTab === 'updates' && ( <div className="p-4 sm:p-6 lg:p-8"><AnnouncementsSection teamId={selectedTeam.id} refreshTrigger={announcementRefreshKey} isAdmin={true} onEdit={openEditModal}/></div> )}
 
-                        {/* --- NEW: Handovers tab content (uses imported HandoversSection component) --- */}
+                        {/* --- NEW: Handovers tab content --- */}
                         {activeTab === 'handovers' && (
                           <div className="p-4 sm:p-6 lg:p-8">
                             <HandoversSection teamId={selectedTeam.id} />
+                          </div>
+                        )}
+
+                        {/* --- NEW: FAQ tab content --- */}
+                        {activeTab === 'faq' && (
+                          <div className="p-4 sm:p-6 lg:p-8 h-[600px]">
+                            <FAQSection teamId={selectedTeam.id} isAdmin={true} />
                           </div>
                         )}
                       </>

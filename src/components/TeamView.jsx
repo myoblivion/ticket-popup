@@ -1,4 +1,3 @@
-// TeamView.jsx
 import React, { useState, useEffect, useCallback, useContext, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
@@ -22,6 +21,7 @@ import ScheduleMeetingModal from './ScheduleMeetingModal';
 import TeamProjectTable from './TeamProjectTable';
 import EditUpdateModal from './EditUpdateModal';
 import HandoversSection from './EndorsementModal';
+import FAQSection from './FAQSection'; 
 
 // --- Context Import ---
 import { LanguageContext } from '../contexts/LanguageContext.jsx';
@@ -35,6 +35,13 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 // --- Setup Localizer ---
 const localizer = momentLocalizer(moment);
 
+// --- Icons ---
+// ADDED MISSING ICONS HERE
+const TableIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>;
+const HandoverIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>;
+const QuestionMarkCircleIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+const XIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>;
+
 // --- Spinner component ---
 const Spinner = ({ large = false }) => (
   <div className="flex justify-center items-center py-10">
@@ -42,7 +49,7 @@ const Spinner = ({ large = false }) => (
   </div>
 );
 
-// --- Utility: formatDate (for general use) ---
+// --- Utility: formatDate ---
 const formatDate = (value, { dateOnly = false, fallback = '' } = {}) => {
   if (!value) return fallback;
   try {
@@ -62,29 +69,6 @@ const formatDate = (value, { dateOnly = false, fallback = '' } = {}) => {
   } catch (err) {
     console.error('formatDate error', err, value);
     return String(value);
-  }
-};
-
-// --- Utility: formatDate (for handovers table YYYY-MM-DD) ---
-const formatDateForHandover = (value, { fallback = '' } = {}) => {
-  if (!value) return fallback;
-  try {
-      let d;
-      if (typeof value === 'object' && typeof value.toDate === 'function') {
-      d = value.toDate();
-      } else if (value instanceof Date) {
-      d = value;
-      } else if (typeof value === 'string') {
-      const parsed = new Date(value);
-      if (!isNaN(parsed)) d = parsed;
-      else return value;
-      } else {
-      return String(value);
-      }
-      return d.toISOString().split('T')[0];
-  } catch (err) {
-      console.error('formatDate error', err, value);
-      return String(value);
   }
 };
 
@@ -116,15 +100,6 @@ const normalizeValueToDate = (val) => {
   if (!isNaN(parsed)) return parsed;
   return null;
 };
-
-// Checks if a Date object has a time component (is not midnight)
-const hasTimeComponent = (d) => {
-  if (!d || !(d instanceof Date)) return false;
-  return d.getHours() !== 0 || d.getMinutes() !== 0 || d.getSeconds() !== 0 || d.getMilliseconds() !== 0;
-};
-
-const msInDay = 24 * 60 * 60 * 1000;
-
 
 // --- AnnouncementsSection ---
 const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
@@ -166,7 +141,7 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
   };
 
   return (
-    <div className="bg-white p-4 rounded-lg shadow border">
+    <div className="bg-white p-4 rounded-lg shadow border h-full flex flex-col">
       <h3 className="text-lg font-semibold mb-3 text-gray-700 border-b pb-2">{t('admin.tabUpdates')}</h3>
       {isLoadingAnnouncements && <Spinner />}
       {errorAnnouncements && <p className="text-red-500 text-sm mt-2">{errorAnnouncements}</p>}
@@ -174,7 +149,7 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
         <p className="text-sm text-gray-500 italic">{t('admin.noUpdates')}</p>
       )}
       {!isLoadingAnnouncements && updates.length > 0 && (
-        <ul className="space-y-3 max-h-96 overflow-y-auto pr-2">
+        <ul className="space-y-3 overflow-y-auto pr-2 flex-1 custom-scrollbar">
           {updates.map(update => (
             <li key={update.id} className={`text-sm p-2 border-l-4 rounded-r bg-gray-50 ${update.type === 'meeting' ? 'border-blue-500' : 'border-green-500'}`}>
               <div className="flex justify-between items-start gap-2">
@@ -222,7 +197,7 @@ const MembersSection = ({ membersDetails, teamData, currentUserUid, canManageMem
   const { t } = useContext(LanguageContext);
 
   return (
-    <div className="bg-white p-4 rounded-lg shadow border">
+    <div className="bg-white p-4 rounded-lg shadow border h-full flex flex-col">
       <div className="flex justify-between items-center mb-3 border-b pb-2">
         <h3 className="text-lg font-semibold text-gray-700">{t('admin.tabMembers')}</h3>
         {canManageMembers && (
@@ -235,7 +210,7 @@ const MembersSection = ({ membersDetails, teamData, currentUserUid, canManageMem
         )}
       </div>
       {membersDetails.length > 0 ? (
-        <ul className="list-none space-y-2 max-h-96 overflow-y-auto pr-2">
+        <ul className="list-none space-y-2 overflow-y-auto pr-2 flex-1 custom-scrollbar">
           {membersDetails.map((member) => {
             const uid = member.uid;
             const isCreator = teamData?.createdBy === uid;
@@ -291,7 +266,7 @@ const MembersSection = ({ membersDetails, teamData, currentUserUid, canManageMem
   );
 };
 
-// --- ManualNoteModal (Translated AND UPDATED with Edit) ---
+// --- ManualNoteModal ---
 const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin }) => {
   const { t } = useContext(LanguageContext);
   const [title, setTitle] = useState('');
@@ -399,40 +374,23 @@ const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin
 
         <div className="flex justify-end items-center gap-3 mt-6">
           {isView && !isEditing && event?.type === 'manual' && isAdmin && (
-            <button 
-              type="button" 
-              onClick={handleDelete} 
-              className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700"
-            >
+            <button type="button" onClick={handleDelete} className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700">
               {t('common.deleteNote')}
             </button>
           )}
           
-          <button 
-            type="button" 
-            onClick={handleCancel} 
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-          >
+          <button type="button" onClick={handleCancel} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
             {t('common.cancel')}
           </button>
 
           {isView && !isEditing && event?.type === 'manual' && isAdmin && (
-            <button 
-              type="button" 
-              onClick={() => setIsEditing(true)} 
-              className="px-4 py-2 text-sm font-medium text-white bg-yellow-500 rounded-md hover:bg-yellow-600"
-            >
+            <button type="button" onClick={() => setIsEditing(true)} className="px-4 py-2 text-sm font-medium text-white bg-yellow-500 rounded-md hover:bg-yellow-600">
               {t('common.editNote', 'Edit Note')}
             </button>
           )}
 
           {(isNew || (isView && isEditing)) && (
-            <button 
-              type="button" 
-              onClick={handleSave} 
-              disabled={!title} 
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md disabled:bg-gray-400 hover:bg-blue-700"
-            >
+            <button type="button" onClick={handleSave} disabled={!title} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md disabled:bg-gray-400 hover:bg-blue-700">
               {t('common.saveNote')}
             </button>
           )}
@@ -442,23 +400,17 @@ const ManualNoteModal = ({ isOpen, onClose, modalData, onSave, onDelete, isAdmin
   );
 };
 
-// --- TeamCalendar (now supports separate Completed calendar) ---
+// --- TeamCalendar ---
 const TeamCalendar = ({ teamId, isAdmin, refreshTrigger, messages }) => {
   const { t } = useContext(LanguageContext);
-  const [events, setEvents] = useState([]); // active calendar events (no completed tasks)
-  const [completedEvents, setCompletedEvents] = useState([]); // completed tickets as calendar events
+  const [events, setEvents] = useState([]);
+  const [completedEvents, setCompletedEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // Modal state
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [modalData, setModalData] = useState(null);
-
-  // date/view state so toolbar navigation works reliably
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentView, setCurrentView] = useState('month');
-
-  // mode toggle
-  const [calendarMode, setCalendarMode] = useState('calendar'); // 'calendar' | 'completed'
+  const [calendarMode, setCalendarMode] = useState('calendar');
 
   const fetchCalendarData = useCallback(async () => {
     if (!teamId) return;
@@ -483,89 +435,43 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger, messages }) => {
         const endDate = normalizeValueToDate(data.endDate);
         const status = (data.status || '').toString().toLowerCase();
         const title = `${t('calendar.ticket')} ${data.ticketNo || data.title || d.id}`;
-
         const isCompleted = status === 'completed' || !!endDate;
-
-        // Determine event date for active tasks (prefer start or due)
-        const activeEventDate = startDate || null;
-
-        // For completed tasks, prefer endDate/completedAt, then fallback to createdAt
-        const completedAt =
-          endDate ||
-          normalizeValueToDate(data.completedAt) ||
-          normalizeValueToDate(data.updatedAt) ||
-          normalizeValueToDate(data.createdAt) ||
-          null;
+        const completedAt = endDate || normalizeValueToDate(data.completedAt) || normalizeValueToDate(data.updatedAt) || normalizeValueToDate(data.createdAt) || null;
 
         if (isCompleted) {
-          // only add to completedEvents if we have a date to show, fallback to createdAt above
           if (completedAt) {
             completedTaskEvents.push({
-              id: d.id,
-              title,
-              start: completedAt,
-              end: completedAt,
-              allDay: true,
-              type: 'completed-ticket',
-              raw: data,
-              status,
+              id: d.id, title, start: completedAt, end: completedAt, allDay: true, type: 'completed-ticket', raw: data, status,
             });
           }
         } else {
-          // Active tasks: only add if there's at least a start/due date to show on calendar
           const eventDate = endDate || startDate || normalizeValueToDate(data.dueDate) || null;
           if (eventDate) {
             activeTaskEvents.push({
-              id: d.id,
-              title,
-              start: eventDate,
-              end: eventDate,
-              allDay: true,
-              type: 'ticket',
-              raw: data,
-              status,
+              id: d.id, title, start: eventDate, end: eventDate, allDay: true, type: 'ticket', raw: data, status,
             });
           }
         }
       });
 
-      // Meeting events
       const meetingEvents = meetingDocs.docs.map(d => {
         const data = d.data();
         const start = normalizeValueToDate(data.startDateTime) || new Date();
         const end = normalizeValueToDate(data.endDateTime) || start;
         return {
-          id: d.id,
-          title: `${t('calendar.meeting')} ${data.title || t('calendar.untitled')}`,
-          start,
-          end: (end > start) ? end : new Date(start.getTime() + 30 * 60 * 1000),
-          allDay: false,
-          type: 'meeting',
-          raw: data,
+          id: d.id, title: `${t('calendar.meeting')} ${data.title || t('calendar.untitled')}`, start, end: (end > start) ? end : new Date(start.getTime() + 30 * 60 * 1000), allDay: false, type: 'meeting', raw: data,
         };
       });
 
-      // Note events
       const noteEvents = noteDocs.docs.map(d => {
         const data = d.data();
         const start = normalizeValueToDate(data.start) || new Date();
         return {
-          id: d.id,
-          title: `${t('calendar.note')} ${data.title || 'Note'}`,
-          description: data.description || '',
-          start,
-          end: start,
-          allDay: true,
-          type: 'manual',
-          raw: data,
+          id: d.id, title: `${t('calendar.note')} ${data.title || 'Note'}`, description: data.description || '', start, end: start, allDay: true, type: 'manual', raw: data,
         };
       });
 
-      // Active calendar shows meetings + notes + active tasks (non-completed)
-      const calendarEvents = [...activeTaskEvents, ...meetingEvents, ...noteEvents];
-
-      // Completed calendar shows only completedTaskEvents
-      setEvents(calendarEvents);
+      setEvents([...activeTaskEvents, ...meetingEvents, ...noteEvents]);
       setCompletedEvents(completedTaskEvents);
     } catch (err) {
       console.error("Error fetching calendar data:", err);
@@ -576,14 +482,12 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger, messages }) => {
 
   useEffect(() => { fetchCalendarData(); }, [fetchCalendarData, refreshTrigger]);
 
-  // handlers:
   const handleSelectSlot = useCallback(({ start, end }) => {
     setModalData({ type: 'new', start, end });
     if (isAdmin) setIsNoteModalOpen(true);
   }, [isAdmin]);
 
   const handleSelectEvent = useCallback((event) => {
-    // pass event through - ManualNoteModal expects event.title, event.description, event.start
     setModalData({ type: 'view', event });
     setIsNoteModalOpen(true);
   }, []);
@@ -600,14 +504,7 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger, messages }) => {
         const noteRef = doc(db, 'teams', teamId, 'calendarNotes', eventId);
         await updateDoc(noteRef, { title, description });
       } else {
-        const newNote = {
-          title,
-          description,
-          start: start instanceof Date ? start : new Date(start),
-          end: end instanceof Date ? end : new Date(end),
-          allDay: true,
-          createdAt: serverTimestamp(),
-        };
+        const newNote = { title, description, start: start instanceof Date ? start : new Date(start), end: end instanceof Date ? end : new Date(end), allDay: true, createdAt: serverTimestamp(), };
         await addDoc(collection(db, 'teams', teamId, 'calendarNotes'), newNote);
       }
       await fetchCalendarData();
@@ -628,93 +525,50 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger, messages }) => {
   }, [teamId, fetchCalendarData, t]);
 
   const eventPropGetter = useCallback((event) => {
-    // Differentiate styles for meetings, completed tickets, and others
-    if (event.type === 'meeting') {
-      return { style: { cursor: 'pointer', backgroundColor: '#dbebff', borderLeft: '4px solid #3b82f6', color: '#0f172a' } };
-    }
-    if (event.type === 'completed-ticket') {
-      return { style: { cursor: 'pointer', backgroundColor: '#f3f4f6', borderLeft: '4px solid #9ca3af', color: '#374151', textDecoration: 'line-through' } };
-    }
-    if (event.type === 'ticket') {
-      return { style: { cursor: 'pointer', backgroundColor: '#ecfdf5', borderLeft: '4px solid #10b981', color: '#064e3b' } };
-    }
-    if (event.type === 'manual') {
-      return { style: { cursor: 'pointer', backgroundColor: '#fff7ed', borderLeft: '4px solid #f59e0b', color: '#7c2d12' } };
-    }
+    if (event.type === 'meeting') return { style: { cursor: 'pointer', backgroundColor: '#dbebff', borderLeft: '4px solid #3b82f6', color: '#0f172a' } };
+    if (event.type === 'completed-ticket') return { style: { cursor: 'pointer', backgroundColor: '#f3f4f6', borderLeft: '4px solid #9ca3af', color: '#374151', textDecoration: 'line-through' } };
+    if (event.type === 'ticket') return { style: { cursor: 'pointer', backgroundColor: '#ecfdf5', borderLeft: '4px solid #10b981', color: '#064e3b' } };
+    if (event.type === 'manual') return { style: { cursor: 'pointer', backgroundColor: '#fff7ed', borderLeft: '4px solid #f59e0b', color: '#7c2d12' } };
     return { style: { cursor: 'pointer' } };
   }, []);
 
   if (loading) return <Spinner large />;
 
   return (
-    <div className="bg-white rounded-lg shadow border flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between p-4 border-b">
-        <h2 className="text-2xl font-semibold text-gray-800">{t('admin.tabCalendar')}</h2>
-
+    <div className="bg-white rounded-lg shadow border flex flex-col overflow-hidden h-full">
+      <div className="flex items-center justify-between p-4 border-b bg-gray-50">
+        <h2 className="text-lg font-semibold text-gray-800">{t('admin.tabCalendar')}</h2>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setCalendarMode('calendar')}
-            className={`text-sm px-3 py-1 rounded ${calendarMode === 'calendar' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'}`}
-          >
+          <button onClick={() => setCalendarMode('calendar')} className={`text-xs px-3 py-1 rounded ${calendarMode === 'calendar' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'}`}>
             {t('admin.tabCalendar')}
           </button>
-          <button
-            onClick={() => setCalendarMode('completed')}
-            className={`text-sm px-3 py-1 rounded ${calendarMode === 'completed' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'}`}
-          >
+          <button onClick={() => setCalendarMode('completed')} className={`text-xs px-3 py-1 rounded ${calendarMode === 'completed' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'}`}>
             {t('common.completed')}
           </button>
         </div>
       </div>
 
-      {/* Calendar (active events) */}
-      {calendarMode === 'calendar' && (
-        <div className="p-4" style={{ height: '600px' }}>
-          <Calendar
-            localizer={localizer}
-            events={events}
-            startAccessor="start"
-            endAccessor="end"
-            date={currentDate}
-            view={currentView}
-            onNavigate={(date) => setCurrentDate(date)}
-            onView={(view) => setCurrentView(view)}
-            style={{ height: '100%' }}
-            selectable={true}
-            onSelectSlot={handleSelectSlot}
-            onSelectEvent={handleSelectEvent}
-            onDoubleClickEvent={handleDoubleClickEvent}
-            eventPropGetter={eventPropGetter}
-            popup={true}
-            showMultiDayTimes={true}
-            messages={messages}
-          />
-        </div>
-      )}
-
-      {/* Completed tickets calendar */}
-      {calendarMode === 'completed' && (
-        <div className="p-4" style={{ height: '600px' }}>
-          <Calendar
-            localizer={localizer}
-            events={completedEvents}
-            startAccessor="start"
-            endAccessor="end"
-            date={currentDate}
-            view={currentView}
-            onNavigate={(date) => setCurrentDate(date)}
-            onView={(view) => setCurrentView(view)}
-            style={{ height: '100%' }}
-            selectable={false}
-            onSelectEvent={handleSelectEvent}
-            onDoubleClickEvent={handleDoubleClickEvent}
-            eventPropGetter={eventPropGetter}
-            popup={true}
-            showMultiDayTimes={true}
-            messages={messages}
-          />
-        </div>
-      )}
+      <div className="p-4 flex-1 overflow-auto" style={{ minHeight: '600px' }}>
+        <Calendar
+          localizer={localizer}
+          events={calendarMode === 'calendar' ? events : completedEvents}
+          startAccessor="start"
+          endAccessor="end"
+          date={currentDate}
+          view={currentView}
+          onNavigate={(date) => setCurrentDate(date)}
+          onView={(view) => setCurrentView(view)}
+          style={{ height: '100%' }}
+          selectable={calendarMode === 'calendar'}
+          onSelectSlot={handleSelectSlot}
+          onSelectEvent={handleSelectEvent}
+          onDoubleClickEvent={handleDoubleClickEvent}
+          eventPropGetter={eventPropGetter}
+          popup={true}
+          showMultiDayTimes={true}
+          messages={messages}
+        />
+      </div>
 
       <ManualNoteModal
         isOpen={isNoteModalOpen}
@@ -730,7 +584,7 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger, messages }) => {
 
 
 // ===================================================================
-// --- TeamView (main) ---
+// --- TeamView (Main Component) ---
 // ===================================================================
 const TeamView = () => {
   const { teamId } = useParams();
@@ -744,6 +598,9 @@ const TeamView = () => {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [announcementRefreshKey, setAnnouncementRefreshKey] = useState(0);
 
+  // --- NEW: FAQ Modal State ---
+  const [isFAQModalOpen, setIsFAQModalOpen] = useState(false);
+
   // Modal States
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isAnnounceModalOpen, setIsAnnounceModalOpen] = useState(false);
@@ -751,15 +608,12 @@ const TeamView = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
 
-  // --- NEW: State for Master Admin status ---
   const [isMasterAdmin, setIsMasterAdmin] = useState(false);
 
-  // --- DYNAMICALLY SET MOMENT LOCALE ---
   useEffect(() => {
     moment.locale(language);
   }, [language]);
 
-  // --- DYNAMIC CALENDAR MESSAGES ---
   const calendarMessages = useMemo(() => ({
     allDay: t('calendar.allDay', 'All Day'),
     previous: t('calendar.previous'),
@@ -776,7 +630,6 @@ const TeamView = () => {
     noEventsInRange: t('calendar.noEventsInRange', 'There are no events in this range.'),
   }), [t]);
 
-  // --- MODIFIED: isAdmin check now includes isMasterAdmin ---
   const isTeamCreator = teamData?.createdBy === currentUser?.uid;
   const currentUserRole = teamData?.roles?.[currentUser?.uid] || 'member';
   const isAdmin = isTeamCreator || currentUserRole === 'admin' || isMasterAdmin;
@@ -791,18 +644,16 @@ const TeamView = () => {
     return unsub;
   }, [navigate, teamId]);
 
-  // --- MODIFIED: fetchTeamAndMembers now checks user role ---
   const fetchTeamAndMembers = useCallback(async () => {
     if (!teamId) { setError("No team ID provided."); setIsLoading(false); return; }
-    if (!currentUser) { console.log("User not available yet, waiting..."); return; }
+    if (!currentUser) { return; }
 
     setIsLoading(true); setError(null); setTeamData(null); setMembersDetails([]); setIsAuthorized(false);
-    setIsMasterAdmin(false); // Reset master admin state on each fetch
+    setIsMasterAdmin(false);
 
     try {
-      // Fetch team and user data in parallel
       const teamDocRef = doc(db, "teams", teamId);
-      const userDocRef = doc(db, "users", currentUser.uid); // Get current user's doc
+      const userDocRef = doc(db, "users", currentUser.uid);
 
       const [teamDocSnap, userDocSnap] = await Promise.all([
         getDoc(teamDocRef),
@@ -810,16 +661,13 @@ const TeamView = () => {
       ]);
 
       if (!teamDocSnap.exists()) { 
-        setError(t('team.notFound', 'Team not found.')); // Use translation
+        setError(t('team.notFound', 'Team not found.')); 
         setIsLoading(false); 
         return; 
       }
 
-      // Check if user is Master Admin
       const masterAdminCheck = userDocSnap.exists() && userDocSnap.data().role === 'Master Admin';
-      if (masterAdminCheck) {
-        setIsMasterAdmin(true); // Set state for 'isAdmin' check
-      }
+      if (masterAdminCheck) setIsMasterAdmin(true);
 
       const fetchedTeamData = teamDocSnap.data();
       const memberUIDs = fetchedTeamData.members || [];
@@ -828,20 +676,15 @@ const TeamView = () => {
         (typeof member === 'string' && member === currentUser.uid)
       );
 
-      // Allow access if user is a member OR a Master Admin
       if (!isMember && !masterAdminCheck) { 
-        console.warn("Access Denied: User not a member."); 
         setError(t('team.accessDenied', 'Access Denied: You are not a member of this team.'));
         setIsLoading(false);
-        // We no longer navigate away, just show the error
         return;
       }
 
-      // If we are here, user is authorized
       setIsAuthorized(true);
       setTeamData({ id: teamDocSnap.id, ...fetchedTeamData });
 
-      // Proceed to fetch member details for the member list
       const allMemberUIDs = memberUIDs.map(m => typeof m === 'object' ? m.uid : m);
       const uniqueMemberUIDs = [...new Set(allMemberUIDs)];
 
@@ -861,11 +704,11 @@ const TeamView = () => {
       }
     } catch (err) {
       console.error("Error fetching team/members:", err);
-      setError(t('team.loadError', 'Failed to load team data. Please check permissions or network.'));
+      setError(t('team.loadError', 'Failed to load team data.'));
     } finally {
       setIsLoading(false);
     }
-  }, [teamId, currentUser, t]); // Removed 'navigate' from deps as it's not used for redirect here
+  }, [teamId, currentUser, t]);
 
   useEffect(() => { fetchTeamAndMembers(); }, [fetchTeamAndMembers, announcementRefreshKey]);
 
@@ -897,88 +740,141 @@ const TeamView = () => {
 
   return (
     <>
-      <div className="px-4 sm:px-6 lg:px-8 py-8">
-        {isLoading && <Spinner large />}
-        {error && <div className="text-center text-red-600 bg-red-100 p-4 rounded-md shadow">{error}</div>}
+      {/* Main Container - FULL WIDTH */}
+      <div className="min-h-screen bg-gray-100 pb-12 font-sans w-full">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
+          
+          {isLoading && <Spinner large />}
+          {error && <div className="text-center text-red-600 bg-red-100 p-4 rounded-md shadow">{error}</div>}
 
-        {!isLoading && !error && teamData && isAuthorized && (
-          <div className="space-y-8">
-            <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-              <div>
-                <Link to="/home" className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800 hover:underline mb-2">
-                  &larr; {t('common.backToDashboard')}
-                </Link>
-                <h1 className="text-3xl font-bold text-gray-900">{teamData.teamName}</h1>
-                <p className="text-base text-gray-600 mt-1">{teamData.description || t('admin.noDescription')}</p>
-                <p className="text-xs text-gray-500 mt-2">{t('admin.created', 'Created')}: {formatDate(teamData.createdAt, { dateOnly: true }) || 'N/A'}</p>
+          {!isLoading && !error && teamData && isAuthorized && (
+            <div className="space-y-8">
+              {/* 1. Header Area */}
+              <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                <div>
+                  <Link to="/home" className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800 hover:underline mb-2">
+                    &larr; {t('common.backToDashboard')}
+                  </Link>
+                  <h1 className="text-3xl font-bold text-gray-900 tracking-tight">{teamData.teamName}</h1>
+                  <p className="text-gray-500 mt-1 max-w-2xl">{teamData.description}</p>
+                </div>
+
+                <div className="flex-shrink-0 flex gap-3 flex-wrap justify-end">
+                  {/* --- FAQ Button (Popup) --- */}
+                  <button 
+                    onClick={() => setIsFAQModalOpen(true)} 
+                    className="bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 px-4 py-2 rounded shadow-sm text-sm font-medium flex items-center gap-2"
+                  >
+                    <QuestionMarkCircleIcon /> FAQ Sheet
+                  </button>
+
+                  {isAdmin && (
+                    <>
+                      <button onClick={() => setIsAnnounceModalOpen(true)} className="bg-green-600 text-white px-4 py-2 rounded shadow-sm text-sm font-medium hover:bg-green-700 transition">
+                        {t('admin.announceTeam')}
+                      </button>
+                      <button onClick={() => setIsScheduleModalOpen(true)} className="bg-purple-600 text-white px-4 py-2 rounded shadow-sm text-sm font-medium hover:bg-purple-700 transition">
+                        {t('admin.scheduleMeeting')}
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
 
-              <div className="flex-shrink-0 flex gap-2 flex-wrap justify-end">
-                {isAdmin && (
-                  <>
-                    <button onClick={() => setIsAnnounceModalOpen(true)} className="bg-green-500 hover:bg-green-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md">{t('admin.announceTeam')}</button>
-                    <button onClick={() => setIsScheduleModalOpen(true)} className="bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md">{t('admin.scheduleMeeting')}</button>
-                  </>
-                )}
-              </div>
-            </div>
+              {/* 2. Top Grid: Updates/Members & Calendar */}
+              <div className="grid grid-cols-12 gap-6">
+                
+                {/* Left Column: Updates & Members (3 cols on Large, 12 on Small) */}
+                <div className="col-span-12 lg:col-span-4 xl:col-span-3 flex flex-col gap-6">
+                  <div className="flex-1 min-h-[250px]">
+                    <AnnouncementsSection 
+                      teamId={teamId} 
+                      refreshTrigger={announcementRefreshKey} 
+                      isAdmin={isAdmin} 
+                      onEdit={(u) => toggleModal('edit', true, u)} 
+                    />
+                  </div>
+                  <div className="flex-1 min-h-[250px]">
+                    <MembersSection 
+                      membersDetails={membersDetails} 
+                      teamData={teamData} 
+                      canManageMembers={isAdmin} 
+                      onChangeRole={changeRole} 
+                      onInviteClick={() => setIsInviteModalOpen(true)} 
+                    />
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-1 space-y-6">
-                <AnnouncementsSection 
-                  teamId={teamId} 
-                  refreshTrigger={announcementRefreshKey} 
-                  isAdmin={isAdmin} 
-                  onEdit={openEditModal} 
-                />
-                <MembersSection 
-                  membersDetails={membersDetails} 
-                  teamData={teamData} 
-                  currentUserUid={currentUser?.uid} 
-                  canManageMembers={isAdmin} 
-                  onChangeRole={changeRole} 
-                  onInviteClick={() => setIsInviteModalOpen(true)} 
-                />
-              </div>
-
-              <div className="lg:col-span-2">
-                <TeamCalendar
-                  teamId={teamId}
-                  isAdmin={isAdmin}
-                  refreshTrigger={announcementRefreshKey}
-                  messages={calendarMessages}
-                />
-              </div>
-            </div>
-            
-            <div>
-              <div className="bg-white rounded-lg shadow border overflow-hidden">
-                <div className="overflow-x-auto">
-                  <TeamProjectTable
-                    teamId={teamId}
-                    onTaskChange={refreshAnnouncements}
-                    isMasterAdminView={isMasterAdmin} 
+                {/* Right Column: Calendar (Rest of width) */}
+                <div className="col-span-12 lg:col-span-8 xl:col-span-9">
+                  <TeamCalendar 
+                    teamId={teamId} 
+                    isAdmin={isAdmin} 
+                    refreshTrigger={announcementRefreshKey} 
+                    messages={{}} 
                   />
                 </div>
               </div>
-            </div>
 
-            <HandoversSection teamId={teamId} />
-            
-          </div>
-        )}
+              {/* 3. Tables Section (Stacked, Full Width, No Tabs) */}
+              <div className="space-y-8">
+                
+                {/* Project Table */}
+                <div className="bg-white rounded-lg shadow border overflow-hidden">
+                  <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center">
+                    <div className="bg-blue-100 p-1.5 rounded text-blue-600 mr-3"><TableIcon /></div>
+                    <h3 className="text-lg font-semibold text-gray-800">{t('admin.tabProjects')}</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <TeamProjectTable 
+                      teamId={teamId} 
+                      onTaskChange={refreshAnnouncements} 
+                      isMasterAdminView={isMasterAdmin} 
+                    />
+                  </div>
+                </div>
+
+                {/* Handovers Table */}
+                <div className="bg-white rounded-lg shadow border overflow-hidden">
+                  <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center">
+                    <div className="bg-purple-100 p-1.5 rounded text-purple-600 mr-3"><HandoverIcon /></div>
+                    <h3 className="text-lg font-semibold text-gray-800">{t('admin.tabHandovers')}</h3>
+                  </div>
+                  <HandoversSection teamId={teamId} />
+                </div>
+
+              </div>
+
+            </div>
+          )}
+        </div>
       </div>
 
-      {isAuthorized && teamId && (
-        <>
-          <InviteMemberModal t={t} isOpen={isInviteModalOpen} onClose={() => setIsInviteModalOpen(false)} teamId={teamId} onInvited={onInviteCompleteRefresh} />
-          <AnnounceModal t={t} isOpen={isAnnounceModalOpen} onClose={() => setIsAnnounceModalOpen(false)} teamId={teamId} onAnnouncementPosted={refreshAnnouncements} />
-          <ScheduleMeetingModal t={t} isOpen={isScheduleModalOpen} onClose={() => setIsScheduleModalOpen(false)} teamId={teamId} onMeetingScheduled={refreshAnnouncements} />
-          
-          {isEditModalOpen && editTarget && (
-            <EditUpdateModal t={t} isOpen={isEditModalOpen} onClose={closeEditModal} teamId={teamId} updateId={editTarget.id} updateType={editTarget.type} initialData={editTarget} onSaved={refreshAnnouncements} />
-          )}
-        </>
+      {/* --- Modals --- */}
+      
+      {/* FAQ Modal Overlay */}
+      {isFAQModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl h-[85vh] flex flex-col overflow-hidden relative">
+            <button 
+              onClick={() => setIsFAQModalOpen(false)} 
+              className="absolute top-4 right-4 z-10 text-gray-500 hover:text-gray-800 bg-white rounded-full p-1 shadow-sm"
+            >
+              <XIcon />
+            </button>
+            <div className="flex-1 overflow-hidden">
+              <FAQSection teamId={teamId} isAdmin={isAdmin} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <InviteMemberModal t={t} isOpen={isInviteModalOpen} onClose={() => setIsInviteModalOpen(false)} teamId={teamId} onInvited={onInviteCompleteRefresh} />
+      <AnnounceModal t={t} isOpen={isAnnounceModalOpen} onClose={() => setIsAnnounceModalOpen(false)} teamId={teamId} onAnnouncementPosted={refreshAnnouncements} />
+      <ScheduleMeetingModal t={t} isOpen={isScheduleModalOpen} onClose={() => setIsScheduleModalOpen(false)} teamId={teamId} onMeetingScheduled={refreshAnnouncements} />
+      
+      {isEditModalOpen && editTarget && (
+        <EditUpdateModal t={t} isOpen={isEditModalOpen} onClose={closeEditModal} teamId={teamId} updateId={editTarget.id} updateType={editTarget.type} initialData={editTarget} onSaved={refreshAnnouncements} />
       )}
     </>
   );

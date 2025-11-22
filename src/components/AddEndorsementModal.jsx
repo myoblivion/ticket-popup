@@ -1,10 +1,9 @@
 // src/components/AddEndorsementModal.jsx
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebaseConfig';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, getCountFromServer } from 'firebase/firestore';
 import { useAuthState } from 'react-firebase-hooks/auth';
 
-// Note: The prop is still onEndorsementAdded, let's keep it for consistency
 const AddEndorsementModal = ({ isOpen, onClose, teamId, onEndorsementAdded, t }) => {
   const [user] = useAuthState(auth);
   
@@ -46,15 +45,20 @@ const AddEndorsementModal = ({ isOpen, onClose, teamId, onEndorsementAdded, t })
     setIsSaving(true);
     setError('');
     try {
-      // Still saving to 'endorsements' collection as per your original file structure
       const handoversRef = collection(db, `teams/${teamId}/endorsements`); 
       
+      // --- AUTO-GENERATE NUMBER ---
+      // Get the current count of documents in the collection
+      const snapshot = await getCountFromServer(handoversRef);
+      const count = snapshot.data().count;
+      const newNumber = count + 1; 
+      
       await addDoc(handoversRef, {
-        // --- NEW DATA STRUCTURE ---
+        number: newNumber, // Auto-generated sequential number
         categories: categories,
-        content: handoverContents, // Matching 'content' key from your modal
-        remarks: remarks,         // Matching 'details' key from your modal
-        postedBy: postedBy,       // Matching 'writerName' key
+        content: handoverContents, 
+        remarks: remarks,         
+        postedBy: postedBy,       
         status: status,
         createdAt: serverTimestamp(),
         
@@ -101,6 +105,8 @@ const AddEndorsementModal = ({ isOpen, onClose, teamId, onEndorsementAdded, t })
 
           {/* Body */}
           <div className="p-6 space-y-4">
+            {/* Removed Manual Number Input */}
+            
             <div>
               <label htmlFor="categories" className="block text-sm font-medium text-gray-700 mb-1">
                 {t('handovers.categories', 'Categories')}

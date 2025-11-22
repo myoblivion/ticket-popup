@@ -82,7 +82,7 @@ const MiniSpinner = () => <div className="w-4 h-4 border-2 border-current border
 
 /* ---------- ModalShell (overlay & scroll lock) ---------- */
 const ModalShell = ({ children, onClose }) => {
-  const width = 1200;
+  const width = 2400;
   const maxWidth = '95vw';
   const maxHeight = '90vh';
 

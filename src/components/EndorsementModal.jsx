@@ -113,6 +113,9 @@ const HandoversSection = ({ teamId }) => {
     status: ''
   });
 
+  // --- Sorting State ---
+  const [sortConfig, setSortConfig] = useState({ key: 'date', direction: 'desc' });
+
   // --- Options/Modal State ---
   const [isOptionsModalOpen, setIsOptionsModalOpen] = useState(false);
   const [isInviteOpen, setIsInviteOpen] = useState(false); // Needed for OptionsEditorModal
@@ -336,6 +339,53 @@ const HandoversSection = ({ teamId }) => {
       return true; 
     });
   }, [handoversToDisplay, filters]);
+
+  // --- NEW: Sorting Logic ---
+  const sortedHandovers = useMemo(() => {
+    // Create a copy to sort
+    let data = [...filteredHandoversToDisplay];
+    
+    if (!sortConfig.key) return data;
+
+    return data.sort((a, b) => {
+      let valA, valB;
+
+      if (sortConfig.key === 'number') {
+        valA = Number(a.number) || 0;
+        valB = Number(b.number) || 0;
+      } else if (sortConfig.key === 'date') {
+        // Handle Firestore Timestamp or standard Date or string
+        const dateA = a.createdAt && typeof a.createdAt.toDate === 'function' 
+          ? a.createdAt.toDate() 
+          : new Date(a.createdAt || 0);
+        
+        const dateB = b.createdAt && typeof b.createdAt.toDate === 'function' 
+          ? b.createdAt.toDate() 
+          : new Date(b.createdAt || 0);
+          
+        valA = dateA.getTime();
+        valB = dateB.getTime();
+      } else {
+        return 0;
+      }
+
+      if (valA < valB) {
+        return sortConfig.direction === 'asc' ? -1 : 1;
+      }
+      if (valA > valB) {
+        return sortConfig.direction === 'asc' ? 1 : -1;
+      }
+      return 0;
+    });
+  }, [filteredHandoversToDisplay, sortConfig]);
+
+  // --- NEW: Sort Handler ---
+  const handleSort = (key) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
 
   // --- Checkbox & Delete Handlers (Original) ---
   const handleCheckboxChange = async (docId, field, currentValue) => {
@@ -1056,21 +1106,38 @@ const HandoversSection = ({ teamId }) => {
             >
               <thead className="bg-gray-50 sticky top-0 z-10 text-xs text-gray-500 uppercase tracking-wider">
                 <tr>
-                  {mainHeaders.map((header) => (
-                    <th
-                      key={header.key}
-                      scope="col"
-                      rowSpan={2}
-                      className="p-3 text-left font-medium border-b border-r"
-                      style={{ 
-                        // --- MODIFICATION: Increased content width ---
-                        width: isAllExpanded ? 'auto' : (header.key === 'content' ? '450px' : (header.key === 'number' ? '80px' : '120px')), 
-                        whiteSpace: isAllExpanded ? 'normal' : 'nowrap'
-                      }}
-                    >
-                      {header.label}
-                    </th>
-                  ))}
+                  {mainHeaders.map((header) => {
+                    // --- NEW: Sortable Header Logic ---
+                    const isSortable = ['number', 'date'].includes(header.key);
+                    const isActiveSort = sortConfig.key === header.key;
+                    
+                    return (
+                      <th
+                        key={header.key}
+                        scope="col"
+                        rowSpan={2}
+                        onClick={isSortable ? () => handleSort(header.key) : undefined}
+                        className={`p-3 text-left font-medium border-b border-r ${isSortable ? 'cursor-pointer hover:bg-gray-100 select-none group' : ''}`}
+                        style={{ 
+                          // --- MODIFICATION: Increased content width ---
+                          width: isAllExpanded ? 'auto' : (header.key === 'content' ? '450px' : (header.key === 'number' ? '80px' : '120px')), 
+                          whiteSpace: isAllExpanded ? 'normal' : 'nowrap'
+                        }}
+                      >
+                        <div className="flex items-center gap-1">
+                          {header.label}
+                          {isSortable && (
+                            <span className={`text-[10px] ml-0.5 ${isActiveSort ? 'text-blue-600' : 'text-gray-300 group-hover:text-gray-400'}`}>
+                              {isActiveSort 
+                                ? (sortConfig.direction === 'asc' ? '▲' : '▼') 
+                                : '▲▼' // Show both or a neutral indicator when not active
+                              }
+                            </span>
+                          )}
+                        </div>
+                      </th>
+                    );
+                  })}
                   {/* --- MODIFIED: Dynamic ColSpan for Checkers --- */}
                   <th
                     scope="col"
@@ -1107,12 +1174,12 @@ const HandoversSection = ({ teamId }) => {
                   ))}
                   {/* Handle case with zero checkers */}
                   {checkerHeaders.length === 0 && (
-                     <th scope="col" className="p-3 text-center font-medium border-r" style={{ width: '80px' }}>-</th>
+                      <th scope="col" className="p-3 text-center font-medium border-r" style={{ width: '80px' }}>-</th>
                   )}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-100 text-sm">
-                {filteredHandoversToDisplay.map((item, index) => { 
+                {sortedHandovers.map((item, index) => { 
                   const allHeaders = [
                     ...mainHeaders,
                     ...checkerHeaders, 
@@ -1273,8 +1340,8 @@ function OptionsEditorModal({
   addMemberObject,       // (uid, label) => Promise<void>
 }) {
   const [tab, setTab] = useState('categories'); // 'categories' | 'priorities' | 'statuses' | 'members' | 'checkers'
-  const [items, setItems] = useState([]);       // Current list being edited (strings or member/checker objects)
-  const [newValue, setNewValue] = useState('');       // Input for adding new items
+  const [items, setItems] = useState([]);        // Current list being edited (strings or member/checker objects)
+  const [newValue, setNewValue] = useState('');        // Input for adding new items
   const [editingIndex, setEditingIndex] = useState(null); // Index of item being edited
   const [editingValueLocal, setEditingValueLocal] = useState(''); // Local state for the item being edited
   const [modalError, setModalError] = useState(''); // Error specific to this modal
@@ -1703,7 +1770,7 @@ function OptionsEditorModal({
       case 'categories': return t('admin.categories');
       case 'priorities': return t('admin.priorities');
       case 'statuses': return t('admin.statuses');
-      case 'members': return t('admin.tabMembers');
+      case 'members': return t('handovers.postedBy');
       case 'checkers': return t('admin.checkers', 'Checkers'); 
       default: return tabKey;
     }
@@ -1728,7 +1795,7 @@ function OptionsEditorModal({
               <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'statuses' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('statuses')}>{t('admin.statuses')} (Endorsement)</button>
               <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'checkers' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('checkers')}>{t('admin.checkers', 'Checkers')}</button> 
               <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'priorities' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('priorities')}>{t('admin.priorities')}</button>
-              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'members' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('members')}>{t('admin.tabMembers')}</button>
+              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'members' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('members')}>{t('handovers.postedBy')}</button>
             </nav>
           </div>
 
