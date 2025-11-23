@@ -1,5 +1,6 @@
 // MasterAdminDashboard.jsx
 import React, { useEffect, useState, useCallback, useRef, useContext, useMemo } from 'react';
+import { Link } from 'react-router-dom'; 
 import {
   collection,
   query,
@@ -13,7 +14,8 @@ import {
   startAfter,
   where,
   addDoc,
-  serverTimestamp
+  serverTimestamp,
+  deleteField
 } from 'firebase/firestore';
 import { db, auth } from '../firebaseConfig';
 import Spinner from './Spinner';
@@ -30,6 +32,7 @@ import AnnounceModal from './AnnounceModal';
 import ScheduleMeetingModal from './ScheduleMeetingModal';
 import EditUpdateModal from './EditUpdateModal';
 import AnnounceMultiTeamModal from './AnnounceMultiTeamModal';
+import CreateSubTeamModal from './CreateSubTeamModal'; // <--- ADDED THIS IMPORT
 
 // --- NEW: Handovers & FAQ Section imports ---
 import HandoversSection from './EndorsementModal';
@@ -42,13 +45,14 @@ import { LanguageContext } from '../contexts/LanguageContext.jsx';
 const localizer = momentLocalizer(moment);
 
 // --- Constants & Helpers for Sub-projects ---
-const SUBPROJECT_STATUS_CONFIG = [
-  { key: 'not_started', color: 'bg-gray-100 text-gray-600 border-gray-300' },
-  { key: 'in_progress', color: 'bg-blue-100 text-blue-700 border-blue-300' },
-  { key: 'pending', color: 'bg-yellow-100 text-yellow-800 border-yellow-300' },
-  { key: 'paused', color: 'bg-red-100 text-red-700 border-red-300' },
-  { key: 'completed', color: 'bg-green-100 text-green-700 border-green-300' },
-];
+const getStatusColor = (status) => {
+    switch(status) {
+        case 'completed': return 'bg-green-100 text-green-700 border-green-200';
+        case 'in_progress': return 'bg-blue-100 text-blue-700 border-blue-200';
+        case 'paused': return 'bg-red-100 text-red-700 border-red-200';
+        default: return 'bg-gray-100 text-gray-600 border-gray-200';
+    }
+};
 
 // --- Icons ---
 const UsersIcon = () => (
@@ -89,13 +93,6 @@ const FAQIcon = () => (
   </svg>
 );
 
-// --- NEW: Chart/Progress Icon ---
-const ChartBarIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
-  </svg>
-);
-
 // --- NEW: Trash Icon ---
 const TrashIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -131,140 +128,6 @@ const normalizeValueToDate = (val) => {
 const TEAMS_PAGE_SIZE = 18;
 const USERS_PAGE_SIZE = 30;
 const DEBOUNCE_MS = 350;
-
-// ---------- SubProjectsSection (NEW) ----------
-const SubProjectsSection = ({ teamId, teamData, onUpdate }) => {
-  const { t } = useContext(LanguageContext);
-  const [newSubProjectName, setNewSubProjectName] = useState('');
-  const [isUpdating, setIsUpdating] = useState(false);
-
-  // Helper to update the team document
-  const updateTeamSubProjects = async (updatedSubProjects) => {
-    setIsUpdating(true);
-    try {
-      const teamRef = doc(db, 'teams', teamId);
-      await updateDoc(teamRef, { subProjects: updatedSubProjects });
-      if (onUpdate) onUpdate(); // Trigger refresh in parent
-    } catch (error) {
-      console.error("Error updating sub-projects:", error);
-      alert("Failed to update sub-project.");
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  const handleAddSubProject = async (e) => {
-    e.preventDefault();
-    if (!newSubProjectName.trim()) return;
-
-    const newItem = {
-      id: Date.now().toString(),
-      title: newSubProjectName.trim(),
-      status: 'not_started'
-    };
-
-    const updatedList = [...(teamData.subProjects || []), newItem];
-    await updateTeamSubProjects(updatedList);
-    setNewSubProjectName('');
-  };
-
-  const handleStatusChange = (subProjectId, newStatus) => {
-    const currentList = teamData.subProjects || [];
-    const updatedList = currentList.map(item => {
-      if (item.id === subProjectId) {
-        return { ...item, status: newStatus };
-      }
-      return item;
-    });
-    updateTeamSubProjects(updatedList);
-  };
-
-  const handleDeleteSubProject = (subProjectId) => {
-    if (!window.confirm(t('home.confirmDeleteSub', 'Delete this sub-project?'))) return;
-    const currentList = teamData.subProjects || [];
-    const updatedList = currentList.filter(item => item.id !== subProjectId);
-    updateTeamSubProjects(updatedList);
-  };
-
-  return (
-    <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm border h-full flex flex-col">
-      <h3 className="text-lg font-semibold text-gray-700 border-b pb-2 mb-3">
-        {t('home.subProjects', 'Sub-projects / Progress')}
-      </h3>
-      
-      {/* List */}
-      <div className="space-y-2 mb-4 flex-1 max-h-[420px] overflow-y-auto pr-2">
-        {(!teamData.subProjects || teamData.subProjects.length === 0) && (
-          <p className="text-sm text-gray-500 italic py-4 text-center">
-             {t('home.noSubProjects', 'No sub-projects yet.')}
-          </p>
-        )}
-        {(teamData.subProjects || []).map(sub => {
-          const currentStatusKey = sub.status || 'not_started';
-          const statusConfig = SUBPROJECT_STATUS_CONFIG.find(s => s.key === currentStatusKey) || SUBPROJECT_STATUS_CONFIG[0];
-          
-          return (
-            <div key={sub.id} className="flex items-center justify-between bg-white p-3 rounded border border-gray-200 shadow-sm gap-3">
-              <span className="text-sm text-gray-800 font-medium truncate flex-1" title={sub.title}>{sub.title}</span>
-              
-              <div className="flex items-center gap-2">
-                {/* Status Dropdown */}
-                <select
-                  value={currentStatusKey}
-                  onChange={(e) => handleStatusChange(sub.id, e.target.value)}
-                  disabled={isUpdating}
-                  className={`text-xs px-2 py-1.5 rounded border outline-none cursor-pointer appearance-none text-center font-medium min-w-[110px] ${statusConfig.color}`}
-                  style={{
-                    WebkitAppearance: 'none', 
-                    MozAppearance: 'none',
-                    textAlignLast: 'center' 
-                  }}
-                >
-                  {SUBPROJECT_STATUS_CONFIG.map(config => (
-                    <option key={config.key} value={config.key} className="bg-white text-gray-800 text-left">
-                      {t(`status.${config.key}`, config.key)}
-                    </option>
-                  ))}
-                </select>
-
-                {/* Delete Button */}
-                <button 
-                  onClick={() => handleDeleteSubProject(sub.id)}
-                  disabled={isUpdating}
-                  className="text-gray-400 hover:text-red-500 p-1.5 rounded hover:bg-red-50 transition-colors"
-                  title={t('common.delete', 'Delete')}
-                >
-                  <TrashIcon />
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Add Form */}
-      <form onSubmit={handleAddSubProject} className="mt-auto pt-4 border-t border-gray-100 bg-gray-50/50 -m-4 p-4 rounded-b-lg">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newSubProjectName}
-            onChange={(e) => setNewSubProjectName(e.target.value)}
-            placeholder={t('home.addSubProject', 'Add sub-project...')}
-            className="flex-1 text-sm border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-          />
-          <button
-            type="submit"
-            disabled={!newSubProjectName.trim() || isUpdating}
-            className="bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-2 flex items-center justify-center disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
-          >
-             {isUpdating ? <Spinner /> : <span>+ {t('common.add', 'Add')}</span>}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-};
-
 
 // ---------- AnnouncementsSection (ADDED LANGUAGE HOOK) ----------
 const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
@@ -374,13 +237,13 @@ const MembersSection = ({ membersDetails, teamData, canManageMembers, onChangeRo
                 {canManageMembers ? (
                   <div className="flex items-center gap-2">
                     {isCreator ? ( <div className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded border border-yellow-200">{t('admin.creator')}</div> ) : (
-                      
+                       
                       <>
                         <select value={roleRaw} onChange={(e) => onChangeRole(uid, e.target.value)} className="text-xs border border-gray-300 rounded px-2 py-1 bg-white hover:border-gray-400" title={t('admin.changeRole')}>
                           <option value="admin">{t('admin.admin')}</option>
                           <option value="member">{t('common.member')}</option>
                         </select>
-                        {/* --- NEW: Remove Member Button --- */}
+                        {/* --- Remove Member Button --- */}
                         <button
                           onClick={() => onRemoveMember(uid)}
                           className="p-1.5 text-red-600 hover:bg-red-100 rounded-md"
@@ -389,7 +252,7 @@ const MembersSection = ({ membersDetails, teamData, canManageMembers, onChangeRo
                           <TrashIcon />
                         </button>
                       </>
-                      
+                       
                     )}
                   </div>
                 ) : null}
@@ -471,7 +334,7 @@ const UserManagementSection = ({ allUsers, allTeams, loadingUsers, errorUsers, o
                             <span key={t.id} className="inline-block text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">{t.teamName}</span>
                           )) : (<span className="text-xs italic text-gray-500">{t('admin.noTeams')}</span>)}
                         </div>
-                        
+                         
                         {/* --- NEW DELETE USER BUTTON (COMPACT) --- */}
                         {!isAdmin && (
                           <button
@@ -510,7 +373,7 @@ const UserManagementSection = ({ allUsers, allTeams, loadingUsers, errorUsers, o
                           {userTeams.map(team => ( <span key={team.id} className="inline-block bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs font-medium" title={team.teamName}>{team.teamName}</span> ))}
                         </div>
                       ) : ( <p className="italic text-gray-500">{t('admin.notInTeams')}</p> )}
-                      
+                       
                       {/* --- NEW DELETE USER BUTTON (GRID) --- */}
                       {!isAdmin && (
                         <button
@@ -926,7 +789,7 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger }) => {
 export default function MasterAdminDashboard() {
   const { t } = useContext(LanguageContext); 
 
-  // Lists + pagination state (No changes)
+  // Lists + pagination state
   const [teams, setTeams] = useState([]);
   const [teamsLoading, setTeamsLoading] = useState(true);
   const [teamsError, setTeamsError] = useState('');
@@ -943,14 +806,14 @@ export default function MasterAdminDashboard() {
   const [usersViewCompact, setUsersViewCompact] = useState(false);
   const [usersSearch, setUsersSearch] = useState('');
 
-  // selected team + details (No changes)
+  // selected team + details
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [activeTab, setActiveTab] = useState('projects');
   const [teamData, setTeamData] = useState(null);
   const [membersDetails, setMembersDetails] = useState([]);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
 
-  // announcements refresh key & modals (No changes)
+  // announcements refresh key & modals
   const [announcementRefreshKey, setAnnouncementRefreshKey] = useState(0);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isAnnounceModalOpen, setIsAnnounceModalOpen] = useState(false);
@@ -959,16 +822,32 @@ export default function MasterAdminDashboard() {
   const [editTarget, setEditTarget] = useState(null);
   const [isMultiAnnounceModalOpen, setIsMultiAnnounceModalOpen] = useState(false);
 
-  // debounce refs (No changes)
+  // --- NEW: Create Sub Team Modal State ---
+  const [isSubProjectModalOpen, setIsSubProjectModalOpen] = useState(false);
+  const [subProjectTargetParent, setSubProjectTargetParent] = useState(null);
+
+  // debounce refs
   const teamsDebounceRef = useRef(null);
   const usersDebounceRef = useRef(null);
 
-  // helpers (No changes)
+  // helpers
   const refreshAnnouncements = useCallback(() => { setAnnouncementRefreshKey(prev => prev + 1); }, []);
 
   const openEditModal = (update) => { setEditTarget(update); setIsEditModalOpen(true); };
   const closeEditModal = () => { setEditTarget(null); setIsEditModalOpen(false); };
   const onInviteCompleteRefresh = () => { if (selectedTeam) fetchTeamDetails(selectedTeam.id); };
+
+  // --- NEW: Handler for opening sub-project creation modal ---
+  const handleOpenSubModal = (parentTeam) => {
+    setSubProjectTargetParent(parentTeam);
+    setIsSubProjectModalOpen(true);
+  };
+  
+  // Callback when sub-project created -> refresh teams
+  const handleSubProjectCreated = () => {
+    fetchTeamsPage({ reset: true });
+  }
+
 
   // --------- Teams: paginated fetch (cursor-based) ----------
   const fetchTeamsPage = useCallback(async ({ reset = false, pageSize = TEAMS_PAGE_SIZE } = {}) => {
@@ -1038,7 +917,7 @@ export default function MasterAdminDashboard() {
       setTeamData(fetchedTeamData);
 
       const memberUIDs = fetchedTeamData.members || [];
-      
+       
       const validMemberUIDs = memberUIDs
         .map(member => (typeof member === 'object' && member.uid) ? member.uid : (typeof member === 'string' ? member : null))
         .filter(uid => uid && typeof uid === 'string' && uid.trim() !== '');
@@ -1089,7 +968,7 @@ export default function MasterAdminDashboard() {
     }
   };
 
-  // --------- NEW: Remove member from team ----------
+  // --------- Remove member from team ----------
   const handleRemoveMember = async (memberUid) => {
     if (!teamData || !teamData.id || !memberUid) return;
 
@@ -1107,10 +986,10 @@ export default function MasterAdminDashboard() {
 
       // Create new arrays/objects by filtering/deleting
       const newMembers = (teamData.members || []).filter(uid => uid !== memberUid);
-      
+       
       const newRoles = { ...(teamData.roles || {}) };
       delete newRoles[memberUid];
-      
+       
       const newPermissions = { ...(teamData.permissions || {}) };
       delete newPermissions[memberUid];
 
@@ -1136,7 +1015,7 @@ export default function MasterAdminDashboard() {
     }
   };
 
-  // --------- NEW: Delete User (from /users collection) ----------
+  // --------- Delete User (from /users collection) ----------
   const handleDeleteUser = async (userId, userEmail) => {
     if (!userId) return;
 
@@ -1157,12 +1036,12 @@ export default function MasterAdminDashboard() {
 
       // Update local state immediately
       setAllUsers(prev => prev.filter(u => u.uid !== userId));
-      
+       
       // Also, if this user was in the currently viewed team, refresh that list
       if (selectedTeam && membersDetails.some(m => m.uid === userId)) {
         setMembersDetails(prev => prev.filter(m => m.uid !== userId));
       }
-      
+       
       alert(t('admin.deleteUserSuccess', 'User document deleted successfully. Note: Their Auth account (login) may still exist.'));
 
     } catch (err) {
@@ -1222,6 +1101,14 @@ export default function MasterAdminDashboard() {
   // Simple UI controls
   const isInitialLoading = teamsLoading || usersLoading;
 
+  // --- Grouping Logic for Nested Display (LIST VIEW) ---
+  // 1. Filter out teams that have NO parent (The Main Boxes)
+  const parentTeams = filteredTeams.filter(team => !team.parentTeamId);
+  
+  // 2. Filter out teams that DO have a parent (The Sub Strips)
+  const subTeams = filteredTeams.filter(team => team.parentTeamId);
+
+
   return (
     <>
       <div className="min-h-screen bg-gray-100 font-sans flex flex-col">
@@ -1275,48 +1162,186 @@ export default function MasterAdminDashboard() {
                     </div>
                   </div>
 
+                  {/* -------------------- START TEAMS RENDERING LOGIC -------------------- */}
                   {filteredTeams.length === 0 ? (
                     <p className="text-gray-500">{t('admin.noTeamsFound')}</p>
-                  ) : teamsViewCompact ? (
-                    <div className="max-h-[52vh] overflow-y-auto pr-2 space-y-2">
-                      {filteredTeams.map(team => (
-                        <div key={team.id} className="flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-100">
-                          <div className="min-w-0">
-                            <div className="text-sm font-medium text-gray-800 truncate">{team.teamName} <span className="text-xs text-gray-500 ml-2">({team.members?.length || 0})</span></div>
-                            <div className="text-xs text-gray-400 truncate">{team.description || t('admin.noDescription')}</div>
-                          </div>
-                          <div className="flex gap-2">
-                            <button onClick={() => handleDeleteTeam(team.id)} className="text-xs px-2 py-1 rounded bg-red-100 text-red-700">{t('common.delete')}</button>
-                            <button onClick={() => handleViewTeam(team)} className={`text-xs px-2 py-1 rounded ${selectedTeam?.id === team.id ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'}`}>{selectedTeam?.id === team.id ? t('common.selected') : t('common.view')}</button>
-                          </div>
-                        </div>
-                      ))}
-                      {teamsHasMore && (
-                        <div className="flex justify-center">
-                          <button onClick={() => fetchTeamsPage({ reset: false })} className="px-3 py-1.5 bg-white border border-gray-300 rounded-md text-sm hover:bg-gray-50">{t('common.loadMoreTeams')}</button>
-                        </div>
-                      )}
-                    </div>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {filteredTeams.map(team => (
-                        <div key={team.id} className={`bg-white rounded-lg shadow-sm border flex flex-col justify-between transition-shadow hover:shadow-md ${ selectedTeam?.id === team.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200' }`}>
-                          <div className="p-4">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="font-semibold text-gray-900 truncate pr-2">{team.teamName}</span>
-                              <span className="flex-shrink-0 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800"><UsersIcon /> {team.members?.length || 0}</span>
-                            </div>
-                            <p className="text-xs text-gray-600 line-clamp-2 min-h-[32px]">{team.description || t('admin.noDescription')}</p>
-                            <p className="text-xs text-gray-400 mt-3 font-mono truncate">ID: {team.id}</p>
-                          </div>
-                          <div className="flex items-center justify-end gap-2 p-3 bg-gray-50 border-t border-gray-100 rounded-b-lg">
-                            <button onClick={() => handleDeleteTeam(team.id)} className="text-xs px-3 py-1.5 rounded-md bg-red-100 text-red-700 hover:bg-red-200 transition-colors">{t('common.delete')}</button>
-                            <button onClick={() => handleViewTeam(team)} className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${ selectedTeam?.id === team.id ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100' }`}>{selectedTeam?.id === team.id ? t('common.selected') : t('common.view')}</button>
-                          </div>
+                    <>
+                    {/* --- GRID / COMPACT VIEW (Updated to Nested Card Style) --- */}
+                    {teamsViewCompact ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-h-[52vh] overflow-y-auto pr-2">
+                            {parentTeams.length === 0 ? (
+                                <div className="col-span-full text-center text-gray-500 italic py-4">No main projects found.</div>
+                            ) : (
+                                parentTeams.map(parent => {
+                                    // Use 'teams' (full list) to find children so the card is complete
+                                    // even if the search filter is applied (optional choice, but standard for this UI)
+                                    // Or use 'subTeams' (filtered) if we only want to show searched children.
+                                    // Let's use 'teams' to find children to replicate HomePage logic fully:
+                                    const children = teams.filter(t => t.parentTeamId === parent.id);
+
+                                    return (
+                                        <div key={parent.id} className="bg-white rounded-lg shadow-md border-2 border-gray-800 flex flex-col h-full overflow-hidden">
+                                            
+                                            {/* 1. Main Project Header */}
+                                            <div className="p-5 border-b-2 border-gray-800 bg-white min-h-[120px] relative group">
+                                                {/* Replaced Link with onClick handler to open side panel */}
+                                                <div 
+                                                    onClick={() => handleViewTeam(parent)} 
+                                                    className="block h-full cursor-pointer"
+                                                >
+                                                    <h3 className="text-xl font-bold text-gray-900 group-hover:text-blue-700 transition-colors pr-8">
+                                                        {parent.teamName}
+                                                    </h3>
+                                                    <p className="text-sm text-gray-500 mt-2 line-clamp-2 pr-8">
+                                                        {parent.description || t('admin.noDescription')}
+                                                    </p>
+                                                </div>
+
+                                                {/* ACTION AREA (Absolute Top Right) */}
+                                                <div className="absolute top-4 right-4">
+                                                    <button 
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            handleDeleteTeam(parent.id);
+                                                        }}
+                                                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-all"
+                                                        title={t('common.delete')}
+                                                    >
+                                                        <TrashIcon />
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* 2. Sub-Projects Stack */}
+                                            <div className="bg-gray-50 flex-1 p-2 space-y-2">
+                                                {children.length > 0 ? (
+                                                    children.map((sub) => (
+                                                        <div key={sub.id} className="flex items-center gap-1">
+                                                            <div 
+                                                                onClick={() => handleViewTeam(sub)}
+                                                                className="flex-1 block bg-white border-2 border-gray-800 rounded p-3 hover:bg-blue-50 transition-all shadow-sm group flex justify-between items-center cursor-pointer"
+                                                            >
+                                                                <span className="font-bold text-gray-800 text-sm truncate pr-2">
+                                                                    {sub.teamName}
+                                                                </span>
+                                                                <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded border ${getStatusColor(sub.status)}`}>
+                                                                    {t(`status.${sub.status || 'not_started'}`, sub.status?.replace('_', ' ') || 'Not Started')}
+                                                                </span>
+                                                            </div>
+
+                                                            {/* DELETE SUB-PROJECT BUTTON */}
+                                                            <button 
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleDeleteTeam(sub.id);
+                                                                }}
+                                                                className="bg-white border-2 border-gray-800 p-3 rounded hover:bg-red-50 hover:border-red-500 hover:text-red-600 transition-all"
+                                                                title={t('common.delete')}
+                                                            >
+                                                                <TrashIcon />
+                                                            </button>
+                                                        </div>
+                                                    ))
+                                                ) : (
+                                                    <div className="text-center py-4 text-gray-400 text-xs italic border-2 border-dashed border-gray-200 rounded">
+                                                        {t('admin.noSubProjects', 'No sub-projects yet')}
+                                                    </div>
+                                                )}
+
+                                                {/* 3. Add Button */}
+                                                <button 
+                                                    onClick={() => handleOpenSubModal(parent)}
+                                                    className="w-full py-2 border-2 border-dashed border-gray-400 text-gray-500 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 rounded font-bold text-xl transition-all flex items-center justify-center"
+                                                    title={t('home.addSubProject', 'Add Sub-Project')}
+                                                >
+                                                    +
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
                         </div>
-                      ))}
-                    </div>
+                    ) : (
+                        /* --- LIST / HIERARCHY VIEW (Original) --- */
+                        <div className="max-h-[52vh] overflow-y-auto pr-2 space-y-4">
+                            {parentTeams.length === 0 ? (
+                                <p className="text-gray-500 italic text-sm p-2">No main projects found matching filter.</p>
+                            ) : (
+                                parentTeams.map(parent => {
+                                    // Find children belonging to this specific parent
+                                    const children = subTeams.filter(sub => sub.parentTeamId === parent.id);
+                                    
+                                    return (
+                                        <div key={parent.id} className={`bg-white rounded-lg shadow-sm border flex flex-col transition-shadow hover:shadow-md overflow-hidden ${ selectedTeam?.id === parent.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200' }`}>
+                                            {/* Parent Header */}
+                                            <div className="p-4 flex justify-between items-start">
+                                                <div className="flex-1 min-w-0 mr-2">
+                                                    <div className="flex items-center mb-1">
+                                                        <span className="font-bold text-gray-900 text-lg truncate mr-2">{parent.teamName}</span>
+                                                        <span className="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800"><UsersIcon /> {parent.members?.length || 0}</span>
+                                                    </div>
+                                                    <p className="text-xs text-gray-500 line-clamp-2">{parent.description || t('admin.noDescription')}</p>
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    <button onClick={() => handleViewTeam(parent)} className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${ selectedTeam?.id === parent.id ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100' }`}>{selectedTeam?.id === parent.id ? t('common.selected') : t('common.view')}</button>
+                                                    <button onClick={() => handleDeleteTeam(parent.id)} className="text-xs px-3 py-1.5 rounded-md bg-red-100 text-red-700 hover:bg-red-200 transition-colors">{t('common.delete')}</button>
+                                                </div>
+                                            </div>
+
+                                            {/* Sub-Projects Strips (Nested) */}
+                                            {children.length > 0 && (
+                                                <div className="bg-gray-50 p-2 space-y-1 border-t border-gray-200">
+                                                    <p className="text-[10px] uppercase text-gray-400 font-semibold px-1 mb-1">Sub-Projects</p>
+                                                    {children.map(sub => (
+                                                        <div key={sub.id} className="flex items-center justify-between bg-white p-2 rounded border border-gray-200 shadow-sm hover:bg-blue-50 transition-colors">
+                                                            {/* Left Side: Link to Sub View */}
+                                                            <button 
+                                                                onClick={() => handleViewTeam(sub)}
+                                                                className="flex-1 text-left flex items-center justify-between pr-2 min-w-0"
+                                                            >
+                                                                <span className={`text-sm font-medium truncate ${selectedTeam?.id === sub.id ? 'text-blue-700' : 'text-gray-700'}`}>
+                                                                    {sub.teamName}
+                                                                </span>
+                                                                <span className={`ml-2 text-[10px] uppercase font-bold px-1.5 py-0.5 rounded border ${getStatusColor(sub.status)}`}>
+                                                                    {t(`status.${sub.status || 'not_started'}`, sub.status?.replace('_', ' ') || 'Not Started')}
+                                                                </span>
+                                                            </button>
+
+                                                            {/* Right Side: Delete Sub Button */}
+                                                            <button 
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleDeleteTeam(sub.id);
+                                                                }}
+                                                                className="text-gray-400 hover:text-red-600 p-1 rounded-md transition-colors"
+                                                                title={t('common.delete')}
+                                                            >
+                                                                <TrashIcon />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    )}
+                    
+                    {/* Load More Button */}
+                    {teamsHasMore && (
+                        <div className="flex justify-center pt-2">
+                            <button onClick={() => fetchTeamsPage({ reset: false })} className="px-3 py-1.5 bg-white border border-gray-300 rounded-md text-sm hover:bg-gray-50">{t('common.loadMoreTeams')}</button>
+                        </div>
+                    )}
+                    </>
                   )}
+                  {/* -------------------- END TEAMS RENDERING LOGIC -------------------- */}
+                  
                 </div>
 
                 {/* 2) Users (paginated + compact) */}
@@ -1353,11 +1378,10 @@ export default function MasterAdminDashboard() {
                     <button onClick={() => setIsScheduleModalOpen(true)} className="bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold py-1.5 px-3 rounded-md shadow-sm">{t('admin.scheduleMeeting')}</button>
                   </div>
 
-                  {/* --- Tabs (Added Handovers & Progress tabs) --- */}
+                  {/* --- Tabs (Removed Progress Tab) --- */}
                   <div className="px-4 sm:px-6 lg:px-8 border-b border-gray-200">
                     <nav className="flex space-x-6 overflow-x-auto" aria-label="Tabs">
                       <button onClick={() => setActiveTab('projects')} className={tabClass('projects')}><TableIcon /> {t('admin.tabProjects')}</button>
-                      <button onClick={() => setActiveTab('progress')} className={tabClass('progress')}><ChartBarIcon /> {t('home.subProjects', 'Progress')}</button>
                       <button onClick={() => setActiveTab('calendar')} className={tabClass('calendar')}><CalendarIcon /> {t('admin.tabCalendar')}</button>
                       <button onClick={() => setActiveTab('members')} className={tabClass('members')}><UsersIcon /> {t('admin.tabMembers')}</button>
                       <button onClick={() => setActiveTab('updates')} className={tabClass('updates')}><MegaphoneIcon /> {t('admin.tabUpdates')}</button>
@@ -1377,17 +1401,6 @@ export default function MasterAdminDashboard() {
                             isMasterAdminView={true} 
                           /> 
                         )}
-
-                        {/* --- NEW: Progress / Sub-projects Tab --- */}
-                        {activeTab === 'progress' && (
-                          <div className="p-4 sm:p-6 lg:p-8">
-                             <SubProjectsSection 
-                                teamId={selectedTeam.id} 
-                                teamData={teamData} 
-                                onUpdate={() => fetchTeamDetails(selectedTeam.id)}
-                             />
-                          </div>
-                        )}
                         
                         {activeTab === 'calendar' && (
                           <div className="bg-white rounded-lg shadow-sm border-t-0 overflow-hidden p-4">
@@ -1403,14 +1416,14 @@ export default function MasterAdminDashboard() {
                         
                         {activeTab === 'updates' && ( <div className="p-4 sm:p-6 lg:p-8"><AnnouncementsSection teamId={selectedTeam.id} refreshTrigger={announcementRefreshKey} isAdmin={true} onEdit={openEditModal}/></div> )}
 
-                        {/* --- NEW: Handovers tab content --- */}
+                        {/* --- Handovers tab content --- */}
                         {activeTab === 'handovers' && (
                           <div className="p-4 sm:p-6 lg:p-8">
                             <HandoversSection teamId={selectedTeam.id} />
                           </div>
                         )}
 
-                        {/* --- NEW: FAQ tab content --- */}
+                        {/* --- FAQ tab content --- */}
                         {activeTab === 'faq' && (
                           <div className="p-4 sm:p-6 lg:p-8 h-[600px]">
                             <FAQSection teamId={selectedTeam.id} isAdmin={true} />
@@ -1436,6 +1449,15 @@ export default function MasterAdminDashboard() {
         </>
       )}
       <AnnounceMultiTeamModal isOpen={isMultiAnnounceModalOpen} onClose={() => setIsMultiAnnounceModalOpen(false)} allTeams={teams} onAnnouncementSent={() => { if (selectedTeam) refreshAnnouncements(); }} />
+      
+      {/* --- NEW: Create Sub Team Modal --- */}
+      <CreateSubTeamModal
+        isOpen={isSubProjectModalOpen}
+        onClose={() => setIsSubProjectModalOpen(false)}
+        parentTeamId={subProjectTargetParent?.id}
+        parentTeamName={subProjectTargetParent?.teamName}
+        onTeamCreated={handleSubProjectCreated}
+      />
     </>
   );
 }

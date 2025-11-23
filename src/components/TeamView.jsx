@@ -36,7 +36,6 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 const localizer = momentLocalizer(moment);
 
 // --- Icons ---
-// ADDED MISSING ICONS HERE
 const TableIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>;
 const HandoverIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>;
 const QuestionMarkCircleIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
@@ -548,7 +547,8 @@ const TeamCalendar = ({ teamId, isAdmin, refreshTrigger, messages }) => {
         </div>
       </div>
 
-      <div className="p-4 flex-1 overflow-auto" style={{ minHeight: '600px' }}>
+      {/* UPDATED: Reduced minHeight from 600px to 500px */}
+      <div className="p-4 flex-1 overflow-auto" style={{ minHeight: '400px' }}>
         <Calendar
           localizer={localizer}
           events={calendarMode === 'calendar' ? events : completedEvents}
@@ -784,8 +784,8 @@ const TeamView = () => {
               {/* 2. Top Grid: Updates/Members & Calendar */}
               <div className="grid grid-cols-12 gap-6">
                 
-                {/* Left Column: Updates & Members (3 cols on Large, 12 on Small) */}
-                <div className="col-span-12 lg:col-span-4 xl:col-span-3 flex flex-col gap-6">
+                {/* Left Column: Updates & Members (EXPANDED WIDTH: lg:5, xl:5) */}
+                <div className="col-span-12 lg:col-span-5 xl:col-span-5 flex flex-col gap-6">
                   <div className="flex-1 min-h-[250px]">
                     <AnnouncementsSection 
                       teamId={teamId} 
@@ -805,8 +805,8 @@ const TeamView = () => {
                   </div>
                 </div>
 
-                {/* Right Column: Calendar (Rest of width) */}
-                <div className="col-span-12 lg:col-span-8 xl:col-span-9">
+                {/* Right Column: Calendar (REDUCED WIDTH: lg:7, xl:7) */}
+                <div className="col-span-12 lg:col-span-7 xl:col-span-7">
                   <TeamCalendar 
                     teamId={teamId} 
                     isAdmin={isAdmin} 

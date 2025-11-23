@@ -26,6 +26,7 @@ export const translations = {
       expandAll: 'EXPAND ALL',
       collapseAll: 'COLLAPSE ALL',
       cancel: 'Cancel',
+      confirm: 'Confirm',
       save: 'Save',
       saveNote: 'Save Note',
       deleteNote: 'Delete Note',
@@ -50,18 +51,37 @@ export const translations = {
       download: 'Download',
       done: 'Done',
     },
-    // --- HOME SCREEN (Missing in your previous version) ---
+    // --- HOME SCREEN ---
     home: {
-      yourTeams: 'Your Teams',
-      createTeam: '+ Create Team',
+      yourProjects: 'Your Projects',
+      yourTeams: 'Your Teams', // Keep for backward compat if needed
+      createMainProject: '+ New Main Project',
+      createTeam: '+ Create Team', // Keep for backward compat
       subProjects: 'Sub-projects / Progress',
-      noSubProjects: 'No sub-projects yet.',
-      addSubProject: 'Add sub-project...',
-      confirmDeleteSub: 'Delete this sub-project?',
-      noTeams: "You haven't created or joined any teams yet.",
-      noDescription: 'No description',
+      noSubProjects: 'No sub-projects yet',
+      addSubProject: 'Add Sub-Project',
+      deleteSubProject: 'Delete Sub-Project',
+      noTeams: "You haven't created or joined any projects yet.",
+      noDescription: 'Main Project Dashboard',
+      loadError: 'Failed to load teams.',
+      deleteError: 'Failed to delete sub-project.',
+      deleteSubTitle: 'Delete Sub-Project?',
+      deleteSubConfirmPre: 'Are you sure you want to delete',
+      deleteSubConfirmPost: 'This action cannot be undone and will remove all data associated with this sub-project.',
     },
-    // --- STATUS DROPDOWN (Missing in your previous version) ---
+    // --- SUB PROJECT MODAL ---
+    subProject: {
+      addTitle: 'Add Sub-Project',
+      under: 'Under:',
+      nameLabel: 'Sub-Project Name',
+      namePlaceholder: 'e.g. SEO Marketing',
+      statusLabel: 'Initial Status',
+      descLabel: 'Description (Optional)',
+      createBtn: 'Create Sub-Project',
+      nameRequired: 'Team name is required.',
+      createError: 'Failed to create sub-project.',
+    },
+    // --- STATUS DROPDOWN ---
     status: {
       not_started: 'Not Started',
       in_progress: 'In Progress',
@@ -428,6 +448,7 @@ export const translations = {
       expandAll: '모두 펼치기',
       collapseAll: '모두 접기',
       cancel: '취소',
+      confirm: '확인',
       save: '저장',
       saveNote: '메모 저장',
       deleteNote: '메모 삭제',
@@ -454,14 +475,33 @@ export const translations = {
     },
     // --- HOME SCREEN TRANSLATIONS (KOREAN) ---
     home: {
-      yourTeams: '나의 팀',
-      createTeam: '+ 팀 생성',
+      yourProjects: '나의 프로젝트',
+      yourTeams: '나의 팀', // Keep for backward compat
+      createMainProject: '+ 새 메인 프로젝트',
+      createTeam: '+ 팀 생성', // Keep for backward compat
       subProjects: '서브 프로젝트 / 진행상황',
-      noSubProjects: '아직 서브 프로젝트가 없습니다.',
-      addSubProject: '서브 프로젝트 추가...',
-      confirmDeleteSub: '이 서브 프로젝트를 삭제하시겠습니까?',
-      noTeams: '아직 생성하거나 가입한 팀이 없습니다.',
-      noDescription: '설명 없음',
+      noSubProjects: '아직 서브 프로젝트가 없습니다',
+      addSubProject: '서브 프로젝트 추가',
+      deleteSubProject: '서브 프로젝트 삭제',
+      noTeams: '아직 생성하거나 가입한 프로젝트가 없습니다.',
+      noDescription: '메인 프로젝트 대시보드',
+      loadError: '팀을 불러오지 못했습니다.',
+      deleteError: '서브 프로젝트를 삭제하지 못했습니다.',
+      deleteSubTitle: '서브 프로젝트 삭제?',
+      deleteSubConfirmPre: '정말',
+      deleteSubConfirmPost: '을(를) 삭제하시겠습니까? 이 작업은 되돌릴 수 없으며 관련된 모든 데이터가 삭제됩니다.',
+    },
+    // --- SUB PROJECT MODAL (KOREAN) ---
+    subProject: {
+      addTitle: '서브 프로젝트 추가',
+      under: '소속:',
+      nameLabel: '서브 프로젝트 이름',
+      namePlaceholder: '예: SEO 마케팅',
+      statusLabel: '초기 상태',
+      descLabel: '설명 (선택)',
+      createBtn: '서브 프로젝트 생성',
+      nameRequired: '팀 이름은 필수입니다.',
+      createError: '서브 프로젝트를 생성하지 못했습니다.',
     },
     // --- STATUS DROPDOWN (KOREAN) ---
     status: {

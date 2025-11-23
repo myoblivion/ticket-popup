@@ -9,7 +9,11 @@ import {
   getDoc,
   updateDoc,
   arrayUnion,
-  setDoc
+  setDoc,
+  query,      
+  orderBy,    
+  limit,      
+  getDocs     
 } from 'firebase/firestore';
 import Spinner from './Spinner';
 import InviteMemberModal from './InviteMemberModal';
@@ -20,7 +24,7 @@ const CreateTaskModal = ({
   teamId,
   onTaskCreated,
   categoriesList = [],
-  typesList = [], // This prop is now correctly used
+  typesList = [], 
   priorityOptions = ['High', 'Medium', 'Low'],
   statusOptions = ['Not started', 'In progress', 'QA', 'Complete'],
   membersList = [] 
@@ -32,7 +36,7 @@ const CreateTaskModal = ({
   const [type, setType] = useState('');
   const [newType, setNewType] = useState('');
   const [status, setStatus] = useState('Not started');
-  const [ticketNo, setTicketNo] = useState('');
+  const [ticketNo, setTicketNo] = useState(''); 
   const [company, setCompany] = useState('');
   const [inquiryDetails, setInquiryDetails] = useState('');
   const [csManager, setCsManager] = useState('');
@@ -43,29 +47,100 @@ const CreateTaskModal = ({
 
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
+  const [isLoadingTicket, setIsLoadingTicket] = useState(false); 
+  
+  // NEW: Control whether the user can type the ticket number manually
+  const [isTicketEditable, setIsTicketEditable] = useState(false); 
 
   // --- Invite Modal State ---
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [inviteMeta, setInviteMeta] = useState(null);
 
-  // --- Set default status when options load ---
+  // --- Set default status ---
   useEffect(() => {
     if (statusOptions && statusOptions.length > 0) {
-      setStatus(statusOptions[0]); // Default to the first status in the list
+      setStatus(statusOptions[0]); 
     }
   }, [statusOptions]);
 
-  // --- Set default priority when options load ---
+  // --- Set default priority ---
   useEffect(() => {
     if (priorityOptions && priorityOptions.length > 0) {
-      // Find 'Medium' or default to first
       const defaultPriority = priorityOptions.includes('Medium') ? 'Medium' : priorityOptions[0];
       setPriority(defaultPriority);
     }
   }, [priorityOptions]);
 
+  // --- AUTO-GENERATE TICKET NUMBER LOGIC ---
+  useEffect(() => {
+    const fetchNextTicketNumber = async () => {
+        if (!isOpen || !teamId) return;
+        
+        setIsLoadingTicket(true);
+        // Default assumption: Locked until we find it's empty
+        setIsTicketEditable(false);
 
-  // --- NEW: Helper function to save new options ---
+        try {
+            const tasksRef = collection(db, `teams/${teamId}/tasks`);
+            // Get absolute latest created task to check format
+            const q = query(tasksRef, orderBy('createdAt', 'desc'), limit(1));
+            const querySnapshot = await getDocs(q);
+
+            if (querySnapshot.empty) {
+                // CASE: FIRST RECORD EVER
+                // Enable input so user can define the pattern (e.g. "T-001" or "1000")
+                setTicketNo('');
+                setIsTicketEditable(true);
+            } else {
+                // CASE: RECORDS EXIST -> Auto-Increment based on previous pattern
+                const latestTask = querySnapshot.docs[0].data();
+                const prevTicket = latestTask.ticketNo || '';
+
+                // Regex to find the LAST number sequence in a string
+                // Works for: "T-018" -> "018", "t02x" -> "02", "100" -> "100"
+                const numberPattern = /(\d+)(?!.*\d)/;
+                const match = prevTicket.match(numberPattern);
+
+                if (match) {
+                    const fullMatch = match[0]; // e.g., "018"
+                    const index = match.index;
+
+                    // 1. Parse Number
+                    const currentNumVal = parseInt(fullMatch, 10);
+                    
+                    // 2. Increment
+                    const nextNumVal = currentNumVal + 1;
+
+                    // 3. Preserve Padding (e.g. length 3 => "019")
+                    const originalLength = fullMatch.length;
+                    const nextNumStr = String(nextNumVal).padStart(originalLength, '0');
+
+                    // 4. Reconstruct (Prefix + NewNumber + Suffix)
+                    const prefix = prevTicket.substring(0, index);
+                    const suffix = prevTicket.substring(index + fullMatch.length);
+
+                    setTicketNo(`${prefix}${nextNumStr}${suffix}`);
+                    setIsTicketEditable(false); // Keep locked to maintain pattern
+                } else {
+                    // Fallback: Previous ticket had no numbers? Let user type.
+                    setTicketNo(prevTicket); 
+                    setIsTicketEditable(true);
+                }
+            }
+
+        } catch (err) {
+            console.error("Error fetching next ticket number:", err);
+            setIsTicketEditable(true); // Fail safe: let user type
+        } finally {
+            setIsLoadingTicket(false);
+        }
+    };
+
+    fetchNextTicketNumber();
+  }, [isOpen, teamId]);
+
+
+  // --- Helper function to save new options ---
   const saveNewOptionToTeam = useCallback(async (fieldName, newLabel) => {
     if (!teamId || !fieldName || !newLabel || !newLabel.trim()) {
       throw new Error('Invalid parameters for saving new option.');
@@ -73,49 +148,42 @@ const CreateTaskModal = ({
     const teamDocRef = doc(db, 'teams', teamId);
     const normalized = newLabel.trim();
 
-    // Field mapping
     let firestoreField = '';
     if (fieldName === 'category') firestoreField = 'categories';
     else if (fieldName === 'type') firestoreField = 'types';
     else {
-      console.warn(`Unknown fieldName: ${fieldName}`);
-      return; // Don't save if field is unknown
+      return; 
     }
 
-    // Use arrayUnion to add the item if the field exists
     try {
       await updateDoc(teamDocRef, { [firestoreField]: arrayUnion(normalized) });
     } catch (err) {
-      // If the field doesn't exist yet (or doc doesn't exist), use setDoc with merge
       if (err.code === 'not-found' || err.message?.includes('No document to update')) {
         try {
           await setDoc(teamDocRef, { [firestoreField]: [normalized] }, { merge: true });
         } catch (setErr) {
           console.error(`Error setting new field ${firestoreField}:`, setErr);
-          throw setErr; // Re-throw the error from setDoc
+          throw setErr; 
         }
       } else {
         console.error(`Error updating field ${firestoreField} with arrayUnion:`, err);
-        throw err; // Re-throw other update errors
+        throw err; 
       }
     }
   }, [teamId]);
 
 
-  // The conditional return MUST come AFTER all hook calls (useState, useEffect, useCallback)
   if (!isOpen) return null;
 
 
-  // --- Reset Form ---
   const resetForm = () => {
-    // Reset to defaults based on props
     setPriority(priorityOptions.includes('Medium') ? 'Medium' : priorityOptions[0] || 'Medium');
     setCategory('');
     setNewCategory('');
     setType('');
     setNewType('');
     setStatus(statusOptions[0] || 'Not started');
-    setTicketNo('');
+    setTicketNo(''); 
     setCompany('');
     setInquiryDetails('');
     setCsManager('');
@@ -127,7 +195,6 @@ const CreateTaskModal = ({
     setIsSaving(false);
   };
 
-  // --- Handle Submit ---
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSaving(true);
@@ -149,7 +216,6 @@ const CreateTaskModal = ({
     }
     
     try {
-      // --- NEW: Persist new options if they were created ---
       if (newCategory.trim()) {
         await saveNewOptionToTeam('category', newCategory.trim());
       }
@@ -157,28 +223,27 @@ const CreateTaskModal = ({
         await saveNewOptionToTeam('type', newType.trim());
       }
 
-      // --- Create the task ---
       const tasksCollectionRef = collection(db, `teams/${teamId}/tasks`);
       await addDoc(tasksCollectionRef, {
         priority,
         category: finalCategory,
         type: finalType,
         status,
-        ticketNo: ticketNo.trim(),
+        ticketNo: ticketNo.trim(), 
         company: company.trim(),
         inquiryDetails: inquiryDetails.trim(),
-        csManager: csManager, // Already a UID or empty string
-        qaManager: qaManager, // Already a UID or empty string
-        developer: developer, // Already a UID or empty string
-        startDate: startDate ? startDate : null, // Store as null if empty
-        endDate: endDate ? endDate : null, // Store as null if empty
+        csManager: csManager, 
+        qaManager: qaManager, 
+        developer: developer, 
+        startDate: startDate ? startDate : null, 
+        endDate: endDate ? endDate : null, 
         createdAt: serverTimestamp(),
         createdBy: auth.currentUser?.uid || null
       });
 
       resetForm();
       onClose();
-      if (onTaskCreated) onTaskCreated(); // Trigger refresh in parent
+      if (onTaskCreated) onTaskCreated(); 
     } catch (err) {
       console.error("Error adding task or saving new option:", err);
       setError("Failed to create task. Please try again.");
@@ -186,11 +251,9 @@ const CreateTaskModal = ({
     }
   };
 
-  // --- Helper to render member dropdown options ---
   const renderMemberOptions = () => (
     <>
       <option value="">Select Member</option>
-      {/* Use membersList prop now */}
       {membersList.map(m => (
         <option key={m.uid} value={m.uid}>{m.label}</option>
       ))}
@@ -198,7 +261,6 @@ const CreateTaskModal = ({
     </>
   );
 
-  // --- Handle member select change ---
   const handleMemberSelectChange = (value, setter) => {
     if (value === '__INVITE_USER__') {
       setInviteMeta({ onInvite: setter });
@@ -208,13 +270,9 @@ const CreateTaskModal = ({
     }
   };
 
-  // --- Handle Invite Modal callbacks ---
   const handleInviteCompleted = async (invitedUid, invitedLabel) => {
-    // Add new member to team document
     try {
       const teamDocRef = doc(db, 'teams', teamId);
-      // This will trigger the onSnapshot in TeamProjectTable,
-      // which will update the membersList prop for this modal.
       await updateDoc(teamDocRef, {
         members: arrayUnion({ uid: invitedUid, label: invitedLabel })
       });
@@ -222,12 +280,10 @@ const CreateTaskModal = ({
       console.error("Failed to add new member to team:", err);
     }
 
-    // Automatically assign the newly invited user to the correct field
     if (inviteMeta && typeof inviteMeta.onInvite === 'function') {
       inviteMeta.onInvite(invitedUid);
     }
 
-    // Close and reset invite modal
     setIsInviteModalOpen(false);
     setInviteMeta(null);
   };
@@ -293,11 +349,6 @@ const CreateTaskModal = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="type" className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                {/* --- 
-                  THIS IS THE FIX: 
-                  Changed placeholderTypes.map to typesList.map
-                  ---
-                */}
                 <select id="type" value={type} onChange={e => { setType(e.target.value); if(e.target.value !== 'CREATE_NEW') setNewType(''); }} className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500 bg-white">
                   <option value="">Select Type</option>
                   {typesList.map(t => <option key={t} value={t}>{t}</option>)}
@@ -325,8 +376,27 @@ const CreateTaskModal = ({
             {/* Ticket # & Company */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="ticketNo" className="block text-sm font-medium text-gray-700 mb-1">Ticket #</label>
-                <input type="text" id="ticketNo" value={ticketNo} onChange={e => setTicketNo(e.target.value)} className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"/>
+                <label htmlFor="ticketNo" className="block text-sm font-medium text-gray-700 mb-1">
+                    Ticket # 
+                    {isTicketEditable && <span className="text-xs text-blue-500 font-normal ml-2">(Define format)</span>}
+                    {!isTicketEditable && <span className="text-xs text-gray-400 font-normal ml-2">(Auto-generated)</span>}
+                </label>
+                <div className="relative">
+                    <input 
+                        type="text" 
+                        id="ticketNo" 
+                        value={ticketNo} 
+                        onChange={(e) => setTicketNo(e.target.value)}
+                        readOnly={!isTicketEditable} // <-- DYNAMICALLY LOCKED
+                        placeholder={isTicketEditable ? "e.g. T-001" : ""}
+                        className={`w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500 ${!isTicketEditable ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : 'bg-white'}`}
+                    />
+                    {isLoadingTicket && (
+                        <div className="absolute right-2 top-2">
+                            <Spinner />
+                        </div>
+                    )}
+                </div>
               </div>
               <div>
                 <label htmlFor="company" className="block text-sm font-medium text-gray-700 mb-1">Company</label>
@@ -342,7 +412,6 @@ const CreateTaskModal = ({
 
             {/* Assignees (CS, QA, Dev) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* CS Manager */}
               <div>
                 <label htmlFor="csManager" className="block text-sm font-medium text-gray-700 mb-1">CS Manager</label>
                 <select
@@ -354,14 +423,8 @@ const CreateTaskModal = ({
                   {renderMemberOptions()}
                 </select>
               </div>
-              {/* QA Manager */}
               <div>
                 <label htmlFor="qaManager" className="block text-sm font-medium text-gray-700 mb-1">QA Manager</label>
-                {/* --- 
-                  THIS IS THE SECOND FIX: 
-                  Changed e.gant.value to e.target.value
-                  ---
-                */}
                 <select
                   id="qaManager"
                   value={qaManager}
@@ -371,7 +434,6 @@ const CreateTaskModal = ({
                   {renderMemberOptions()}
                 </select>
               </div>
-              {/* Developer */}
               <div>
                 <label htmlFor="developer" className="block text-sm font-medium text-gray-700 mb-1">Developer</label>
                 <select
@@ -407,7 +469,7 @@ const CreateTaskModal = ({
             <button
               type="submit" // Triggers the form
               form="create-task-form" // Links to the form by its ID
-              disabled={isSaving}
+              disabled={isSaving || isLoadingTicket} // Disable if still fetching ticket #
               className="px-5 py-2.5 text-sm font-medium text-white bg-blue-700 rounded-lg hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 disabled:opacity-50 inline-flex items-center"
             >
               {isSaving && <Spinner />}
