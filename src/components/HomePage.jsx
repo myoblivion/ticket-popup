@@ -44,16 +44,23 @@ const TeamCard = ({ team, subProjects, onAddSubProject, currentUser, userRole, o
 
   return (
     <div className="bg-white rounded-lg shadow-md border-2 border-gray-800 flex flex-col h-full overflow-hidden">
-      <div className="p-5 border-b-2 border-gray-800 bg-white min-h-[120px] relative group">
-        <Link to={`/team/${team.id}`} className="block h-full">
-            <h3 className="text-xl font-bold text-gray-900 group-hover:text-blue-700 transition-colors pr-8">
+      {/* 1. Main Project Header - UPDATED LAYOUT FOR LONG TITLES */}
+      <div className="p-5 border-b-2 border-gray-800 bg-white min-h-[120px] relative group flex justify-between items-start">
+        
+        {/* Left side: Title & Description (Clickable) */}
+        {/* Added min-w-0 to force truncation inside flex container */}
+        <Link to={`/team/${team.id}`} className="block flex-1 min-w-0 pr-2">
+            <h3 className="text-xl font-bold text-gray-900 group-hover:text-blue-700 transition-colors truncate" title={team.teamName}>
                 {team.teamName}
             </h3>
-            <p className="text-sm text-gray-500 mt-2 line-clamp-2 pr-8">
+            <p className="text-sm text-gray-500 mt-2 line-clamp-2" title={team.description}>
                 {team.description || t('home.noDescription', 'Main Project Dashboard')}
             </p>
         </Link>
-        <div className="absolute top-4 right-4">
+
+        {/* Right side: Action Button */}
+        {/* Removed absolute positioning, now part of flex flow to prevent overlap */}
+        <div className="flex-shrink-0 ml-2">
             {canManage ? (
                 <button 
                     onClick={(e) => {
@@ -74,25 +81,27 @@ const TeamCard = ({ team, subProjects, onAddSubProject, currentUser, userRole, o
         </div>
       </div>
 
+      {/* 2. Sub-Projects Stack */}
       <div className="bg-gray-50 flex-1 p-2 space-y-2">
         {subProjects.length > 0 ? (
             subProjects.map((sub) => (
                 <div key={sub.id} className="flex items-center gap-1">
                     <Link 
                         to={`/team/${sub.id}`}
-                        className="flex-1 block bg-white border-2 border-gray-800 rounded p-3 hover:bg-blue-50 transition-all shadow-sm group flex justify-between items-center"
+                        className="flex-1 block bg-white border-2 border-gray-800 rounded p-3 hover:bg-blue-50 transition-all shadow-sm group flex justify-between items-center min-w-0"
                     >
                         <span className="font-bold text-gray-800 text-sm truncate pr-2">
                             {sub.teamName}
                         </span>
-                        <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded border ${getStatusColor(sub.status)}`}>
+                        {/* Prevent badge from shrinking */}
+                        <span className={`flex-shrink-0 text-[10px] uppercase font-bold px-2 py-1 rounded border ${getStatusColor(sub.status)}`}>
                             {t(`status.${sub.status || 'not_started'}`, sub.status?.replace('_', ' ') || 'Not Started')}
                         </span>
                     </Link>
                     {canManage && (
                         <button 
                             onClick={() => onDeleteSubProject(sub)}
-                            className="bg-white border-2 border-gray-800 p-3 rounded hover:bg-red-50 hover:border-red-500 hover:text-red-600 transition-all"
+                            className="bg-white border-2 border-gray-800 p-3 rounded hover:bg-red-50 hover:border-red-500 hover:text-red-600 transition-all flex-shrink-0"
                             title={t('home.deleteSubProject', 'Delete Sub-Project')}
                         >
                             <TrashIcon />
