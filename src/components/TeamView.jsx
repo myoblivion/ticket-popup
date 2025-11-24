@@ -1,3 +1,4 @@
+// TeamView.jsx
 import React, { useState, useEffect, useCallback, useContext, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
@@ -609,6 +610,7 @@ const TeamView = () => {
   const [editTarget, setEditTarget] = useState(null);
 
   const [isMasterAdmin, setIsMasterAdmin] = useState(false);
+  const [isParentAdmin, setIsParentAdmin] = useState(false); // NEW STATE
 
   useEffect(() => {
     moment.locale(language);
@@ -632,7 +634,9 @@ const TeamView = () => {
 
   const isTeamCreator = teamData?.createdBy === currentUser?.uid;
   const currentUserRole = teamData?.roles?.[currentUser?.uid] || 'member';
-  const isAdmin = isTeamCreator || currentUserRole === 'admin' || isMasterAdmin;
+  
+  // --- UPDATED PERMISSION CHECK: Creator OR Team Admin OR Master Admin OR Parent Admin ---
+  const isAdmin = isTeamCreator || currentUserRole === 'admin' || isMasterAdmin || isParentAdmin;
 
   const refreshAnnouncements = useCallback(() => { setAnnouncementRefreshKey(k => k + 1); }, []);
 
@@ -650,6 +654,7 @@ const TeamView = () => {
 
     setIsLoading(true); setError(null); setTeamData(null); setMembersDetails([]); setIsAuthorized(false);
     setIsMasterAdmin(false);
+    setIsParentAdmin(false);
 
     try {
       const teamDocRef = doc(db, "teams", teamId);
@@ -671,12 +676,29 @@ const TeamView = () => {
 
       const fetchedTeamData = teamDocSnap.data();
       const memberUIDs = fetchedTeamData.members || [];
+      
+      // 1. Check direct membership
       const isMember = memberUIDs.some(member =>
         (typeof member === 'object' && member.uid === currentUser.uid) ||
         (typeof member === 'string' && member === currentUser.uid)
       );
 
-      if (!isMember && !masterAdminCheck) { 
+      // 2. Check if I am an Admin of the PARENT team (The workaround for existing data)
+      let isParentAdminLocal = false;
+      if (!isMember && !masterAdminCheck && fetchedTeamData.parentTeamId) {
+          const parentDocRef = doc(db, "teams", fetchedTeamData.parentTeamId);
+          const parentDocSnap = await getDoc(parentDocRef);
+          if (parentDocSnap.exists()) {
+              const parentData = parentDocSnap.data();
+              if (parentData.createdBy === currentUser.uid || parentData.roles?.[currentUser.uid] === 'admin') {
+                  isParentAdminLocal = true;
+                  setIsParentAdmin(true); // Set state so isAdmin is updated
+              }
+          }
+      }
+
+      // ACCESS CONTROL: Allow if member OR Master Admin OR Parent Admin
+      if (!isMember && !masterAdminCheck && !isParentAdminLocal) { 
         setError(t('team.accessDenied', 'Access Denied: You are not a member of this team.'));
         setIsLoading(false);
         return;
@@ -829,7 +851,7 @@ const TeamView = () => {
                     <TeamProjectTable 
                       teamId={teamId} 
                       onTaskChange={refreshAnnouncements} 
-                      isMasterAdminView={isMasterAdmin} 
+                      isMasterAdminView={isMasterAdmin || isParentAdmin} 
                     />
                   </div>
                 </div>

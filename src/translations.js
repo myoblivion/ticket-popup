@@ -69,6 +69,12 @@ export const translations = {
       deleteSubConfirmPre: 'Are you sure you want to delete',
       deleteSubConfirmPost: 'This action cannot be undone and will remove all data associated with this sub-project.',
     },
+    // --- TEAM VIEW ERRORS ---
+    team: {
+      accessDenied: 'Access Denied: You are not a member of this team.',
+      notFound: 'Team not found.',
+      loadError: 'Failed to load team data.',
+    },
     // --- SUB PROJECT MODAL ---
     subProject: {
       addTitle: 'Add Sub-Project',
@@ -490,6 +496,12 @@ export const translations = {
       deleteSubTitle: '서브 프로젝트 삭제?',
       deleteSubConfirmPre: '정말',
       deleteSubConfirmPost: '을(를) 삭제하시겠습니까? 이 작업은 되돌릴 수 없으며 관련된 모든 데이터가 삭제됩니다.',
+    },
+    // --- TEAM VIEW ERRORS ---
+    team: {
+      accessDenied: '접근 거부: 이 팀의 멤버가 아닙니다.',
+      notFound: '팀을 찾을 수 없습니다.',
+      loadError: '팀 데이터를 불러오지 못했습니다.',
     },
     // --- SUB PROJECT MODAL (KOREAN) ---
     subProject: {

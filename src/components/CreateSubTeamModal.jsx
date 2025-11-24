@@ -1,6 +1,6 @@
 // CreateSubTeamModal.jsx
 import React, { useState, useContext } from 'react';
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, getDoc } from "firebase/firestore";
 import { db, auth } from '../firebaseConfig';
 import { LanguageContext } from '../contexts/LanguageContext';
 
@@ -15,32 +15,51 @@ const CreateSubTeamModal = ({ isOpen, onClose, onTeamCreated, parentTeamId, pare
   const { t } = useContext(LanguageContext);
   const [teamName, setTeamName] = useState('');
   const [description, setDescription] = useState('');
-  const [status, setStatus] = useState('in_progress'); // Default status
+  const [status, setStatus] = useState('in_progress');
   const [error, setError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const currentUser = auth.currentUser;
 
   const handleClose = () => {
-    setTeamName('');
-    setDescription('');
-    setError('');
-    setIsCreating(false);
-    onClose();
+    setTeamName(''); setDescription(''); setError(''); setIsCreating(false); onClose();
   };
 
   const handleCreateSubTeam = async (e) => {
     e.preventDefault();
     if (!teamName.trim() || !currentUser || !parentTeamId) {
-        setError(t('subProject.nameRequired', 'Team name is required.'));
-        return;
+        setError(t('subProject.nameRequired', 'Team name is required.')); return;
     }
-
-    setIsCreating(true);
-    setError('');
+    setIsCreating(true); setError('');
 
     try {
+        // --- NEW: FETCH PARENT TEAM ADMINS TO COPY THEM OVER ---
+        const parentDocRef = doc(db, "teams", parentTeamId);
+        const parentDoc = await getDoc(parentDocRef);
+        let initialMembers = [currentUser.uid];
+        let initialRoles = { [currentUser.uid]: 'admin' };
+        let initialPermissions = { [currentUser.uid]: { announcements: true, schedule: true } };
+
+        if (parentDoc.exists()) {
+            const parentData = parentDoc.data();
+            // Add Parent Creator
+            if (parentData.createdBy && !initialMembers.includes(parentData.createdBy)) {
+                initialMembers.push(parentData.createdBy);
+                initialRoles[parentData.createdBy] = 'admin';
+                initialPermissions[parentData.createdBy] = { announcements: true, schedule: true };
+            }
+            // Add Parent Admins
+            if (parentData.roles) {
+                Object.entries(parentData.roles).forEach(([uid, role]) => {
+                    if (role === 'admin' && !initialMembers.includes(uid)) {
+                        initialMembers.push(uid);
+                        initialRoles[uid] = 'admin';
+                        initialPermissions[uid] = { announcements: true, schedule: true };
+                    }
+                });
+            }
+        }
+
         const teamsCollectionRef = collection(db, "teams");
-        
         await addDoc(teamsCollectionRef, {
             teamName: teamName.trim(),
             description: description.trim(),
@@ -48,7 +67,9 @@ const CreateSubTeamModal = ({ isOpen, onClose, onTeamCreated, parentTeamId, pare
             status: status, 
             createdAt: serverTimestamp(),
             createdBy: currentUser.uid, 
-            members: [currentUser.uid] 
+            members: initialMembers,
+            roles: initialRoles,
+            permissions: initialPermissions
         });
 
         handleClose();
@@ -75,53 +96,29 @@ const CreateSubTeamModal = ({ isOpen, onClose, onTeamCreated, parentTeamId, pare
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"></path></svg>
           </button>
         </div>
-
         <form onSubmit={handleCreateSubTeam}>
           <div className="p-6 space-y-4">
             {error && <p className="text-red-600 bg-red-100 p-3 rounded-md text-sm">{error}</p>}
-            
             <div>
               <label className="block mb-2 text-sm font-medium text-gray-900">{t('subProject.nameLabel', 'Sub-Project Name')}</label>
-              <input
-                type="text"
-                value={teamName}
-                onChange={(e) => setTeamName(e.target.value)}
-                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5"
-                placeholder={t('subProject.namePlaceholder', 'e.g. SEO Marketing')}
-                required
-              />
+              <input type="text" value={teamName} onChange={(e) => setTeamName(e.target.value)} className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" placeholder={t('subProject.namePlaceholder', 'e.g. SEO Marketing')} required />
             </div>
-
             <div>
                 <label className="block mb-2 text-sm font-medium text-gray-900">{t('subProject.statusLabel', 'Initial Status')}</label>
-                <select 
-                    value={status} 
-                    onChange={(e) => setStatus(e.target.value)}
-                    className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5"
-                >
+                <select value={status} onChange={(e) => setStatus(e.target.value)} className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5">
                     <option value="not_started">{t('status.not_started', 'Not Started')}</option>
                     <option value="in_progress">{t('status.in_progress', 'In Progress')}</option>
                     <option value="completed">{t('status.completed', 'Completed')}</option>
                     <option value="paused">{t('status.paused', 'Paused')}</option>
                 </select>
             </div>
-
             <div>
               <label className="block mb-2 text-sm font-medium text-gray-900">{t('subProject.descLabel', 'Description (Optional)')}</label>
-              <textarea
-                rows="2"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5"
-              ></textarea>
+              <textarea rows="2" value={description} onChange={(e) => setDescription(e.target.value)} className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5"></textarea>
             </div>
-            
           </div>
-
           <div className="flex items-center justify-end p-6 space-x-2 border-t border-gray-200">
-            <button type="button" onClick={handleClose} className="text-gray-500 bg-white hover:bg-gray-100 border border-gray-200 text-sm font-medium px-5 py-2.5 rounded-lg">
-                {t('common.cancel', 'Cancel')}
-            </button>
+            <button type="button" onClick={handleClose} className="text-gray-500 bg-white hover:bg-gray-100 border border-gray-200 text-sm font-medium px-5 py-2.5 rounded-lg">{t('common.cancel', 'Cancel')}</button>
             <button type="submit" disabled={isCreating} className="text-white bg-blue-700 hover:bg-blue-800 font-medium rounded-lg text-sm px-5 py-2.5 flex items-center">
               {isCreating && <ButtonSpinner />}
               {t('subProject.createBtn', 'Create Sub-Project')}
