@@ -90,7 +90,7 @@ const formatDate = (value, { fallback = '' } = {}) => {
 const HandoversSection = ({ teamId }) => {
   const { t } = useContext(LanguageContext);
   
-  // --- NEW: React Router Hooks ---
+  // --- React Router Hooks ---
   const { handoverId } = useParams(); 
   const navigate = useNavigate(); 
   const baseTitleRef = useRef(document.title); 
@@ -129,7 +129,7 @@ const HandoversSection = ({ teamId }) => {
   const [statusOptions, setStatusOptions] = useState(DEFAULT_STATUS_OPTIONS);
   const [checkerList, setCheckerList] = useState(DEFAULT_CHECKERS); 
 
-  // --- NEW: Inline Editing State ---
+  // --- Inline Editing State ---
   const [editingCell, setEditingCell] = useState(null);
   const [editingValue, setEditingValue] = useState('');
   const [editingOriginalValue, setEditingOriginalValue] = useState('');
@@ -137,11 +137,15 @@ const HandoversSection = ({ teamId }) => {
   const inputRef = useRef(null); 
   const selectRef = useRef(null); 
 
-  // --- NEW: Saving Indicator State ---
+  // --- Saving Indicator State ---
   const [savingStatus, setSavingStatus] = useState({});
   const savingTimersRef = useRef({});
 
-  // --- NEW: Load team members / options from Firestore ---
+  // --- NEW: Pagination State ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(20);
+
+  // --- Load team members / options from Firestore ---
   useEffect(() => {
     if (!teamId) return;
     const teamDocRef = doc(db, 'teams', teamId);
@@ -175,7 +179,7 @@ const HandoversSection = ({ teamId }) => {
           setStatusOptions(DEFAULT_STATUS_OPTIONS);
         }
 
-        // --- NEW: Load Handover Checkers ---
+        // --- Load Handover Checkers ---
         if (data.handoverCheckers && Array.isArray(data.handoverCheckers) && data.handoverCheckers.length > 0) {
           setCheckerList(data.handoverCheckers);
         } else {
@@ -272,7 +276,7 @@ const HandoversSection = ({ teamId }) => {
     return () => unsubscribe(); // Unsubscribe on unmount
   }, [teamId, t]);
 
-  // --- NEW: This effect opens the popup if a handoverId is present in the URL ---
+  // --- Popup logic ---
   useEffect(() => {
     if (handoverId && handovers.length > 0) { 
       const handoverToOpen = handovers.find(h => h.id === handoverId);
@@ -340,9 +344,8 @@ const HandoversSection = ({ teamId }) => {
     });
   }, [handoversToDisplay, filters]);
 
-  // --- NEW: Sorting Logic ---
+  // --- Sorting Logic ---
   const sortedHandovers = useMemo(() => {
-    // Create a copy to sort
     let data = [...filteredHandoversToDisplay];
     
     if (!sortConfig.key) return data;
@@ -354,7 +357,6 @@ const HandoversSection = ({ teamId }) => {
         valA = Number(a.number) || 0;
         valB = Number(b.number) || 0;
       } else if (sortConfig.key === 'date') {
-        // Handle Firestore Timestamp or standard Date or string
         const dateA = a.createdAt && typeof a.createdAt.toDate === 'function' 
           ? a.createdAt.toDate() 
           : new Date(a.createdAt || 0);
@@ -379,7 +381,24 @@ const HandoversSection = ({ teamId }) => {
     });
   }, [filteredHandoversToDisplay, sortConfig]);
 
-  // --- NEW: Sort Handler ---
+  // --- Reset Page on Filter/Sort/Tab Change ---
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters, activeTab, sortConfig]);
+
+  // --- NEW: Pagination Logic ---
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentHandovers = sortedHandovers.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(sortedHandovers.length / itemsPerPage);
+
+  const handlePageChange = (newPage) => {
+    if (newPage > 0 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+    }
+  };
+
+  // --- Sort Handler ---
   const handleSort = (key) => {
     setSortConfig(prev => ({
       key,
@@ -410,7 +429,7 @@ const HandoversSection = ({ teamId }) => {
     }
   };
 
-  // --- NEW: Inline Editing Functions (from TeamProjectTable) ---
+  // --- Inline Editing Functions (from TeamProjectTable) ---
   const getCellKey = (docId, headerKey) => `${docId}-${headerKey}`;
 
   const setSavingState = (key, state) => {
@@ -554,7 +573,7 @@ const HandoversSection = ({ teamId }) => {
     }
   }, [editingCell]);
 
-  // --- NEW: Editing Event Handlers ---
+  // --- Editing Event Handlers ---
   const handleCellDoubleClick = (e, docId, columnKey) => {
     e.stopPropagation();
     if (!INLINE_EDITABLE_COLUMNS.includes(columnKey)) return;
@@ -595,7 +614,7 @@ const HandoversSection = ({ teamId }) => {
     }
   };
 
-  // --- Filter/Modal Handlers (Original) ---
+  // --- Filter/Modal Handlers ---
   const toggleAllColumns = () => setIsAllExpanded(prev => !prev);
   
   const handleFilterChange = useCallback((key, value) => {
@@ -612,7 +631,6 @@ const HandoversSection = ({ teamId }) => {
     setIsAddModalOpen(false); 
   };
 
-  // --- MODIFIED: openDetailsModal ---
   const openDetailsModal = (item) => {
     const modalUrl = `/team/${teamId}/handover/${item.id}`; 
     const modalTitle = `Handover ${item.id} - details`;
@@ -624,7 +642,6 @@ const HandoversSection = ({ teamId }) => {
     setIsDetailsModalOpen(true);
   };
 
-  // --- MODIFIED: closeDetailsModal ---
   const closeDetailsModal = () => {
     setIsDetailsModalOpen(false);
     setSelectedHandover(null);
@@ -633,7 +650,7 @@ const HandoversSection = ({ teamId }) => {
     navigate(`/team/${teamId}`, { replace: true }); 
   };
   
-  // --- Persistence functions for OptionsEditorModal (Original) ---
+  // --- Persistence functions for OptionsEditorModal ---
   const persistTeamArrayField = async (fieldName, arr) => {
     if (!teamId) throw new Error('Missing teamId');
     
@@ -739,7 +756,7 @@ const HandoversSection = ({ teamId }) => {
       setInviteMeta(null);
   };
 
-  // --- Headers (FIXED KOREAN DEFAULTS) ---
+  // --- Headers ---
   const mainHeaders = useMemo(() => [
     { key: 'number', label: t('handovers.id', 'No.') }, 
     { key: 'date', label: t('handovers.date', 'Date') },
@@ -749,7 +766,7 @@ const HandoversSection = ({ teamId }) => {
     { key: 'postedBy', label: t('handovers.postedBy', 'Posted by') },
   ], [t]);
 
-  // --- MODIFIED: Checker headers are now dynamic ---
+  // --- Checker headers ---
   const checkerHeaders = useMemo(() => {
     if (!checkerList || checkerList.length === 0) {
       return [];
@@ -760,11 +777,10 @@ const HandoversSection = ({ teamId }) => {
     }));
   }, [checkerList]); 
 
-  // --- NEW: Memoized list of checker keys for renderCellContent ---
   const checkerKeys = useMemo(() => checkerList.map(c => c.key), [checkerList]);
 
 
-  // --- NEW: Cell Renderer (Fully refactored) ---
+  // --- Cell Renderer ---
   const renderCellContent = (item, headerKey, meta = {}) => {
     const isEditingThisCell = editingCell?.docId === item.id && editingCell?.columnKey === headerKey;
     const rawValue = item[headerKey];
@@ -772,7 +788,6 @@ const HandoversSection = ({ teamId }) => {
 
     // --- 1. EDITING UI ---
     if (isEditingThisCell) {
-      // Select (dropdown) columns
       if (['categories', 'status', 'postedBy'].includes(headerKey)) {
         let options = [];
         let isMemberSelect = false;
@@ -810,7 +825,6 @@ const HandoversSection = ({ teamId }) => {
               ? membersList.map(m => <option key={m.uid} value={m.uid}>{m.label}</option>)
               : options.map(opt => <option key={opt} value={opt}>{opt}</option>)
             }
-            {/* Show original value if it's no longer in the list */}
             {isMemberSelect && editingOriginalValue && !membersList.some(m => m.uid === editingOriginalValue) && (
               <option value={editingOriginalValue} disabled>{editingOriginalValue} (removed)</option>
             )}
@@ -821,7 +835,6 @@ const HandoversSection = ({ teamId }) => {
         );
       }
 
-      // Text-like columns (use textarea)
       if (TEXTAREA_COLUMNS.includes(headerKey)) {
         return (
           <textarea
@@ -836,7 +849,6 @@ const HandoversSection = ({ teamId }) => {
         );
       }
 
-      // --- NEW: Default Input (for 'number', etc.) ---
       return (
         <input
           ref={inputRef}
@@ -851,8 +863,6 @@ const HandoversSection = ({ teamId }) => {
     }
 
     // --- 2. STATIC DISPLAY UI ---
-
-    // Special non-editable columns
     switch(headerKey) {
       case 'number': {
         const manualNumber = item.number; // Value from Firestore
@@ -903,7 +913,6 @@ const HandoversSection = ({ teamId }) => {
         break; 
     }
 
-    // --- NEW: Dynamic Checker Rendering ---
     if (checkerKeys.includes(headerKey)) {
       return (
         <div className="text-center">
@@ -919,7 +928,6 @@ const HandoversSection = ({ teamId }) => {
 
     let textToShow = displayValue || '-';
     
-    // For member columns, show label instead of UID
     if (MEMBER_COLUMNS.includes(headerKey)) {
       const foundMember = membersList.find(m => m.uid === displayValue);
       textToShow = foundMember ? foundMember.label : (displayValue || '-');
@@ -990,7 +998,6 @@ const HandoversSection = ({ teamId }) => {
             </select>
           </div>
 
-          {/* --- UPDATED: PostedBy Filter (now a dropdown) --- */}
           <div className="flex items-center gap-1.5">
             <label htmlFor="filter-postedBy" className="text-sm text-gray-600">{t('handovers.postedBy')}</label>
              <select
@@ -1100,6 +1107,7 @@ const HandoversSection = ({ teamId }) => {
           )}
 
           {!isLoading && !error && filteredHandoversToDisplay.length > 0 && (
+            <>
             <table
               className={`table-auto w-full border-collapse mt-4 ${isAllExpanded ? '' : 'min-w-[1200px]'}`}
               style={{ tableLayout: isAllExpanded ? 'auto' : 'fixed' }}
@@ -1107,7 +1115,6 @@ const HandoversSection = ({ teamId }) => {
               <thead className="bg-gray-50 sticky top-0 z-10 text-xs text-gray-500 uppercase tracking-wider">
                 <tr>
                   {mainHeaders.map((header) => {
-                    // --- NEW: Sortable Header Logic ---
                     const isSortable = ['number', 'date'].includes(header.key);
                     const isActiveSort = sortConfig.key === header.key;
                     
@@ -1119,7 +1126,6 @@ const HandoversSection = ({ teamId }) => {
                         onClick={isSortable ? () => handleSort(header.key) : undefined}
                         className={`p-3 text-left font-medium border-b border-r ${isSortable ? 'cursor-pointer hover:bg-gray-100 select-none group' : ''}`}
                         style={{ 
-                          // --- MODIFICATION: Increased content width ---
                           width: isAllExpanded ? 'auto' : (header.key === 'content' ? '450px' : (header.key === 'number' ? '80px' : '120px')), 
                           whiteSpace: isAllExpanded ? 'normal' : 'nowrap'
                         }}
@@ -1130,7 +1136,7 @@ const HandoversSection = ({ teamId }) => {
                             <span className={`text-[10px] ml-0.5 ${isActiveSort ? 'text-blue-600' : 'text-gray-300 group-hover:text-gray-400'}`}>
                               {isActiveSort 
                                 ? (sortConfig.direction === 'asc' ? '▲' : '▼') 
-                                : '▲▼' // Show both or a neutral indicator when not active
+                                : '▲▼' 
                               }
                             </span>
                           )}
@@ -1138,7 +1144,6 @@ const HandoversSection = ({ teamId }) => {
                       </th>
                     );
                   })}
-                  {/* --- MODIFIED: Dynamic ColSpan for Checkers --- */}
                   <th
                     scope="col"
                     colSpan={checkerHeaders.length > 0 ? checkerHeaders.length : 1}
@@ -1158,7 +1163,6 @@ const HandoversSection = ({ teamId }) => {
                   </th>
                 </tr>
                 <tr>
-                  {/* --- MODIFIED: Dynamic Checker Headers --- */}
                   {checkerHeaders.map((header) => (
                     <th
                       key={header.key}
@@ -1172,14 +1176,13 @@ const HandoversSection = ({ teamId }) => {
                       {header.label}
                     </th>
                   ))}
-                  {/* Handle case with zero checkers */}
                   {checkerHeaders.length === 0 && (
                       <th scope="col" className="p-3 text-center font-medium border-r" style={{ width: '80px' }}>-</th>
                   )}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-100 text-sm">
-                {sortedHandovers.map((item, index) => { 
+                {currentHandovers.map((item, index) => { 
                   const allHeaders = [
                     ...mainHeaders,
                     ...checkerHeaders, 
@@ -1200,28 +1203,21 @@ const HandoversSection = ({ teamId }) => {
                             key={cellKey}
                             className={[
                               'relative p-2 border-r align-top',
-                              // Cursors
                               !isEditingThisCell && isEditable ? 'cursor-text' : '',
-                              // Widths
-                              // --- MODIFICATION: Increased content width ---
                               !isAllExpanded && header.key === 'content' ? 'w-[450px]' : '',
                               !isAllExpanded && header.key === 'remarks' ? 'w-[200px]' : '',
                               !isAllExpanded && header.key === 'status' ? 'w-[130px]' : '',
                               !isAllExpanded && header.key === 'actions' ? 'w-[80px]' : '',
-                              // --- MODIFIED: Dynamic checker width ---
                               !isAllExpanded && checkerKeys.includes(header.key) ? 'w-[80px]' : '',
                               !isAllExpanded && header.key === 'number' ? 'w-[80px]' : '', 
                               !isAllExpanded && !checkerKeys.includes(header.key) && !['number', 'content', 'remarks', 'status', 'actions'].includes(header.key) ? 'w-[120px]' : '',
-                              // Padding reset for editing
                               isEditingThisCell ? 'p-0' : ''
                             ].filter(Boolean).join(' ')}
                             style={{
-                              // --- MODIFICATION: Increased content width ---
                               maxWidth: !isAllExpanded ? 
                                 (header.key === 'content' ? '450px' : 
                                 (header.key === 'remarks' ? '200px' : 
                                 (header.key === 'status' ? '130px' : 
-                                // --- MODIFIED: Dynamic checker width ---
                                 (checkerKeys.includes(header.key) ? '80px' : 
                                 (header.key === 'actions' ? '80px' : 
                                 (header.key === 'number' ? '80px' : '120px')))))) : undefined, 
@@ -1229,10 +1225,9 @@ const HandoversSection = ({ teamId }) => {
                             }}
                             onDoubleClick={(e) => !isEditingThisCell && handleCellDoubleClick(e, item.id, header.key)}
                           >
-                            {/* --- FIX: Pass index and total count --- */}
-                            {renderCellContent(item, header.key, { index, total: filteredHandoversToDisplay.length })}
+                            {/* Pass correct absolute index for the "Number" column to count down correctly */}
+                            {renderCellContent(item, header.key, { index: indexOfFirstItem + index, total: filteredHandoversToDisplay.length })}
 
-                            {/* Saving Indicators */}
                             {savingStatus[cellKey] === 'saving' && (
                               <span className="absolute top-1 right-2 text-xs text-gray-500 animate-pulse">{t('common.saving')}</span>
                             )}
@@ -1247,6 +1242,51 @@ const HandoversSection = ({ teamId }) => {
                 })}
               </tbody>
             </table>
+
+            {/* --- NEW: Pagination Footer --- */}
+            <div className="flex items-center justify-between mt-4 border-t pt-4">
+              {/* Items per page selector */}
+              <div className="flex items-center gap-2">
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => {
+                    setItemsPerPage(Number(e.target.value));
+                    setCurrentPage(1); 
+                  }}
+                  className="border rounded p-1 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-bold"
+                  style={{ width: '60px' }}
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+                <span className="text-sm text-gray-500">items per page</span>
+              </div>
+
+              {/* Pagination Controls */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1 text-sm border rounded bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                <span className="text-sm text-gray-600">
+                  Page <span className="font-medium">{currentPage}</span> of <span className="font-medium">{totalPages}</span>
+                </span>
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1 text-sm border rounded bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+            {/* --- END Pagination Footer --- */}
+            </>
           )}
         </div>
       </div>
@@ -1272,34 +1312,26 @@ const HandoversSection = ({ teamId }) => {
         />
       )}
       
-      {/* --- NEW: Options Editor Modal --- */}
+      {/* Options Editor Modal */}
       {isOptionsModalOpen && (
         <OptionsEditorModal
           isOpen={isOptionsModalOpen}
           onClose={() => setIsOptionsModalOpen(false)}
           teamId={teamId}
           t={t}
-          // Pass current state lists
           categoriesList={categoriesList}
           membersList={membersList}
           priorityOptions={priorityOptions}
           statusOptions={statusOptions}
           checkerList={checkerList} 
-          // Pass down persistence functions
           persistTeamArrayField={persistTeamArrayField}
           saveMemberLabel={saveMemberLabel}
           removeMember={removeMember}
           addMemberObject={addMemberObject}
-          // Callbacks (no longer strictly needed with onSnapshot)
-          onCategoriesChange={() => {}}
-          onMembersChange={() => {}}
-          onPrioritiesChange={() => {}}
-          onStatusOptionsChange={() => {}}
-          onCheckersChange={() => {}} 
         />
       )}
 
-      {/* --- NEW: Invite Member Modal (Needed by OptionsEditorModal) --- */}
+      {/* Invite Member Modal */}
       {isInviteOpen && (
         <InviteMemberModal
           isOpen={isInviteOpen}
@@ -1314,701 +1346,3 @@ const HandoversSection = ({ teamId }) => {
 };
 
 export default HandoversSection;
-
-
-/* ==================================================================
-  MODAL COMPONENTS (Copied from TeamProjectTable)
-===================================================================*/
-
-/* ------------------------------------------------------------------
-  OptionsEditorModal
-  - Manages editing Categories, Priorities, Statuses, Members, Checkers
--------------------------------------------------------------------*/
-function OptionsEditorModal({
-  isOpen,
-  onClose,
-  teamId,
-  t, // Receive t function as a prop
-  categoriesList,
-  membersList, // Array of {uid, label}
-  priorityOptions,
-  statusOptions,
-  checkerList, // <-- NEW: Array of {key, label}
-  persistTeamArrayField, // (fieldName, array) => Promise<void>
-  saveMemberLabel,       // (uid, newLabel) => Promise<void>
-  removeMember,          // (uid) => Promise<void>
-  addMemberObject,       // (uid, label) => Promise<void>
-}) {
-  const [tab, setTab] = useState('categories'); // 'categories' | 'priorities' | 'statuses' | 'members' | 'checkers'
-  const [items, setItems] = useState([]);        // Current list being edited (strings or member/checker objects)
-  const [newValue, setNewValue] = useState('');        // Input for adding new items
-  const [editingIndex, setEditingIndex] = useState(null); // Index of item being edited
-  const [editingValueLocal, setEditingValueLocal] = useState(''); // Local state for the item being edited
-  const [modalError, setModalError] = useState(''); // Error specific to this modal
-  const [isSaving, setIsSaving] = useState(false); // Loading state for async operations
-
-  // Reset modal state when opened
-  useEffect(() => {
-    if (!isOpen) return;
-    setTab('categories'); // Default tab
-    setEditingIndex(null);
-    setEditingValueLocal('');
-    setNewValue('');
-    setModalError('');
-    setIsSaving(false);
-  }, [isOpen]);
-
-  // Update local items list when the active tab or props change
-  useEffect(() => {
-    if (!isOpen) return;
-    let currentItems = [];
-    switch (tab) {
-      case 'categories': currentItems = categoriesList; break;
-      case 'priorities': currentItems = priorityOptions; break;
-      case 'statuses': currentItems = statusOptions; break;
-      case 'members': currentItems = membersList.map(m => ({ uid: m.uid, label: m.label })); break; // Use a copy
-      case 'checkers': currentItems = checkerList.map(c => ({ key: c.key, label: c.label })); break; // <-- NEW
-      default: currentItems = [];
-    }
-    setItems(currentItems || []); // Ensure items is always an array
-    setEditingIndex(null);
-    setEditingValueLocal('');
-    setNewValue('');
-    setModalError('');
-  }, [tab, categoriesList, priorityOptions, statusOptions, membersList, checkerList, isOpen]); 
-
-  if (!isOpen) return null;
-
-  // --- Persistence Wrappers ---
-  const handlePersistArray = async (fieldName, newArr) => {
-    setModalError('');
-    setIsSaving(true);
-    try {
-      await persistTeamArrayField(fieldName, newArr);
-    } catch (err) {
-      console.error(`Failed to persist ${fieldName}:`, err);
-      setModalError(t('admin.saveError', `Failed to save changes for ${fieldName}. See console.`));
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleSaveMemberLabel = async (uid, newLabel) => {
-    setModalError('');
-    setIsSaving(true);
-    try {
-      await saveMemberLabel(uid, newLabel);
-      setEditingIndex(null); 
-      setEditingValueLocal('');
-    } catch (err) {
-      setModalError(t('admin.saveMemberLabelError', 'Failed to save member label. See console.'));
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleRemoveMember = async (uid) => {
-    setModalError('');
-    setIsSaving(true);
-    try {
-      await removeMember(uid);
-    } catch (err) {
-      setModalError(t('admin.removeMemberError', 'Failed to remove member. See console.'));
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleAddMemberObject = async (uid, label) => {
-    setModalError('');
-    setIsSaving(true);
-    try {
-      await addMemberObject(uid, label);
-      setNewValue(''); // Clear input on success
-    } catch (err) {
-      setModalError(t('admin.addMemberError', 'Failed to add member. See console.'));
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // --- Action Handlers ---
-  const handleAdd = async () => {
-    const v = (newValue || '').trim();
-    if (!v) return;
-    setModalError('');
-    const currentItems = items || []; 
-
-    if (tab === 'members') {
-      let uid = v, label = v;
-      if (v.includes('|')) {
-        const parts = v.split('|');
-        uid = parts[0].trim();
-        label = parts.slice(1).join('|').trim() || uid;
-      }
-      if (!uid) {
-        setModalError(t('admin.uidRequiredError', 'Please provide a UID (or uid|label).'));
-        return;
-      }
-      if (currentItems.some(item => item.uid === uid)) {
-        setModalError(t('admin.memberExistsError', "A member with this UID already exists."));
-        return;
-      }
-      await handleAddMemberObject(uid, label);
-      return;
-    }
-
-    // --- NEW: Add Checker ---
-    if (tab === 'checkers') {
-      let key, label;
-      if (v.includes('|')) {
-        const parts = v.split('|');
-        key = parts[0].trim();
-        label = parts.slice(1).join('|').trim() || key;
-      } else {
-        setModalError(t('admin.checkerFormatError', 'Format must be "key|Label". Example: "checkerOps|Operations"'));
-        return;
-      }
-      
-      if (!key) {
-        setModalError(t('admin.checkerKeyRequired', 'A "key" is required. Format: "key|Label"'));
-        return;
-      }
-      if (/\s/.test(key) || !/^[a-zA-Z0-9_.-]+$/.test(key)) {
-         setModalError(t('admin.checkerKeyInvalid', 'Key must be one word (no spaces, letters/numbers/_,.- only).'));
-         return;
-      }
-      
-      if (currentItems.some(item => item.key === key)) {
-        setModalError(t('admin.checkerKeyExists', 'A checker with this key already exists.'));
-        return;
-      }
-      
-      const newItem = { key, label };
-      const next = [...currentItems, newItem];
-      
-      setItems(next); // Optimistic update
-      setNewValue(''); // Clear input
-      await handlePersistArray('checkers', next); // Persist
-      return; // Stop execution
-    }
-
-    // For string-based lists
-    if (currentItems.includes(v)) {
-      setModalError(t('admin.itemExistsError', "This item already exists."));
-      return;
-    }
-
-    let next = [...currentItems, v];
-    let fieldName = '';
-    if (tab === 'statuses') {
-      const completeStatus = next.pop(); // Remove last
-      next.push(v); // Add new
-      if (completeStatus !== undefined) next.push(completeStatus); // Add last back
-      fieldName = 'statusOptions';
-    } else {
-      if (tab === 'priorities') fieldName = 'priorities';
-      else if (tab === 'categories') fieldName = 'categories';
-      else {
-        setModalError(t('admin.invalidTabError', `Cannot determine field name for tab: ${tab}`));
-        return;
-      }
-    }
-
-    setItems(next); // Optimistic UI update
-    setNewValue(''); // Clear input
-    await handlePersistArray(fieldName, next); // Persist
-  };
-
-  const startEdit = (idx) => {
-    setModalError('');
-    setEditingIndex(idx);
-    const itemToEdit = items[idx];
-    // Handle object or string
-    if (typeof itemToEdit === 'object' && itemToEdit !== null) {
-      setEditingValueLocal(itemToEdit.label); // Works for both members and checkers
-    } else {
-      setEditingValueLocal(itemToEdit); // For string lists
-    }
-  };
-
-  const saveEdit = async () => {
-    const v = (editingValueLocal || '').trim();
-    if (!v || editingIndex === null) return;
-    setModalError('');
-    const currentItems = items || []; 
-
-    const itemToEdit = currentItems[editingIndex];
-
-    // --- Member Edit ---
-    if (typeof itemToEdit === 'object' && itemToEdit !== null && 'uid' in itemToEdit) {
-      const uid = itemToEdit.uid;
-      if (!v) {
-        setModalError(t('admin.memberLabelEmptyError', "Member label cannot be empty."));
-        return;
-      }
-      await handleSaveMemberLabel(uid, v);
-      return;
-    }
-
-    // --- NEW: Checker Edit ---
-    if (typeof itemToEdit === 'object' && itemToEdit !== null && 'key' in itemToEdit) {
-      const key = itemToEdit.key;
-      if (!v) {
-        setModalError(t('admin.checkerLabelEmpty', "Checker label cannot be empty."));
-        return;
-      }
-      
-      const next = currentItems.map((it, i) => (i === editingIndex ? { key: key, label: v } : it));
-      
-      setItems(next); // Optimistic update
-      setEditingIndex(null); 
-      setEditingValueLocal('');
-      await handlePersistArray('checkers', next);
-      return; // Stop execution
-    }
-
-    // For string-based lists
-    const duplicateIndex = currentItems.findIndex(item => item === v);
-    if (duplicateIndex !== -1 && duplicateIndex !== editingIndex) {
-      setModalError(t('admin.itemExistsError', "This item already exists."));
-      return;
-    }
-
-    const next = currentItems.map((it, i) => (i === editingIndex ? v : it));
-    let fieldName = '';
-    if (tab === 'statuses') fieldName = 'statusOptions';
-    else if (tab === 'priorities') fieldName = 'priorities';
-    else if (tab === 'categories') fieldName = 'categories';
-    else {
-      setModalError(t('admin.invalidTabError', `Cannot determine field name for tab: ${tab}`));
-      return;
-    }
-
-    setItems(next); // Optimistic update
-    setEditingIndex(null); 
-    setEditingValueLocal('');
-    await handlePersistArray(fieldName, next);
-  };
-
-  const cancelEdit = () => {
-    setEditingIndex(null);
-    setEditingValueLocal('');
-    setModalError('');
-  };
-
-  const handleRemove = async (idx) => {
-    if (isSaving) return; 
-    setModalError('');
-    const currentItems = items || []; 
-    const itemToRemove = currentItems[idx];
-
-    // --- Member Remove ---
-    if (typeof itemToRemove === 'object' && itemToRemove !== null && 'uid' in itemToRemove) {
-      const uid = itemToRemove.uid;
-      await handleRemoveMember(uid);
-      return;
-    }
-
-    // --- NEW: Checker Remove ---
-    if (typeof itemToRemove === 'object' && itemToRemove !== null && 'key' in itemToRemove) {
-      if (!window.confirm(t('common.confirmDelete'))) return;
-      
-      const next = currentItems.filter((_, i) => i !== idx);
-      setItems(next); // Optimistic update
-      await handlePersistArray('checkers', next);
-      return; // Stop execution
-    }
-
-    // For string-based lists
-    if (tab === 'statuses' && idx === currentItems.length - 1) {
-      if (!window.confirm(t('admin.confirmDeleteFinalStatus', 'Are you sure you want to remove the final status? This is usually the "Complete" or "Approved" status.'))) {
-        return;
-      }
-    } else if (!window.confirm(t('common.confirmDelete'))) { 
-      return;
-    }
-
-    const next = currentItems.filter((_, i) => i !== idx);
-    let fieldName = '';
-    if (tab === 'statuses') fieldName = 'statusOptions';
-    else if (tab === 'priorities') fieldName = 'priorities';
-    else if (tab === 'categories') fieldName = 'categories';
-    else {
-      setModalError(t('admin.invalidTabError', `Cannot determine field name for tab: ${tab}`));
-      return;
-    }
-
-    setItems(next); // Optimistic update
-    await handlePersistArray(fieldName, next);
-  };
-
-  const handleCloseModal = () => {
-    if (isSaving) return; // Don't close while saving
-    onClose();
-  };
-
-  // --- List Item Renderer ---
-  const renderListItem = (it, idx) => {
-    const isEditingThisItem = editingIndex === idx;
-
-    // --- Member List Item ---
-    if (typeof it === 'object' && it !== null && 'uid' in it) {
-      return (
-        <li key={it.uid} className="flex items-center justify-between gap-2 bg-gray-50 p-2 rounded text-sm">
-          <div className="min-w-0 flex-1">
-            {isEditingThisItem ? (
-              <input
-                className="border rounded px-2 py-1 text-sm w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
-                value={editingValueLocal}
-                onChange={(e) => setEditingValueLocal(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') saveEdit();
-                  if (e.key === 'Escape') cancelEdit();
-                }}
-                autoFocus
-              />
-            ) : (
-              <div className="font-medium text-gray-800 truncate" title={it.label}>{it.label}</div>
-            )}
-            <div className="text-xs text-gray-500 truncate" title={it.uid}>{t('admin.uidLabel', 'UID')}: {it.uid}</div>
-          </div>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            {isEditingThisItem ? (
-              <>
-                <button className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50" onClick={saveEdit} disabled={isSaving}>{t('common.save')}</button>
-                <button className="px-2 py-1 bg-gray-200 rounded text-xs hover:bg-gray-300 disabled:opacity-50" onClick={cancelEdit} disabled={isSaving}>{t('common.cancel')}</button>
-              </>
-            ) : (
-              <>
-                <button className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-xs hover:bg-yellow-200 disabled:opacity-50" onClick={() => startEdit(idx)} disabled={isSaving}>{t('common.edit')}</button>
-                <button className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200 disabled:opacity-50" onClick={() => handleRemove(idx)} disabled={isSaving}>{t('common.remove')}</button>
-              </>
-            )}
-          </div>
-        </li>
-      );
-    }
-
-    // --- NEW: Checker List Item ---
-    if (typeof it === 'object' && it !== null && 'key' in it) {
-      return (
-        <li key={it.key} className="flex items-center justify-between gap-2 bg-gray-50 p-2 rounded text-sm">
-          <div className="min-w-0 flex-1">
-            {isEditingThisItem ? (
-              <input
-                className="border rounded px-2 py-1 text-sm w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
-                value={editingValueLocal}
-                onChange={(e) => setEditingValueLocal(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') saveEdit();
-                  if (e.key === 'Escape') cancelEdit();
-                }}
-                autoFocus
-              />
-            ) : (
-              <div className="font-medium text-gray-800 truncate" title={it.label}>{it.label}</div>
-            )}
-            <div className="text-xs text-gray-500 truncate" title={it.key}>{t('admin.keyLabel', 'Key')}: {it.key}</div>
-          </div>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            {isEditingThisItem ? (
-              <>
-                <button className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50" onClick={saveEdit} disabled={isSaving}>{t('common.save')}</button>
-                <button className="px-2 py-1 bg-gray-200 rounded text-xs hover:bg-gray-300 disabled:opacity-50" onClick={cancelEdit} disabled={isSaving}>{t('common.cancel')}</button>
-              </>
-            ) : (
-              <>
-                <button className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-xs hover:bg-yellow-200 disabled:opacity-50" onClick={() => startEdit(idx)} disabled={isSaving}>{t('common.edit')}</button>
-                <button className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200 disabled:opacity-50" onClick={() => handleRemove(idx)} disabled={isSaving}>{t('common.remove')}</button>
-              </>
-            )}
-          </div>
-        </li>
-      );
-    }
-
-    // --- Regular String List Item ---
-    return (
-      <li key={String(it) + idx} className="flex items-center justify-between gap-2 bg-gray-50 p-2 rounded text-sm">
-        <div className="min-w-0 flex-1">
-          {isEditingThisItem ? (
-            <input
-              className="border rounded px-2 py-1 text-sm w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
-              value={editingValueLocal}
-              onChange={(e) => setEditingValueLocal(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') saveEdit();
-                if (e.key === 'Escape') cancelEdit();
-              }}
-              autoFocus
-            />
-          ) : (
-            <div className="text-gray-800 truncate" title={String(it)}>{String(it)}</div>
-          )}
-        </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
-          {isEditingThisItem ? (
-            <>
-              <button className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50" onClick={saveEdit} disabled={isSaving}>{t('common.save')}</button>
-              <button className="px-2 py-1 bg-gray-200 rounded text-xs hover:bg-gray-300 disabled:opacity-50" onClick={cancelEdit} disabled={isSaving}>{t('common.cancel')}</button>
-            </>
-          ) : (
-            <>
-              <button className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-xs hover:bg-yellow-200 disabled:opacity-50" onClick={() => startEdit(idx)} disabled={isSaving}>{t('common.edit')}</button>
-              <button className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200 disabled:opacity-50" onClick={() => handleRemove(idx)} disabled={isSaving}>{t('common.remove')}</button>
-            </>
-          )}
-        </div>
-      </li>
-    );
-  };
-
-  // --- Helper to get translated tab title ---
-  const getTabTitle = (tabKey) => {
-    switch(tabKey) {
-      case 'categories': return t('admin.categories');
-      case 'priorities': return t('admin.priorities');
-      case 'statuses': return t('admin.statuses');
-      case 'members': return t('handovers.postedBy');
-      case 'checkers': return t('admin.checkers', 'Checkers'); 
-      default: return tabKey;
-    }
-  }
-
-  // --- Modal Structure ---
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
-      <div className="bg-white rounded-lg shadow-xl z-50 max-w-3xl w-full p-6 relative flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
-        <div className="flex justify-between items-center mb-4 pb-2 border-b">
-          <h3 className="text-lg font-semibold text-gray-800">{t('admin.editDropdownOptions', 'Edit Dropdown Options')}</h3>
-          <button onClick={handleCloseModal} className="text-gray-400 hover:text-gray-600 focus:outline-none" disabled={isSaving}>&times;</button>
-        </div>
-
-        {/* Layout: Sidebar + Content */}
-        <div className="flex gap-4 flex-1 overflow-hidden">
-          {/* Sidebar Navigation */}
-          <div className="w-44 bg-gray-50 p-3 rounded flex-shrink-0 overflow-y-auto">
-            <nav className="flex flex-col gap-1">
-              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'categories' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('categories')}>{t('admin.categories')} (Endorsement)</button>
-              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'statuses' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('statuses')}>{t('admin.statuses')} (Endorsement)</button>
-              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'checkers' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('checkers')}>{t('admin.checkers', 'Checkers')}</button> 
-              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'priorities' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('priorities')}>{t('admin.priorities')}</button>
-              <button className={`text-left text-sm px-3 py-1.5 rounded ${tab === 'members' ? 'bg-blue-100 text-blue-700 font-medium shadow-sm' : 'hover:bg-gray-200'}`} onClick={() => setTab('members')}>{t('handovers.postedBy')}</button>
-            </nav>
-          </div>
-
-          {/* Content Area */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Add New Item Form */}
-            <div className="mb-3 flex items-center justify-between gap-2 pb-2 border-b">
-              <h4 className="text-base font-medium text-gray-700">{getTabTitle(tab)}</h4>
-              <form
-                className="flex items-center gap-2"
-                onSubmit={(e) => { e.preventDefault(); handleAdd(); }}
-              >
-                {/* --- NEW: Dynamic Placeholder --- */}
-                <input
-                  value={newValue}
-                  onChange={(e) => setNewValue(e.target.value)}
-                  placeholder={
-                    tab === 'members' ? t('admin.memberPlaceholder', 'uid|label (or uid)') :
-                    tab === 'checkers' ? t('admin.checkerPlaceholder', 'key|Label') :
-                    t('admin.newOptionValue', 'New value')
-                  }
-                  className="border px-2 py-1 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 flex-grow"
-                  disabled={isSaving}
-                />
-                <button type="submit" className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50" disabled={isSaving}>
-                  {isSaving ? t('common.saving', 'Saving...') : t('common.add', 'Add')}
-                </button>
-              </form>
-            </div>
-
-            {/* Error Display */}
-            {modalError && <p className="text-red-600 text-sm mb-2 px-1">{modalError}</p>}
-
-            {/* List of Items */}
-            <ul className="space-y-1.5 overflow-y-auto flex-1 pr-1">
-              {(items || []).length === 0 && <li key="empty-state" className="text-sm text-gray-500 px-1 py-4 text-center">{t('admin.noItems', 'No items defined for')} {tab}.</li>}
-              
-              {(items || []).map((it, idx) => renderListItem(it, idx))}
-              
-              <li key="spacer" style={{ height: '10px' }}></li>
-            </ul>
-
-            {/* Footer / Close Button */}
-            <div className="mt-4 pt-3 border-t flex justify-end gap-2">
-              <button onClick={handleCloseModal} className="px-4 py-1.5 rounded border text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50" disabled={isSaving}>{t('common.close')}</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-/* ------------------------------------------------------------------
-  InviteMemberModal
--------------------------------------------------------------------*/
-function InviteMemberModal({ isOpen, onClose, teamId, t, onInvited }) {
-  const [email, setEmail] = useState('');
-  const [isInviting, setIsInviting] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-
-  useEffect(() => {
-    if (!isOpen) {
-      setEmail('');
-      setError('');
-      setSuccess('');
-      setIsInviting(false);
-    }
-  }, [isOpen]);
-
-  if (!isOpen) return null;
-
-  const handleInvite = async () => {
-    if (!email.trim() || !email.includes('@')) {
-      setError(t('admin.invalidEmail', 'Please enter a valid email address.'));
-      return;
-    }
-    setIsInviting(true);
-    setError('');
-    setSuccess('');
-
-    try {
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
-        throw new Error("Authentication error: User not logged in.");
-      }
-
-      const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('email', '==', email.trim().toLowerCase()));
-      const querySnapshot = await getDocs(q);
-
-      if (querySnapshot.empty) {
-        setError(t('admin.userNotFound', 'User with this email not found in the system.'));
-        setIsInviting(false);
-        return;
-      }
-
-      const userDoc = querySnapshot.docs[0];
-      const invitedUserId = userDoc.id;
-      const invitedData = userDoc.data();
-      const invitedLabel = invitedData.displayName || invitedData.name || invitedData.email || invitedUserId;
-
-      if (invitedUserId === currentUser.uid) {
-        setError(t('admin.inviteSelfError', "You cannot invite yourself to the team."));
-        setIsInviting(false);
-        return;
-      }
-
-      const teamRef = doc(db, 'teams', teamId);
-      const teamSnap = await getDoc(teamRef);
-      if (!teamSnap.exists()) {
-        setError(t('admin.teamNotFoundError', 'Team data not found. Cannot process invitation.'));
-        setIsInviting(false);
-        return;
-      }
-
-      const teamData = teamSnap.data();
-      const teamName = teamData.teamName || `Team ${teamId.substring(0, 6)}`;
-      const members = teamData.members || [];
-
-      const isAlreadyMember = members.some(member =>
-        (typeof member === 'object' && member.uid === invitedUserId) ||
-        (typeof member === 'string' && member === invitedUserId)
-      );
-
-      if (isAlreadyMember) {
-        setError(t('admin.alreadyMemberError', 'This user is already a member of the team.'));
-        setIsInviting(false);
-        return;
-      }
-
-      const senderName = currentUser.displayName || currentUser.email || 'A team member';
-      await addDoc(collection(db, 'notifications'), {
-        userId: invitedUserId, 
-        type: 'INVITATION',
-        senderId: currentUser.uid,
-        senderName: senderName,
-        teamId: teamId,
-        teamName: teamName,
-        createdAt: serverTimestamp(),
-        isRead: false,
-        message: `${senderName} ${t('admin.inviteNotification', 'invited you to join the team')} "${teamName}".`
-      });
-
-      setSuccess(`${t('admin.inviteSuccess', 'Invitation sent successfully to')} ${invitedLabel} (${email})!`);
-
-      if (typeof onInvited === 'function') {
-        onInvited(invitedUserId, invitedLabel); 
-      }
-
-      setTimeout(() => {
-        if (typeof onClose === 'function') onClose();
-      }, 1500); 
-
-    } catch (err) {
-      console.error('Error sending invitation:', err);
-      setError(t('admin.inviteFailError', 'Failed to send invitation. Please check the console and try again.'));
-      setIsInviting(false); 
-    }
-  };
-
-  const handleClose = () => {
-    if (!isInviting && typeof onClose === 'function') {
-      onClose();
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6 relative">
-        <button onClick={handleClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 focus:outline-none" disabled={isInviting}>&times;</button>
-        <div className="mb-4">
-          <h3 className="text-xl font-semibold text-gray-800">{t('admin.inviteMember')}</h3>
-          <p className="text-sm text-gray-500 mt-1">{t('admin.inviteSubtext', 'Enter the email address of the user you want to invite.')}</p>
-        </div>
-
-        {error && <p className="text-red-600 text-sm mb-3 p-2 bg-red-50 rounded border border-red-200">{error}</p>}
-        {success && <p className="text-green-600 text-sm mb-3 p-2 bg-green-50 rounded border border-green-200">{success}</p>}
-
-        {!success && ( 
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="inviteEmail" className="sr-only">{t('admin.emailLabel', "User's Email")}</label>
-              <input
-                type="email"
-                id="inviteEmail"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder={t('admin.emailPlaceholder', 'e.g., teammate@example.com')}
-                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                disabled={isInviting}
-              />
-            </div>
-          </div>
-        )}
-
-        <div className="flex justify-end gap-2 mt-6 border-t pt-4">
-          <button onClick={handleClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md text-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50" disabled={isInviting}>
-            {success ? t('common.close') : t('common.cancel')}
-          </button>
-          {!success && (
-            <button
-              onClick={handleInvite}
-              disabled={isInviting || !email.trim()}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isInviting ? t('admin.inviting', 'Sending...') : t('admin.sendInvite', 'Send Invite')}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
