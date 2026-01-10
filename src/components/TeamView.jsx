@@ -12,7 +12,8 @@ import {
   deleteDoc,
   serverTimestamp,
   where,
-  addDoc
+  addDoc,
+  deleteField // <--- Added for removing roles
 } from "firebase/firestore";
 import { db, auth } from '../firebaseConfig';
 import { onAuthStateChanged } from "firebase/auth";
@@ -41,6 +42,8 @@ const TableIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w
 const HandoverIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>;
 const QuestionMarkCircleIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
 const XIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>;
+// --- Added Trash Icon for Removing Members ---
+const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>;
 
 // --- Spinner component ---
 const Spinner = ({ large = false }) => (
@@ -193,7 +196,7 @@ const AnnouncementsSection = ({ teamId, refreshTrigger, isAdmin, onEdit }) => {
 };
 
 // --- MembersSection ---
-const MembersSection = ({ membersDetails, teamData, currentUserUid, canManageMembers, onChangeRole, onInviteClick }) => {
+const MembersSection = ({ membersDetails, teamData, currentUserUid, canManageMembers, onChangeRole, onInviteClick, onRemoveMember }) => {
   const { t } = useContext(LanguageContext);
 
   return (
@@ -241,15 +244,25 @@ const MembersSection = ({ membersDetails, teamData, currentUserUid, canManageMem
                     ) : isMasterAdmin ? (
                       <div className="text-xs px-2 py-1 bg-indigo-100 text-indigo-800 rounded border border-indigo-200">{t('header.masterAdmin')}</div>
                     ) : (
-                      <select
-                        value={roleRaw}
-                        onChange={(e) => onChangeRole(uid, e.target.value)}
-                        className="text-xs border rounded px-2 py-1"
-                        title={t('admin.changeRole')}
-                      >
-                        <option value="admin">{t('admin.admin')}</option>
-                        <option value="member">{t('common.member')}</option>
-                      </select>
+                      <>
+                        <select
+                          value={roleRaw}
+                          onChange={(e) => onChangeRole(uid, e.target.value)}
+                          className="text-xs border rounded px-2 py-1"
+                          title={t('admin.changeRole')}
+                        >
+                          <option value="admin">{t('admin.admin')}</option>
+                          <option value="member">{t('common.member')}</option>
+                        </select>
+                        {/* --- ADDED REMOVE BUTTON --- */}
+                        <button
+                          onClick={() => onRemoveMember(uid)}
+                          className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
+                          title={t('common.removeMember', 'Remove Member')}
+                        >
+                          <TrashIcon />
+                        </button>
+                      </>
                     )}
                   </div>
                 ) : (
@@ -756,6 +769,46 @@ const TeamView = () => {
       }
   };
 
+  // --- NEW FUNCTION: Remove Member ---
+  const handleRemoveMember = async (memberUid) => {
+    if (!teamData || !currentUser || !isAdmin) return;
+    if (teamData.createdBy === memberUid) {
+        alert(t('admin.cannotRemoveCreator', 'Cannot remove the team creator.'));
+        return;
+    }
+
+    const confirmMsg = t('common.confirmRemoveMember', 'Are you sure you want to remove this member?');
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+        const teamDocRef = doc(db, "teams", teamId);
+        
+        // 1. Filter out the member from the array (handling both object and string formats in legacy data)
+        const currentMembers = teamData.members || [];
+        const newMembersArray = currentMembers.filter(m => {
+            const id = typeof m === 'object' ? m.uid : m;
+            return id !== memberUid;
+        });
+
+        // 2. Prepare updates: Update array AND delete role entry
+        const updates = {
+            members: newMembersArray,
+            [`roles.${memberUid}`]: deleteField()
+        };
+
+        await updateDoc(teamDocRef, updates);
+
+        // 3. Update local state
+        setTeamData(prev => ({ ...prev, members: newMembersArray }));
+        setMembersDetails(prev => prev.filter(m => m.uid !== memberUid));
+
+    } catch (err) {
+        console.error("Error removing member:", err);
+        alert(t('common.errorRemovingMember', 'Failed to remove member.'));
+    }
+  };
+
+
   const onInviteCompleteRefresh = () => { fetchTeamAndMembers(); };
   const openEditModal = (update) => { setEditTarget(update); setIsEditModalOpen(true); };
   const closeEditModal = () => { setEditTarget(null); setIsEditModalOpen(false); };
@@ -822,7 +875,8 @@ const TeamView = () => {
                       teamData={teamData} 
                       canManageMembers={isAdmin} 
                       onChangeRole={changeRole} 
-                      onInviteClick={() => setIsInviteModalOpen(true)} 
+                      onInviteClick={() => setIsInviteModalOpen(true)}
+                      onRemoveMember={handleRemoveMember} 
                     />
                   </div>
                 </div>
