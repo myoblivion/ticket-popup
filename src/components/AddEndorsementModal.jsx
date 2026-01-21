@@ -1,40 +1,88 @@
 // src/components/AddEndorsementModal.jsx
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebaseConfig';
-import { collection, addDoc, serverTimestamp, getCountFromServer } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, serverTimestamp, getCountFromServer } from 'firebase/firestore';
 import { useAuthState } from 'react-firebase-hooks/auth';
 
-const AddEndorsementModal = ({ isOpen, onClose, teamId, onEndorsementAdded, t }) => {
+const AddEndorsementModal = ({ 
+  isOpen, 
+  onClose, 
+  teamId, 
+  onEndorsementAdded, 
+  t, 
+  categoriesList = [], 
+  initialData = null, // If provided, we are in EDIT mode
+  checkerList = []    // Needed to render the checkboxes dynamically
+}) => {
   const [user] = useAuthState(auth);
   
-  // --- NEW STATE for Handover fields ---
+  // --- Form State ---
   const [categories, setCategories] = useState('');
   const [handoverContents, setHandoverContents] = useState('');
   const [remarks, setRemarks] = useState('');
   const [postedBy, setPostedBy] = useState('');
   const [status, setStatus] = useState('Pending');
+  
+  // State for dynamic checkboxes (checkers)
+  const [checkers, setCheckers] = useState({});
 
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Status options (data, not translated)
+  // Status options
   const statusOptions = ['Pending', 'In Progress', 'Approved', 'Rejected'];
 
   useEffect(() => {
     if (isOpen) {
-      // Reset form on open
-      setCategories('');
-      setHandoverContents('');
-      setRemarks('');
-      setStatus('Pending');
       setError('');
       setIsSaving(false);
-      // Pre-fill "Posted by" name from logged-in user
-      if (user) {
-        setPostedBy(user.displayName || user.email || '');
+
+      if (initialData) {
+        // --- EDIT MODE: Pre-fill data ---
+        setCategories(initialData.categories || '');
+        setHandoverContents(initialData.content || '');
+        setRemarks(initialData.remarks || '');
+        setPostedBy(initialData.postedBy || '');
+        setStatus(initialData.status || 'Pending');
+
+        // Pre-fill checkers based on the dynamic list
+        const loadedCheckers = {};
+        checkerList.forEach(c => {
+          loadedCheckers[c.key] = initialData[c.key] === true;
+        });
+        setCheckers(loadedCheckers);
+
+      } else {
+        // --- ADD MODE: Reset form ---
+        setCategories('');
+        setHandoverContents('');
+        setRemarks('');
+        setStatus('Pending');
+        
+        // Default "Posted by"
+        if (user) {
+          setPostedBy(user.displayName || user.email || '');
+        } else {
+          setPostedBy('');
+        }
+
+        // Reset checkers to false
+        const defaultCheckers = {};
+        checkerList.forEach(c => {
+          defaultCheckers[c.key] = false;
+        });
+        setCheckers(defaultCheckers);
       }
     }
-  }, [isOpen, user]);
+  }, [isOpen, initialData, user, checkerList]);
+
+  // Handle checkbox toggles
+  const handleCheckerChange = (key, checked) => {
+    setCheckers(prev => ({
+      ...prev,
+      [key]: checked
+    }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -44,37 +92,48 @@ const AddEndorsementModal = ({ isOpen, onClose, teamId, onEndorsementAdded, t })
     }
     setIsSaving(true);
     setError('');
+    
     try {
       const handoversRef = collection(db, `teams/${teamId}/endorsements`); 
-      
-      // --- AUTO-GENERATE NUMBER ---
-      // Get the current count of documents in the collection
-      const snapshot = await getCountFromServer(handoversRef);
-      const count = snapshot.data().count;
-      const newNumber = count + 1; 
-      
-      await addDoc(handoversRef, {
-        number: newNumber, // Auto-generated sequential number
-        categories: categories,
-        content: handoverContents, 
-        remarks: remarks,         
-        postedBy: postedBy,       
-        status: status,
-        createdAt: serverTimestamp(),
+
+      if (initialData) {
+        // --- UPDATE EXISTING ---
+        const docRef = doc(db, `teams/${teamId}/endorsements`, initialData.id);
         
-        // Default all new checkers to false
-        checkerCS: false,
-        checkerPark: false,
-        checkerSeo: false,
-        checkerDev: false,
-        checkerYoo: false,
-        checkerKim: false,
-      });
+        await updateDoc(docRef, {
+          categories: categories,
+          content: handoverContents, 
+          remarks: remarks,         
+          postedBy: postedBy,       
+          status: status,
+          // Spread current state of checkers (true/false)
+          ...checkers
+        });
+
+      } else {
+        // --- CREATE NEW ---
+        // Get the current count for auto-numbering
+        const snapshot = await getCountFromServer(handoversRef);
+        const count = snapshot.data().count;
+        const newNumber = count + 1; 
+        
+        await addDoc(handoversRef, {
+          number: newNumber, 
+          categories: categories,
+          content: handoverContents, 
+          remarks: remarks,         
+          postedBy: postedBy,       
+          status: status,
+          createdAt: serverTimestamp(),
+          // Spread checkers (defaults or modified)
+          ...checkers
+        });
+      }
       
-      onEndorsementAdded(); // Call parent to refresh
-      onClose(); // Close self
+      onEndorsementAdded(); // Refresh parent
+      onClose();
     } catch (err) {
-      console.error("Error adding handover:", err);
+      console.error("Error saving handover:", err);
       setError(t('handovers.addErrorFailed', 'Failed to save handover.'));
     } finally {
       setIsSaving(false);
@@ -83,14 +142,22 @@ const AddEndorsementModal = ({ isOpen, onClose, teamId, onEndorsementAdded, t })
 
   if (!isOpen) return null;
 
+  const isEditMode = !!initialData;
+  const modalTitle = isEditMode 
+    ? t('handovers.editTitle', 'Edit Handover') 
+    : t('handovers.addTitle', 'Add New Handover');
+  const saveLabel = isEditMode 
+    ? t('handovers.updateButton', 'Update Handover') 
+    : t('handovers.saveButton', 'Save Handover');
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black bg-opacity-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <form onSubmit={handleSubmit}>
           {/* Header */}
-          <div className="flex justify-between items-center p-4 border-b">
+          <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white z-10">
             <h3 className="text-lg font-semibold text-gray-800">
-              {t('handovers.addTitle', 'Add New Handover')}
+              {modalTitle}
             </h3>
             <button
               type="button"
@@ -105,8 +172,8 @@ const AddEndorsementModal = ({ isOpen, onClose, teamId, onEndorsementAdded, t })
 
           {/* Body */}
           <div className="p-6 space-y-4">
-            {/* Removed Manual Number Input */}
             
+            {/* Categories */}
             <div>
               <label htmlFor="categories" className="block text-sm font-medium text-gray-700 mb-1">
                 {t('handovers.categories', 'Categories')}
@@ -116,10 +183,19 @@ const AddEndorsementModal = ({ isOpen, onClose, teamId, onEndorsementAdded, t })
                 type="text"
                 value={categories}
                 onChange={(e) => setCategories(e.target.value)}
+                list="category-options"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               />
+              {/* Datalist for autocomplete suggestion from existing categories */}
+              <datalist id="category-options">
+                {categoriesList.map((cat, i) => (
+                  <option key={i} value={cat} />
+                ))}
+              </datalist>
             </div>
-             <div>
+
+            {/* Posted By */}
+            <div>
               <label htmlFor="postedBy" className="block text-sm font-medium text-gray-700 mb-1">
                 {t('handovers.postedBy', 'Posted by')} <span className="text-red-500">*</span>
               </label>
@@ -132,6 +208,8 @@ const AddEndorsementModal = ({ isOpen, onClose, teamId, onEndorsementAdded, t })
                 required
               />
             </div>
+
+            {/* Content */}
             <div>
               <label htmlFor="content" className="block text-sm font-medium text-gray-700 mb-1">
                 {t('handovers.content', 'Handover Contents')} <span className="text-red-500">*</span>
@@ -145,6 +223,8 @@ const AddEndorsementModal = ({ isOpen, onClose, teamId, onEndorsementAdded, t })
                 required
               />
             </div>
+
+            {/* Status */}
             <div>
               <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-1">
                 {t('handovers.status', 'Status')}
@@ -160,6 +240,33 @@ const AddEndorsementModal = ({ isOpen, onClose, teamId, onEndorsementAdded, t })
                 ))}
               </select>
             </div>
+
+            {/* Checkers Section */}
+            {checkerList.length > 0 && (
+              <div className="border p-3 rounded-md bg-gray-50">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {t('handovers.checkers', 'Checkers')}
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {checkerList.map((checker) => (
+                    <div key={checker.key} className="flex items-center">
+                      <input
+                        id={`chk-${checker.key}`}
+                        type="checkbox"
+                        checked={checkers[checker.key] || false}
+                        onChange={(e) => handleCheckerChange(checker.key, e.target.checked)}
+                        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <label htmlFor={`chk-${checker.key}`} className="ml-2 text-sm text-gray-700">
+                        {checker.label}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Remarks */}
             <div>
               <label htmlFor="remarks" className="block text-sm font-medium text-gray-700 mb-1">
                 {t('handovers.remarks', 'Remarks (Optional)')}
@@ -172,13 +279,14 @@ const AddEndorsementModal = ({ isOpen, onClose, teamId, onEndorsementAdded, t })
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
+
             {error && (
               <p className="text-red-600 text-sm">{error}</p>
             )}
           </div>
 
           {/* Footer */}
-          <div className="flex justify-end items-center gap-3 p-4 border-t bg-gray-50">
+          <div className="flex justify-end items-center gap-3 p-4 border-t bg-gray-50 sticky bottom-0">
             <button
               type="button"
               onClick={onClose}
@@ -192,7 +300,7 @@ const AddEndorsementModal = ({ isOpen, onClose, teamId, onEndorsementAdded, t })
               disabled={isSaving}
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-wait"
             >
-              {isSaving ? t('common.saving', 'Saving...') : t('handovers.saveButton', 'Save Handover')}
+              {isSaving ? t('common.saving', 'Saving...') : saveLabel}
             </button>
           </div>
         </form>
