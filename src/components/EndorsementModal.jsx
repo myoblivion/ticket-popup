@@ -98,7 +98,10 @@ const HandoversSection = ({ teamId }) => {
   const [handovers, setHandovers] = useState([]);
   const [isLoading, setIsLoading] = useState(true); 
   const [error, setError] = useState(null);
+  
+  // --- Modal State ---
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingHandover, setEditingHandover] = useState(null); // Tracks item being edited
 
   // --- Details Popup State ---
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -625,10 +628,19 @@ const HandoversSection = ({ teamId }) => {
     setFilters({ categories: '', postedBy: '', status: '' });
   }, []);
 
-  const openAddModal = () => setIsAddModalOpen(true);
+  const openAddModal = () => {
+    setEditingHandover(null); // Ensure we are in ADD mode
+    setIsAddModalOpen(true);
+  };
+  
+  const openEditModal = (item) => {
+    setEditingHandover(item); // Set item for EDIT mode
+    setIsAddModalOpen(true);
+  };
 
   const handleHandoverAdded = () => {
     setIsAddModalOpen(false); 
+    setEditingHandover(null);
   };
 
   const openDetailsModal = (item) => {
@@ -868,7 +880,7 @@ const HandoversSection = ({ teamId }) => {
         const manualNumber = item.number; // Value from Firestore
         const { index, total } = meta;
         let textToShow;
-        
+         
         if (manualNumber || manualNumber === 0) {
           textToShow = String(manualNumber);
         } 
@@ -899,13 +911,16 @@ const HandoversSection = ({ teamId }) => {
         );
       case 'actions':
         return (
-          <div className="flex items-center justify-center gap-3">
-            <button
-              onClick={() => openDetailsModal(item)}
+          <div className="flex flex-col items-center gap-1">
+            {/* --- NEW: Edit Button --- */}
+            <button 
+              onClick={() => openEditModal(item)}
               className="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium"
             >
               {t('common.edit', 'Edit')}
             </button>
+            
+            {/* Delete Button */}
             <button 
               onClick={() => handleDelete(item.id)}
               className="text-red-600 hover:text-red-800 hover:underline text-xs font-medium"
@@ -914,7 +929,7 @@ const HandoversSection = ({ teamId }) => {
             </button>
           </div>
         );
-      
+       
       default:
         break; 
     }
@@ -1301,12 +1316,16 @@ const HandoversSection = ({ teamId }) => {
 
       <AddEndorsementModal
         isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
+        onClose={handleHandoverAdded} // Close handler
         teamId={teamId}
         onEndorsementAdded={handleHandoverAdded}
         t={t}
         // Pass dynamic categories to the Add modal
         categoriesList={categoriesList}
+        
+        // --- NEW PROPS FOR EDITING ---
+        initialData={editingHandover} // Pass the item to edit (null if adding)
+        checkerList={checkerList}     // Pass the list of checkers so checkboxes can be rendered
       />
 
       {isDetailsModalOpen && selectedHandover && (
