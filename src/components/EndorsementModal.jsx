@@ -31,12 +31,11 @@ import { LanguageContext } from '../contexts/LanguageContext';
 const DEFAULT_PLACEHOLDERS = {
   members: [],
   categories: ['General', 'Tech', 'Operations'],
-  // types removed
   priorities: [],
 };
 const DEFAULT_STATUS_OPTIONS = ['Pending', 'In Progress', 'Approved', 'Rejected'];
 
-// --- NEW: Default Checkers (as a fallback) ---
+// --- Default Checkers (as a fallback) ---
 const DEFAULT_CHECKERS = [
   { key: 'checkerCS', label: 'CS Lead' },
   { key: 'checkerPark', label: 'Park Lead' },
@@ -46,7 +45,7 @@ const DEFAULT_CHECKERS = [
   { key: 'checkerKim', label: 'Kim Director' },
 ];
 
-// --- NEW: Editable Columns Config ---
+// --- Editable Columns Config ---
 const INLINE_EDITABLE_COLUMNS = [
   'number', 'categories', 'content', 'postedBy', 'status', 'remarks'
 ];
@@ -127,7 +126,6 @@ const HandoversSection = ({ teamId }) => {
   // --- Dynamic Option Lists State ---
   const [membersList, setMembersList] = useState(DEFAULT_PLACEHOLDERS.members);
   const [categoriesList, setCategoriesList] = useState(DEFAULT_PLACEHOLDERS.categories);
-  // typesList removed
   const [priorityOptions, setPriorityOptions] = useState(DEFAULT_PLACEHOLDERS.priorities);
   const [statusOptions, setStatusOptions] = useState(DEFAULT_STATUS_OPTIONS);
   const [checkerList, setCheckerList] = useState(DEFAULT_CHECKERS); 
@@ -430,6 +428,18 @@ const HandoversSection = ({ teamId }) => {
       console.error("Error deleting handover:", err);
       setError(t('handovers.deleteError', 'Failed to delete handover. Please try again.'));
     }
+  };
+  
+  // --- Checker List Updater (passed to AddEndorsementModal) ---
+  const updateCheckersList = async (newList) => {
+      if (!teamId) return;
+      try {
+          const teamRef = doc(db, 'teams', teamId);
+          await setDoc(teamRef, { handoverCheckers: newList }, { merge: true });
+      } catch (err) {
+          console.error("Failed to update checkers list:", err);
+          alert("Failed to update checkers list.");
+      }
   };
 
   // --- Inline Editing Functions (from TeamProjectTable) ---
@@ -1323,9 +1333,10 @@ const HandoversSection = ({ teamId }) => {
         // Pass dynamic categories to the Add modal
         categoriesList={categoriesList}
         
-        // --- NEW PROPS FOR EDITING ---
+        // --- PROPS FOR EDITING ---
         initialData={editingHandover} // Pass the item to edit (null if adding)
-        checkerList={checkerList}     // Pass the list of checkers so checkboxes can be rendered
+        checkerList={checkerList}     // Pass the list of checkers
+        onUpdateCheckers={updateCheckersList} // Function to update global team checkers
       />
 
       {isDetailsModalOpen && selectedHandover && (
