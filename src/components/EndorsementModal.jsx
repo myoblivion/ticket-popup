@@ -89,7 +89,7 @@ const formatDate = (value, { fallback = '' } = {}) => {
 // --- THIS IS THE HANDOVER SECTION COMPONENT ---
 const HandoversSection = ({ teamId }) => {
   const { t } = useContext(LanguageContext);
-  
+   
   // --- React Router Hooks ---
   const { handoverId } = useParams(); 
   const navigate = useNavigate(); 
@@ -429,13 +429,6 @@ const HandoversSection = ({ teamId }) => {
     }
   };
 
-  // --- NEW: Edit button handler that starts inline edit on the 'content' column ---
-  const handleEditClick = (item) => {
-    // Start editing the content column for this row
-    const currentValue = item.content ?? '';
-    startEditingCell(item.id, 'content', String(currentValue));
-  };
-
   // --- Inline Editing Functions (from TeamProjectTable) ---
   const getCellKey = (docId, headerKey) => `${docId}-${headerKey}`;
 
@@ -623,7 +616,7 @@ const HandoversSection = ({ teamId }) => {
 
   // --- Filter/Modal Handlers ---
   const toggleAllColumns = () => setIsAllExpanded(prev => !prev);
-  
+   
   const handleFilterChange = useCallback((key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
   }, []);
@@ -653,10 +646,10 @@ const HandoversSection = ({ teamId }) => {
     setIsDetailsModalOpen(false);
     setSelectedHandover(null);
     document.title = baseTitleRef.current;
-  
+   
     navigate(`/team/${teamId}`, { replace: true }); 
   };
-  
+   
   // --- Persistence functions for OptionsEditorModal ---
   const persistTeamArrayField = async (fieldName, arr) => {
     if (!teamId) throw new Error('Missing teamId');
@@ -906,12 +899,10 @@ const HandoversSection = ({ teamId }) => {
         );
       case 'actions':
         return (
-          <div className="text-center flex items-center gap-3">
+          <div className="flex items-center justify-center gap-3">
             <button
-              onClick={() => handleEditClick(item)}
+              onClick={() => openDetailsModal(item)}
               className="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium"
-              aria-label={t('common.edit', 'Edit')}
-              type="button"
             >
               {t('common.edit', 'Edit')}
             </button>
@@ -1068,7 +1059,6 @@ const HandoversSection = ({ teamId }) => {
             >
               {t('common.active')}
               <span className={`
-
                 rounded-full px-2 py-0.5 ml-2 text-xs font-medium
                 ${activeTab === 'active'
                   ? 'bg-blue-100 text-blue-700'
@@ -1089,7 +1079,6 @@ const HandoversSection = ({ teamId }) => {
             >
               {t('handovers.approved', 'Approved')}
               <span className={`
-
                 rounded-full px-2 py-0.5 ml-2 text-xs font-medium
                 ${activeTab === 'approved'
                   ? 'bg-blue-100 text-blue-700'
@@ -1250,7 +1239,7 @@ const HandoversSection = ({ teamId }) => {
                             )}
                             {savingStatus[cellKey] === 'saved' && (
                               <span className="absolute top-1 right-2 text-xs text-green-600">{t('common.saved')}</span>
-                            )} 
+                            )}
                           </td>
                         );
                       })}
