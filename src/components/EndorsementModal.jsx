@@ -429,6 +429,13 @@ const HandoversSection = ({ teamId }) => {
     }
   };
 
+  // --- NEW: Edit button handler that starts inline edit on the 'content' column ---
+  const handleEditClick = (item) => {
+    // Start editing the content column for this row
+    const currentValue = item.content ?? '';
+    startEditingCell(item.id, 'content', String(currentValue));
+  };
+
   // --- Inline Editing Functions (from TeamProjectTable) ---
   const getCellKey = (docId, headerKey) => `${docId}-${headerKey}`;
 
@@ -899,7 +906,15 @@ const HandoversSection = ({ teamId }) => {
         );
       case 'actions':
         return (
-          <div className="text-center">
+          <div className="text-center flex items-center gap-3">
+            <button
+              onClick={() => handleEditClick(item)}
+              className="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium"
+              aria-label={t('common.edit', 'Edit')}
+              type="button"
+            >
+              {t('common.edit', 'Edit')}
+            </button>
             <button 
               onClick={() => handleDelete(item.id)}
               className="text-red-600 hover:text-red-800 hover:underline text-xs font-medium"
@@ -1053,6 +1068,7 @@ const HandoversSection = ({ teamId }) => {
             >
               {t('common.active')}
               <span className={`
+
                 rounded-full px-2 py-0.5 ml-2 text-xs font-medium
                 ${activeTab === 'active'
                   ? 'bg-blue-100 text-blue-700'
@@ -1073,6 +1089,7 @@ const HandoversSection = ({ teamId }) => {
             >
               {t('handovers.approved', 'Approved')}
               <span className={`
+
                 rounded-full px-2 py-0.5 ml-2 text-xs font-medium
                 ${activeTab === 'approved'
                   ? 'bg-blue-100 text-blue-700'
@@ -1233,7 +1250,7 @@ const HandoversSection = ({ teamId }) => {
                             )}
                             {savingStatus[cellKey] === 'saved' && (
                               <span className="absolute top-1 right-2 text-xs text-green-600">{t('common.saved')}</span>
-                            )}
+                            )} 
                           </td>
                         );
                       })}
