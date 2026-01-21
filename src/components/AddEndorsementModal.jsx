@@ -12,7 +12,8 @@ const AddEndorsementModal = ({
   t, 
   categoriesList = [], 
   initialData = null, // If provided, we are in EDIT mode
-  checkerList = []    // Needed to render the checkboxes dynamically
+  checkerList = [],   // The list of available checkboxes
+  onUpdateCheckers    // Function to update the global list of checkers (add/delete)
 }) => {
   const [user] = useAuthState(auth);
   
@@ -23,8 +24,12 @@ const AddEndorsementModal = ({
   const [postedBy, setPostedBy] = useState('');
   const [status, setStatus] = useState('Pending');
   
-  // State for dynamic checkboxes (checkers)
+  // State for the values of the checkboxes (Checked/Unchecked)
   const [checkers, setCheckers] = useState({});
+
+  // State for Managing (Adding) new Checkers
+  const [newCheckerLabel, setNewCheckerLabel] = useState('');
+  const [isAddingChecker, setIsAddingChecker] = useState(false);
 
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -36,6 +41,8 @@ const AddEndorsementModal = ({
     if (isOpen) {
       setError('');
       setIsSaving(false);
+      setNewCheckerLabel('');
+      setIsAddingChecker(false);
 
       if (initialData) {
         // --- EDIT MODE: Pre-fill data ---
@@ -76,7 +83,7 @@ const AddEndorsementModal = ({
     }
   }, [isOpen, initialData, user, checkerList]);
 
-  // Handle checkbox toggles
+  // --- Handlers for Checkbox Values (Data) ---
   const handleCheckerChange = (key, checked) => {
     setCheckers(prev => ({
       ...prev,
@@ -84,6 +91,44 @@ const AddEndorsementModal = ({
     }));
   };
 
+  // --- Handlers for Managing Checkers (Structure) ---
+  const handleAddChecker = async (e) => {
+    e.preventDefault(); // prevent form submit
+    if (!newCheckerLabel.trim()) return;
+
+    // Generate a safe key (e.g., "Design Lead" -> "checkerDesignLead")
+    const safeLabel = newCheckerLabel.replace(/[^a-zA-Z0-9]/g, '');
+    const newKey = `checker${safeLabel}`;
+
+    // Prevent duplicates
+    if (checkerList.some(c => c.key === newKey)) {
+      alert("This checker already exists!");
+      return;
+    }
+
+    const newChecker = { key: newKey, label: newCheckerLabel };
+    const newList = [...checkerList, newChecker];
+    
+    // Call parent to update Firestore
+    if (onUpdateCheckers) {
+      await onUpdateCheckers(newList);
+    }
+    
+    setNewCheckerLabel('');
+    setIsAddingChecker(false);
+  };
+
+  const handleDeleteChecker = async (keyToDelete) => {
+    if (!window.confirm("Delete this checker column? Existing data for this column may be hidden.")) return;
+    
+    const newList = checkerList.filter(c => c.key !== keyToDelete);
+    
+    if (onUpdateCheckers) {
+      await onUpdateCheckers(newList);
+    }
+  };
+
+  // --- Main Form Submit ---
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!handoverContents || !postedBy) {
@@ -186,7 +231,6 @@ const AddEndorsementModal = ({
                 list="category-options"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               />
-              {/* Datalist for autocomplete suggestion from existing categories */}
               <datalist id="category-options">
                 {categoriesList.map((cat, i) => (
                   <option key={i} value={cat} />
@@ -242,29 +286,67 @@ const AddEndorsementModal = ({
             </div>
 
             {/* Checkers Section */}
-            {checkerList.length > 0 && (
-              <div className="border p-3 rounded-md bg-gray-50">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+            <div className="border p-3 rounded-md bg-gray-50">
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-sm font-medium text-gray-700">
                   {t('handovers.checkers', 'Checkers')}
                 </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {checkerList.map((checker) => (
-                    <div key={checker.key} className="flex items-center">
+              </div>
+
+              {/* List of Checkers */}
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {checkerList.map((checker) => (
+                  <div key={checker.key} className="flex items-center justify-between bg-white px-2 py-1 rounded border border-gray-200 group">
+                    <div className="flex items-center overflow-hidden">
                       <input
                         id={`chk-${checker.key}`}
                         type="checkbox"
                         checked={checkers[checker.key] || false}
                         onChange={(e) => handleCheckerChange(checker.key, e.target.checked)}
-                        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 flex-shrink-0"
                       />
-                      <label htmlFor={`chk-${checker.key}`} className="ml-2 text-sm text-gray-700">
+                      <label htmlFor={`chk-${checker.key}`} className="ml-2 text-sm text-gray-700 truncate select-none cursor-pointer">
                         {checker.label}
                       </label>
                     </div>
-                  ))}
-                </div>
+                    {/* Delete Checker Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteChecker(checker.key)}
+                      className="text-gray-300 hover:text-red-500 ml-1 focus:outline-none opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Delete this checker"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))}
               </div>
-            )}
+
+              {/* Add New Checker UI */}
+              <div className="flex gap-2 items-center">
+                <input
+                  type="text"
+                  placeholder="New checker name..."
+                  value={newCheckerLabel}
+                  onChange={(e) => setNewCheckerLabel(e.target.value)}
+                  className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault(); 
+                        handleAddChecker(e);
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddChecker}
+                  disabled={!newCheckerLabel.trim()}
+                  className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
 
             {/* Remarks */}
             <div>
